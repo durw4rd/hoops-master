@@ -121,10 +121,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        groupId: group.groupId,
-        groupName: group.name,
-        groupRole: member.groupRole,
-        joinedAt: member.joinedAt,
+        group,
+        membership: {
+          groupRole: member.groupRole,
+          joinedAt: member.joinedAt,
+        },
       },
       message: `Successfully joined ${group.name}`,
     });

@@ -1,153 +1,175 @@
-# Summer Hoops Scheduler 🏀
+# Hoops Master 🏀
 
-Manage your basketball sessions and slot reservations. Never miss a game again.
+A multi-group sports event management platform. Organize games, manage your crew, and never miss a session.
 
-## What it does
+## Overview
 
-Summer Hoops Scheduler helps ballers organize game sessions. Join games, offer your spot when you can't make it, or swap sessions with other players.
+Hoops Master helps sports organizers create and manage groups for recurring events like basketball sessions, pickup games, or league play. Players can join groups, claim spots in events, offer their spots to others, and track their participation.
 
 ## Features
 
-### Session Management
-- View upcoming games with dates, times, and player lists
-- See available spots and session capacity
-- Filter by date and participation
+### 👥 Multi-Group Support
+- Create multiple groups for different communities or sports
+- Public groups anyone can join, or private invite-only groups
+- Unique invite codes for private group access
+- Role-based access (admins vs regular members)
 
-### Slot Operations
-- **Offer your spot**: Can't make it? Let someone else take your place
-- **Claim spots**: Jump on available slots when they open up
-- **Swap sessions**: Trade your spot in one game for another
-- **Reassign**: Give your spot to a specific player
-- **Settle slots**: Mark sessions as settled when transfers happen outside the app
+### 📅 Event Management
+- Create single events or recurring event series
+- Flexible scheduling with 15-minute time intervals
+- Configurable signup timing (immediate, days before, or specific date)
+- Track attendance with spot limits
 
-### Tournament Support
-- Special tournament events with enhanced styling
-- Dedicated tournament session management
+### 🎫 Spot Management
+- Claim available spots in events
+- Offer your spot when you can't make it
+- Retract offered spots before they're claimed
+- Admin reassignment capabilities
 
-### Community
-- Player profiles with pics
-- Color-coded player IDs
-- Real-time updates when slots change
+### 🎨 Modern UI
+- "Subway Court Kings" graffiti-inspired design
+- Mobile-optimized interface
+- Responsive layouts for all screen sizes
 
-## How to use it
+## Tech Stack
 
-### Getting Started
-1. Sign in with Google
-2. Browse upcoming sessions
-3. Claim available spots or offer yours
+- **Framework**: Next.js 15 (App Router)
+- **Authentication**: NextAuth.js with Google OAuth
+- **Database**: Google Sheets (via Google Sheets API)
+- **Styling**: Tailwind CSS
+- **UI Components**: Radix UI / shadcn/ui
+- **Feature Flags**: LaunchDarkly
 
-### Managing Your Slots
+## Getting Started
 
-**Offering Your Spot**
-1. Find your session in the schedule
-2. Click "Offer for grabs"
-3. If you have multiple slots, choose which ones to offer
-4. Other players can claim your spot
+### Prerequisites
+- Node.js 18+
+- pnpm (recommended) or npm
+- Google Cloud Platform project with Sheets API enabled
+- Google Service Account with appropriate permissions
 
-**Claiming Available Spots**
-1. Look for "Available: X" badges
-2. Click "Claim available slot"
-3. Confirm your participation
+### Environment Variables
 
-**Swapping Slots**
-1. Click "Offer for swap" on your current session
-2. If you have multiple slots, choose which one to offer for swap
-3. Pick the session you want instead
-4. Wait for someone to accept the swap
+Create a `.env.local` file with:
 
-**Reassigning Slots**
-1. Click "Reassign" on your session
-2. Select who gets your spot
-3. Confirm the transfer
+```bash
+# Google OAuth (for user authentication)
+GOOGLE_CLIENT_ID=your-oauth-client-id
+GOOGLE_CLIENT_SECRET=your-oauth-client-secret
 
-**Settling Slots**
-1. Find a past slot that somebody took over from you
-2. Click "Mark as settled"
+# Google Service Account (for Sheets API)
+GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@project.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 
-**Managing Settlements**
-1. Go to "The Bank" tab to view settlement overview
-2. Toggle "Smart Settlement" to opt in/out of calculations
-3. View your credit/debit balance and slot breakdown
+# Master Spreadsheet ID
+GOOGLE_SHEET_ID=your-master-spreadsheet-id
 
-### Settlement System
-- **Automated calculations**: Track credits/debits based on slot transactions
-- **Smart settlement toggle**: Opt in/out of automated settlement calculations
-- **Detailed breakdown**: See 1-hour vs 2-hour slot costs (€3.80 vs €7.60)
-- **Settlement overview**: Complete view of all players' balances
+# Google Drive Folder for group spreadsheets
+GOOGLE_DRIVE_FOLDER_ID=your-drive-folder-id
 
-### Admin Features
-- Reassign any player's slot to another player
-- Oversee all slot operations
-- Manage sessions with elevated permissions
-- Clear validation for slot limits (max 2 slots per player)
+# NextAuth
+NEXTAUTH_SECRET=your-random-secret
+NEXTAUTH_URL=http://localhost:3000
 
-## UI Guide
+# LaunchDarkly (optional)
+NEXT_PUBLIC_LD_CLIENT_ID=your-launchdarkly-client-id
+```
 
-### Schedule View
-- **Orange highlighting**: Your sessions
-- **Available badges**: Spots up for grabs
-- **Swap badges**: Swap offers available
-- **Player avatars**: Easy ID with profile pics
-- **Red borders/dots**: Players with slots offered for grabs
-- **Blue borders/dots**: Players with slots offered for swaps
+### Installation
 
-### Marketplace
-- Browse all available slots
-- Filter by date and session
-- Quick claiming and offering
+```bash
+# Clone the repository
+git clone https://github.com/your-org/hoops-master.git
+cd hoops-master
 
-### The Bank (Settlement)
-- **Creditors**: Players owed money (green amounts)
-- **Debtors**: Players who owe money (red amounts)
-- **Neutral**: Players with zero balance
-- **Slot breakdown**: Shows 1h vs 2h slots for transparency
+# Install dependencies
+pnpm install
 
-## Real-Time Updates
+# Run development server
+pnpm dev
+```
 
-Connects to Google Sheets for live data:
-- See changes immediately when slots are claimed
-- All changes sync across users instantly
-- Data stored safely in Google Sheets
+### Initial Setup
 
-## Privacy & Security
+1. Create a Google Spreadsheet for master data
+2. Share it with your service account email (Editor access)
+3. Create a Google Drive folder for group spreadsheets
+4. Share the folder with your service account (Editor access)
+5. Run the setup endpoint: `POST /api/setup`
 
-- Google account authentication
-- Data only accessible to you and organizers
-- Permission-based access based on your role
+## Architecture
 
-## Session Info
+See [APP_ARCHITECTURE.md](./APP_ARCHITECTURE.md) for detailed technical documentation.
 
-Each session shows:
-- Date and time
-- Current players with pics
-- Available spots (if any)
-- Session capacity (e.g., "8/10 players")
-- Action buttons for slot management
+### Hybrid Spreadsheet Structure
 
-## Benefits
+**Master Spreadsheet** (global data):
+- `AppUsers` - Registered users
+- `Groups` - Group metadata
+- `GroupMembers` - User-group relationships
 
-### For Players
-- Never miss a game
-- Flexible participation
-- Community building
-- Easy slot management
+**Per-Group Spreadsheets** (created per group):
+- `Events` - Event schedule
+- `EventAttendees` - Event participation
+- `Transactions` - Spot transfer records
+
+## Usage
 
 ### For Organizers
-- Admin tools for session management
-- Monitor slot changes
-- Reassign slots when needed
 
-### For the Community
-- See who's playing
-- Fair slot distribution
-- Clear availability status
+1. **Sign in** with your Google account
+2. **Create a group** with name, description, and visibility settings
+3. **Create events** (single or recurring series)
+4. **Share invite code** with players (for private groups)
+5. **Manage members** and events from the dashboard
 
-## Need Help?
+### For Players
 
-- Check session info and available actions
-- Look for helpful badges
-- Contact your organizer for admin issues
+1. **Sign in** with your Google account
+2. **Join a group** using invite code or browse public groups
+3. **View upcoming events** in the group dashboard
+4. **Claim spots** when signup opens
+5. **Offer your spot** if you can't make it
+
+## API Endpoints
+
+### Authentication & Setup
+- `POST /api/setup` - Initialize master spreadsheet
+
+### User Management
+- `GET /api/user/profile` - Get current user profile
+
+### Groups
+- `GET /api/groups` - List user's groups
+- `POST /api/groups` - Create new group
+- `GET /api/groups/public` - List public groups
+- `POST /api/groups/join` - Join a group
+- `GET /api/groups/[groupId]` - Get group details
+- `PATCH /api/groups/[groupId]` - Update group settings
+- `GET /api/groups/[groupId]/members` - List group members
+
+### Events
+- `GET /api/groups/[groupId]/events` - List events
+- `POST /api/groups/[groupId]/events` - Create event
+- `POST /api/groups/[groupId]/events/bulk` - Create recurring events
+- `GET /api/groups/[groupId]/events/[eventId]` - Get event details
+
+### Spot Management
+- `POST /api/groups/[groupId]/events/[eventId]/claim` - Claim spot
+- `POST /api/groups/[groupId]/events/[eventId]/offer` - Offer spot
+- `POST /api/groups/[groupId]/events/[eventId]/retract` - Retract offer
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## License
+
+MIT
 
 ---
 
-**Summer Hoops Scheduler** - Keep your game tight! 🏀 
+**Hoops Master** - Get in the game! 🏀

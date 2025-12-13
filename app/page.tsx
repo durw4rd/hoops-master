@@ -251,7 +251,7 @@ export default function HoopsMaster() {
         open={joinModalOpen}
         onOpenChange={setJoinModalOpen}
         onGroupJoined={handleGroupJoined}
-        existingGroupIds={groups.map(g => g.groupId)}
+        existingGroupIds={groups.filter(g => g?.groupId).map(g => g.groupId)}
       />
 
       <Footer />

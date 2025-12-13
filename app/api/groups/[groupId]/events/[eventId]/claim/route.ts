@@ -88,9 +88,29 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if signup is open
-    const signupOpensAt = new Date(event.signupOpensAt);
-    const now = new Date();
-    if (signupOpensAt > now) {
+    // Handle empty, invalid, or epoch dates as "always open"
+    const isSignupOpen = () => {
+      if (!event.signupOpensAt || event.signupOpensAt.trim() === '') {
+        return true;
+      }
+      
+      const signupDate = new Date(event.signupOpensAt);
+      
+      // Invalid date = always open
+      if (isNaN(signupDate.getTime())) {
+        return true;
+      }
+      
+      // Epoch or very early date (before 2000) = always open
+      if (signupDate.getFullYear() < 2000) {
+        return true;
+      }
+      
+      return signupDate <= new Date();
+    };
+    
+    if (!isSignupOpen()) {
+      const signupOpensAt = new Date(event.signupOpensAt);
       return NextResponse.json(
         { 
           error: 'Signup is not open yet', 

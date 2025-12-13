@@ -1,528 +1,453 @@
-# Summer Hoops Scheduler - Application Architecture
+# Hoops Master - Application Architecture
 
 ## Overview
-The Summer Hoops Scheduler is a Next.js application that manages basketball session scheduling, slot trading, and player assignments. The app integrates with Google Sheets for data persistence and uses LaunchDarkly for feature flagging.
+
+Hoops Master is a Next.js 15 application for managing multi-group sports events. It uses a hybrid Google Sheets architecture for data persistence, Google OAuth for authentication, and features a graffiti-inspired "Subway Court Kings" UI theme.
+
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Frontend (Next.js)                       │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐│
+│  │   Header    │ │   Footer    │ │   Group Components      ││
+│  └─────────────┘ └─────────────┘ │  - GroupList            ││
+│                                   │  - GroupDashboard       ││
+│                                   │  - CreateGroupModal     ││
+│                                   │  - CreateEventModal     ││
+│                                   │  - EventDetailModal     ││
+│                                   └─────────────────────────┘│
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    API Routes (Next.js)                      │
+│  /api/user/profile     /api/groups          /api/setup      │
+│  /api/groups/[id]/events    /api/groups/[id]/members        │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Service Layer                              │
+│  ┌──────────────────┐  ┌──────────────────┐                 │
+│  │   masterSheet.ts │  │   groupSheet.ts  │                 │
+│  │   (AppUsers,     │  │   (Events,       │                 │
+│  │    Groups,       │  │    Attendees,    │                 │
+│  │    GroupMembers) │  │    Transactions) │                 │
+│  └──────────────────┘  └──────────────────┘                 │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Google Sheets API                          │
+│  ┌─────────────────────┐  ┌───────────────────────────────┐ │
+│  │  Master Spreadsheet │  │  Per-Group Spreadsheets       │ │
+│  │  - AppUsers         │  │  - Events                     │ │
+│  │  - Groups           │  │  - EventAttendees             │ │
+│  │  - GroupMembers     │  │  - Transactions               │ │
+│  └─────────────────────┘  └───────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Core Data Types
 
-### SlotData
+### AppUser
 ```typescript
-interface SlotData {
-  ID?: string;           // Unique identifier (UUID)
-  Date: string;          // Date in DD.MM format
-  Time: string;          // Time in HH:MM - HH:MM format
-  Player?: string;       // Player name (fromPlayer for reassignments)
-  Status?: string;       // offered, claimed, retracted, reassigned, admin-reassigned, expired
-  SwapRequested?: string; // yes/no
-  RequestedDate?: string; // Target date for swap
-  RequestedTime?: string; // Target time for swap
-  ClaimedBy?: string;    // Player who claimed the slot (toPlayer for reassignments)
-  Timestamp?: string;    // ISO timestamp of last action
-  Settled?: string;      // yes/no for marking sessions as settled
-  [key: string]: string | undefined;
+interface AppUser {
+  email: string;           // Primary key (Google login email)
+  displayName: string;     // User's display name
+  globalRole: 'superadmin' | 'user';  // Application-wide role
+  createdAt: string;       // ISO timestamp
 }
 ```
 
-### ScheduleData
+### Group
 ```typescript
-interface ScheduleData {
-  id: string;            // Unique identifier (e.g., "04.08 / Monday")
-  date: string;          // Date in DD.MM format (e.g., "04.08")
-  day: string;           // Day of week (e.g., "Monday")
-  sessions: SessionData[]; // Array of sessions on this date
-}
-
-interface SessionData {
-  id: string;            // Unique identifier (e.g., "04.08 / Monday-19:00 - 20:00")
-  time: string;          // Time in HH:MM - HH:MM format (e.g., "19:00 - 20:00")
-  hour: string;          // Hour for sorting (e.g., "19")
-  players: string[];     // Array of player names (e.g., ["John", "Jane", "Bob"])
-  maxPlayers: number;    // Maximum players allowed (e.g., 10)
+interface Group {
+  groupId: string;         // UUID primary key
+  name: string;            // Group name
+  description: string;     // Group description
+  visibility: 'public' | 'private';
+  spreadsheetId: string;   // ID of group's data spreadsheet
+  defaultEventSpots: number;
+  createdBy: string;       // Email of creator
+  createdAt: string;       // ISO timestamp
+  inviteCode: string;      // 8-char code for private groups
+  status: 'active' | 'archived';
 }
 ```
 
-**Usage:**
-- `ScheduleData` represents a date group with multiple sessions
-- `SessionData` represents an individual session within a date
-- The schedule is structured as: `ScheduleData[]` → each contains `SessionData[]`
-
-### UserMapping
+### GroupMember
 ```typescript
-interface UserMapping {
-  [playerName: string]: { 
-    email: string; 
-    color?: string; 
-    role?: string;
-    smartSettle?: boolean;
-  };
+interface GroupMember {
+  groupId: string;         // FK to Groups
+  userEmail: string;       // FK to AppUsers
+  groupRole: 'admin' | 'member';
+  joinedAt: string;        // ISO timestamp
+  invitedBy: string;       // Email of inviter
+  status: 'active' | 'inactive';
 }
 ```
 
-**Usage:**
-- Key = Player name (from Google Sheets column A)
-- Value = Object containing email (column B), color (column C), role (column D), and smartSettle preference (column E)
-- Example: `{ "John Smith": { email: "john@example.com", color: "#FF5733", role: "member", smartSettle: true } }`
-
-### PlayerCredit
+### Event
 ```typescript
-interface PlayerCredit {
-  playerName: string;
-  credits: number; // Positive = money owed to player, Negative = player owes money
-  slotsGivenAway: number;
-  slotsClaimed: number;
-  slotsSettled: number; // Count of slots already marked as settled
-  slotsGivenAway1h: number;
-  slotsGivenAway2h: number;
-  slotsClaimed1h: number;
-  slotsClaimed2h: number;
+interface Event {
+  eventId: string;         // UUID primary key
+  date: string;            // YYYY-MM-DD format
+  startTime: string;       // HH:MM format
+  endTime: string;         // HH:MM format
+  totalSpots: number;      // Maximum players
+  slotCost: number;        // Cost per slot
+  location: string;        // Venue name/address
+  description: string;     // Event notes
+  eventType: 'regular' | 'tournament' | 'special';
+  status: 'scheduled' | 'cancelled' | 'completed';
+  signupOpensAt: string;   // ISO timestamp when signup opens
+  createdBy: string;       // Email of creator
+  createdAt: string;       // ISO timestamp
 }
 ```
 
-**Usage:**
-- Tracks detailed settlement information for each player
-- Includes breakdown of 1-hour vs 2-hour slots for transparency
-- Used in settlement calculations and overview display
-
-### UserSettlementPreferences
+### EventAttendee
 ```typescript
-interface UserSettlementPreferences {
-  [playerName: string]: {
-    smartSettle: boolean;
-    email: string;
-    color?: string;
-    role?: string;
-  };
+interface EventAttendee {
+  attendeeId: string;      // UUID primary key
+  eventId: string;         // FK to Events
+  userEmail: string;       // FK to AppUsers
+  originalUserEmail: string; // Original holder (for transfers)
+  status: 'confirmed' | 'offered' | 'cancelled';
+  offeredAt?: string;      // When spot was offered
+  assignedBy?: string;     // Admin who assigned
+  assignedAt?: string;     // When admin assigned
 }
 ```
 
-**Usage:**
-- Manages player opt-in/opt-out preferences for settlement calculations
-- Integrated with user mapping for comprehensive player data
-
-### SettlementBatch
+### Transaction
 ```typescript
-interface SettlementBatch {
-  id: string;
-  name: string;
-  fromDate: string;
-  toDate: string;
-  status: 'active' | 'settled';
-  createdAt: string;
-  settledAt?: string;
-  totalTransactions: number;
-  totalAmount: number;
+interface Transaction {
+  transactionId: string;   // UUID primary key
+  eventId: string;         // FK to Events
+  attendeeId: string;      // FK to EventAttendees
+  type: 'claim' | 'offer' | 'retract' | 'reassign';
+  fromUserEmail: string;   // Source user
+  toUserEmail: string;     // Target user
+  amount: number;          // Calculated slot cost
+  timestamp: string;       // ISO timestamp
+  settledAt?: string;      // When payment settled
+  notes?: string;
 }
 ```
 
-**Usage:**
-- Represents a settlement batch with date range and status
-- Tracks total transactions and amounts for settlement management
-- Used in batch-based settlement operations
+## Database Schema
 
-### SettlementPairing
-```typescript
-interface SettlementPairing {
-  id: string;
-  batchId: string;
-  creditorPlayer: string;
-  debtorPlayer: string;
-  amount: number;
-  status: 'pending' | 'completed';
-  createdAt: string;
-  completedAt?: string;
-}
-```
+### Master Spreadsheet
 
-**Usage:**
-- Represents individual settlement transactions between players
-- Links to settlement batches for organization
-- Tracks completion status for settlement progress
+**AppUsers Sheet**
+| Column | Field | Type |
+|--------|-------|------|
+| A | email | String (PK) |
+| B | displayName | String |
+| C | globalRole | Enum |
+| D | createdAt | ISO Date |
 
-## Authentication
+**Groups Sheet**
+| Column | Field | Type |
+|--------|-------|------|
+| A | groupId | UUID (PK) |
+| B | name | String |
+| C | description | String |
+| D | visibility | Enum |
+| E | spreadsheetId | String |
+| F | defaultEventSpots | Number |
+| G | createdBy | Email |
+| H | createdAt | ISO Date |
+| I | inviteCode | String(8) |
+| J | status | Enum |
 
-### Configuration (`lib/auth.ts`)
-- **Purpose**: Centralized NextAuth.js configuration
-- **Exports**: `authOptions` - NextAuth configuration object
-- **Provider**: Google OAuth
-- **Callbacks**:
-  - `session`: Attaches user email and name to session
-  - `jwt`: Stores email and name in JWT token
+**GroupMembers Sheet**
+| Column | Field | Type |
+|--------|-------|------|
+| A | groupId | UUID (FK) |
+| B | userEmail | Email (FK) |
+| C | groupRole | Enum |
+| D | joinedAt | ISO Date |
+| E | invitedBy | Email |
+| F | status | Enum |
 
-### Route Handler (`app/api/auth/[...nextauth]/route.ts`)
-- **Purpose**: NextAuth.js API route handler
-- **Imports**: `authOptions` from `lib/auth.ts`
-- **Exports**: `GET` and `POST` handlers
+### Per-Group Spreadsheet
 
-**Note**: The `authOptions` configuration was moved to a separate file (`lib/auth.ts`) for Next.js 15.5+ compatibility, which has stricter type checking for route handler exports.
+**Events Sheet**
+| Column | Field | Type |
+|--------|-------|------|
+| A | eventId | UUID (PK) |
+| B | date | YYYY-MM-DD |
+| C | startTime | HH:MM |
+| D | endTime | HH:MM |
+| E | totalSpots | Number |
+| F | slotCost | Number |
+| G | location | String |
+| H | description | String |
+| I | eventType | Enum |
+| J | status | Enum |
+| K | signupOpensAt | ISO Date |
+| L | createdBy | Email |
+| M | createdAt | ISO Date |
+
+**EventAttendees Sheet**
+| Column | Field | Type |
+|--------|-------|------|
+| A | attendeeId | UUID (PK) |
+| B | eventId | UUID (FK) |
+| C | userEmail | Email |
+| D | originalUserEmail | Email |
+| E | status | Enum |
+| F | offeredAt | ISO Date |
+| G | assignedBy | Email |
+| H | assignedAt | ISO Date |
+
+**Transactions Sheet**
+| Column | Field | Type |
+|--------|-------|------|
+| A | transactionId | UUID (PK) |
+| B | eventId | UUID (FK) |
+| C | attendeeId | UUID (FK) |
+| D | type | Enum |
+| E | fromUserEmail | Email |
+| F | toUserEmail | Email |
+| G | amount | Number |
+| H | timestamp | ISO Date |
+| I | settledAt | ISO Date |
+| J | notes | String |
 
 ## API Routes
 
-### Authentication & User Management
+### Setup & Authentication
 
-#### POST `/api/register`
-- **Purpose**: Register a new player
-- **Body**: `{ name: string, email: string }`
-- **Returns**: `{ success: boolean }`
-- **Used by**: RegisterPrompt component
+#### `POST /api/setup`
+Initialize master spreadsheet and create first superadmin.
+- **Auth**: None (bootstrap endpoint)
+- **Returns**: Setup status and created user
 
-### Data Retrieval (Read Operations)
+#### `GET /api/user/profile`
+Get current user's profile and group memberships.
+- **Auth**: Required
+- **Returns**: UserProfile with groups array
 
-#### GET `/api/schedule`
-- **Purpose**: Fetch schedule data
-- **Returns**: Array of ScheduleData objects
-- **Used by**: ScheduleTab component
+### Groups
 
-#### GET `/api/slots`
-- **Purpose**: Fetch all marketplace slots
-- **Returns**: Array of SlotData objects
-- **Used by**: MarketplaceTab component
+#### `GET /api/groups`
+List groups the user is a member of.
+- **Auth**: Required
+- **Returns**: Array of Group objects
 
-### Core Slot Operations (CRUD)
+#### `POST /api/groups`
+Create a new group.
+- **Auth**: Required (admin only)
+- **Body**: `{ name, description, visibility, defaultEventSpots, spreadsheetId? }`
+- **Returns**: Created Group object
 
-#### POST `/api/slots`
-- **Purpose**: Offer a slot for grabs from schedule
-- **Body**: `{ date: string, time: string, player: string }`
-- **Returns**: `{ success: boolean, slotId: string }`
-- **Used by**: ScheduleCard component
+#### `GET /api/groups/public`
+List all public groups.
+- **Auth**: Required
+- **Returns**: Array of public Group objects
 
-#### PATCH `/api/slots`
-- **Purpose**: Claim a slot (existing or free spot)
-- **Body**: `{ slotId?: string, date?: string, time?: string, claimer: string }`
-- **Returns**: `{ success: boolean }`
-- **Used by**: ClaimConfirmationModal component
+#### `POST /api/groups/join`
+Join a group by groupId or inviteCode.
+- **Auth**: Required
+- **Body**: `{ groupId? } | { inviteCode? }`
+- **Returns**: Joined Group object
 
-#### DELETE `/api/slots`
-- **Purpose**: Retract an offered slot
-- **Body**: `{ slotId: string }`
-- **Returns**: `{ success: boolean }`
-- **Used by**: SlotCard component
+#### `GET /api/groups/[groupId]`
+Get group details.
+- **Auth**: Required (member or public group)
+- **Returns**: Group with membership info
 
-### Settlement System
+#### `PATCH /api/groups/[groupId]`
+Update group settings.
+- **Auth**: Required (admin only)
+- **Body**: `{ visibility?, description?, defaultEventSpots? }`
+- **Returns**: Updated Group
 
-#### GET `/api/settlement/calculate`
-- **Purpose**: Calculate settlement overview for all players
-- **Returns**: `{ success: boolean, data: { settlements: SimplifiedDebt[], playerCredits: PlayerCredit[], summary: object } }`
-- **Used by**: SettlementOverview component
+#### `GET /api/groups/[groupId]/members`
+List group members.
+- **Auth**: Required (member only)
+- **Returns**: Array of member info
 
-#### GET `/api/settlement/batches`
-- **Purpose**: Fetch all settlement batches
-- **Returns**: `{ success: boolean, data: SettlementBatch[] }`
-- **Used by**: SettlementBatchesView component
+### Events
 
-#### POST `/api/settlement/batches`
-- **Purpose**: Create new settlement batch with date range
-- **Body**: `{ name: string, fromDate: string, toDate: string }`
-- **Headers**: `x-user-email: string`
-- **Returns**: `{ success: boolean, data: SettlementBatch }`
-- **Used by**: SettlementBatchesView component (admin only)
+#### `GET /api/groups/[groupId]/events`
+List group events.
+- **Auth**: Required (member only)
+- **Query**: `includePast?, from?, to?`
+- **Returns**: Array of Event objects with counts
 
-#### GET `/api/settlement/pairings`
-- **Purpose**: Fetch settlement pairings for a batch
-- **Query**: `batchId: string`
-- **Returns**: `{ success: boolean, data: SettlementPairing[] }`
-- **Used by**: SettlementBatchesView component
+#### `POST /api/groups/[groupId]/events`
+Create a single event.
+- **Auth**: Required (admin only)
+- **Body**: `{ date, startTime, endTime, totalSpots, slotCost?, location?, signupOpenType?, signupOpenValue? }`
+- **Returns**: Created Event
 
-#### POST `/api/settlement/pairings`
-- **Purpose**: Create settlement pairings for a batch
-- **Body**: `{ batchId: string }`
-- **Headers**: `x-user-email: string`
-- **Returns**: `{ success: boolean, data: object }`
-- **Used by**: SettlementBatchesView component (admin only)
+#### `POST /api/groups/[groupId]/events/bulk`
+Create recurring events.
+- **Auth**: Required (admin only)
+- **Body**: `{ startDate, endDate, dayOfWeek, startTime, endTime, ... }`
+- **Returns**: Array of created Events
 
-#### POST `/api/settlement/transactions`
-- **Purpose**: Mark settlement transaction as completed
-- **Body**: `{ pairingId: string, batchId: string, creditorPlayer: string, debtorPlayer: string }`
-- **Headers**: `x-user-email: string`
-- **Returns**: `{ success: boolean, data: object }`
-- **Used by**: SettlementBatchesView component
-- **Functionality**: Updates Settlement Pairings status and creates record in Settlement Transactions sheet
+#### `GET /api/groups/[groupId]/events/[eventId]`
+Get event details with attendees.
+- **Auth**: Required (member only)
+- **Returns**: Event with attendees array
 
-#### GET `/api/players/preferences`
-- **Purpose**: Fetch all player smartSettle preferences
-- **Returns**: `{ success: boolean, data: UserSettlementPreferences }`
-- **Used by**: SettlementTab component
+### Spot Management
 
-#### POST `/api/players/preferences`
-- **Purpose**: Update player smartSettle preference
-- **Body**: `{ playerName: string, smartSettle: boolean }`
-- **Returns**: `{ success: boolean, data: { playerName: string, smartSettle: boolean, message: string } }`
-- **Used by**: SettlementTab component
+#### `POST /api/groups/[groupId]/events/[eventId]/claim`
+Claim a spot in an event.
+- **Auth**: Required (member only)
+- **Body**: `{ attendeeId? }` (for claiming offered spots)
+- **Validation**: Checks signupOpensAt before allowing
 
-#### GET `/api/players/[playerName]/settlement`
-- **Purpose**: Get individual player settlement data
-- **Returns**: `{ success: boolean, data: { playerName: string, settlements: SimplifiedDebt[], summary: object, playerCredit: PlayerCredit, userPreference: object } }`
-- **Used by**: Individual player settlement views
+#### `POST /api/groups/[groupId]/events/[eventId]/offer`
+Offer your spot to others.
+- **Auth**: Required (spot holder only)
 
-### Slot Lifecycle Management
-
-#### PATCH `/api/slots/settle`
-- **Purpose**: Mark a slot as settled/unsettled
-- **Body**: `{ slotId: string, requestingUser: string, adminMode?: boolean }`
-- **Returns**: `{ success: boolean, settled: boolean }`
-- **Used by**: SlotCard component
-
-#### POST `/api/slots/expire`
-- **Purpose**: Mark offered slots as expired
-- **Body**: `{ expiredSlots: SlotData[] }`
-- **Returns**: `{ success: boolean, updatedCount: number, message: string }`
-- **Used by**: Automatic expiration system
-
-### Advanced Slot Operations
-
-#### POST `/api/slots/swap`
-- **Purpose**: Request a swap from schedule slot
-- **Body**: `{ date: string, time: string, player: string, requestedDate: string, requestedTime: string }`
-- **Returns**: `{ success: boolean, slotId: string }`
-- **Used by**: SwapModal component
-
-#### PATCH `/api/slots/swap`
-- **Purpose**: Accept a swap offer
-- **Body**: `{ slotId: string, acceptingPlayer: string }`
-- **Returns**: `{ success: boolean }`
-- **Used by**: SlotCard component
-
-### Schedule Management Operations
-
-#### POST `/api/schedule/reassign`
-- **Purpose**: Player-initiated slot reassignment
-- **Body**: `{ date: string, time: string, fromPlayer: string, toPlayer: string }`
-- **Returns**: `{ success: boolean }`
-- **Used by**: ReassignSlotModal component
-
-#### POST `/api/schedule/admin-reassign`
-- **Purpose**: Admin-initiated slot reassignment
-- **Body**: `{ date: string, time: string, fromPlayer: string, toPlayer: string }`
-- **Headers**: `x-user-email: string`
-- **Returns**: `{ success: boolean, message: string, adminUser: string }`
-- **Used by**: AdminReassignModal component
-
-### System Administration
-
-#### POST `/api/slots/migrate`
-- **Purpose**: Add IDs to existing slots without IDs
-- **Body**: None
-- **Returns**: `{ success: boolean, updatedCount: number }`
-- **Used by**: Migration script
+#### `POST /api/groups/[groupId]/events/[eventId]/retract`
+Retract an offered spot.
+- **Auth**: Required (spot holder only)
 
 ## Core Components
 
-### Main Application (`app/page.tsx`)
-- **Purpose**: Main application orchestrator
-- **Key Functions**:
-  - `handleOfferSlot`: Offer slot for grabs from schedule
-  - `handleClaimSlot`: Claim slot (existing or free spot)
-  - `handleRecallSlot`: Retract offered slot
-  - `handleSettleSlot`: Mark slot as settled
-  - `handleRequestSwap`: Open swap modal for schedule slot
-  - `handleConfirmSwap`: Confirm swap offer
-  - `handleAcceptSwap`: Accept swap offer
-- **State Management**: All loading states, modals, and data fetching
+### Layout Components
 
-### ScheduleTab
-- **Purpose**: Display and manage schedule sessions
-- **Key Features**:
-  - Show upcoming/past sessions
-  - Offer slots for grabs
-  - Offer swaps
-  - Reassign slots (player-initiated)
-  - Admin-initiated slots reassignment
-- **Props**: schedule, userMapping, playerName, allSlots, etc.
+- **Header** - Logo, user info, navigation
+- **Footer** - Copyright, branding
 
-### MarketplaceTab
-- **Purpose**: Display and manage marketplace slots
-- **Key Features**:
-  - Show all marketplace slots
-  - Filter by various criteria
-  - Claim slots
-  - Recall own slots
-  - Accept swap offers
-  - Settle completed slots
-- **Props**: allSlots, availableSlots, playerName, etc.
+### Group Components
 
-### SlotCard
-- **Purpose**: Individual slot display and actions
-- **Key Features**:
-  - Display slot information
-  - Show status badges
-  - Action buttons (claim, recall, accept swap, settle)
-  - Loading states
-- **Props**: slot, userMapping, action handlers, etc.
+- **GroupList** - Display user's groups
+- **GroupDashboard** - Main group view with tabs (Events, Members, Settings)
+- **CreateGroupModal** - Form for creating new groups
+- **JoinGroupModal** - Join via code or browse public groups
 
-### SwapModal
-- **Purpose**: Configure swap requests
-- **Key Features**:
-  - Show source slot being offered
-  - List eligible target sessions
-  - Confirm swap request
-- **Props**: sourceSlot, eligibleSessions, onConfirm, etc.
+### Event Components
 
-### ClaimConfirmationModal
-- **Purpose**: Confirm slot claims
-- **Key Features**:
-  - Show slot details
-  - Confirm claim action
-  - Handle free spot claims
-- **Props**: slot, type, onConfirm, etc.
+- **CreateEventModal** - Single or recurring event creation
+- **EventDetailModal** - Event details, attendees, spot actions
 
-### ReassignSlotModal
-- **Purpose**: Player-initiated slot reassignment
-- **Key Features**:
-  - Select target player
-  - Confirm reassignment
-- **Props**: session info, onConfirm, etc.
+## Service Layer
 
-### AdminReassignModal
-- **Purpose**: Admin-initiated slot reassignment
-- **Key Features**:
-  - Select target player
-  - Admin validation
-  - Confirm reassignment
-- **Props**: session info, onConfirm, etc.
+### `lib/masterSheet.ts`
+Handles master spreadsheet operations:
+- `getMasterSheetsClient()` - Get authenticated Sheets client
+- `getOrCreateUser()` - Ensure user exists in AppUsers
+- `createGroup()` - Create new group record
+- `getGroups()` / `getPublicGroups()` - Query groups
+- `joinGroup()` - Add member to group
+- `updateGroup()` - Update group settings
 
-### SettlementTab
-- **Purpose**: Main container for settlement features
-- **Key Features**:
-  - Smart settlement toggle for current player
-  - Collapsible info panel explaining calculations
-  - Integration with SettlementOverview component
-  - Settlement batches management
-- **Props**: currentPlayer
+### `lib/groupSheet.ts`
+Handles per-group spreadsheet operations:
+- `getGroupSheetsClient()` - Get client for group spreadsheet
+- `initializeGroupSpreadsheet()` - Create sheets with headers
+- `createEvent()` / `bulkCreateEvents()` - Create events
+- `getEvents()` / `getEventById()` - Query events
+- `getEventAttendees()` - Get attendees for event
+- `claimSpot()` / `offerSpot()` / `retractSpot()` - Manage spots
+- `createTransaction()` - Record spot transactions
 
-### SettlementOverview
-- **Purpose**: Display comprehensive settlement overview
-- **Key Features**:
-  - Player credit/debit overview with 1h/2h slot breakdown
-  - Grid-based layout for consistent alignment
-  - Categorized display (creditors, debtors, neutral)
-  - Refresh functionality
-- **Props**: currentPlayer
-- **Ref**: Exposes refresh() method for parent components
+### `lib/driveService.ts`
+Handles Google Drive operations:
+- `createSpreadsheetInFolder()` - Create group spreadsheet
 
-### SettlementBatchesView
-- **Purpose**: Manage settlement batches and pairings
-- **Key Features**:
-  - Create new settlement batches (admin only)
-  - Display existing batches with transaction counts and amounts
-  - Generate settlement pairings for batches
-  - Individual transaction settlement by creditors/debtors
-  - Batch-level settlement marking (admin only)
-  - Role-based access control for admin functions
-- **Props**: loggedInUser, currentPlayer
-- **State Management**: Batches, pairings, user role, form state
+### `lib/auth.ts`
+NextAuth.js configuration with Google OAuth.
 
-## Google Sheets Integration
+## UI Theme: "Subway Court Kings"
 
-### Sheet Structure
-- **Daily schedule**: Session details and player lists
-- **Marketplace**: Slot trading data (A:K columns)
-- **User mapping**: Player email and color mappings
-- **Settlement Batches**: Settlement batch management (A:H columns)
-- **Settlement Pairings**: Settlement transaction tracking (A:I columns)
+### Color Palette
+| Name | Hex | Usage |
+|------|-----|-------|
+| Concrete Canvas | `#E8E4DE` | Background |
+| Asphalt Black | `#1A1A1A` | Text, borders |
+| Subway Orange | `#FF6B1A` | Primary CTA |
+| Electric Blue | `#3B9EFF` | Secondary |
+| Slime Green | `#7FFF00` | Success |
+| Sunflare Yellow | `#FFD700` | Warnings |
+| Purple Accent | `#8B5CF6` | Accents |
 
-### Key Functions (`lib/googleSheets.ts`)
-- `getSchedule()`: Fetch schedule data
-- `getUserMapping()`: Fetch user mappings
-- `offerSlotForGrabs()`: Create new marketplace entry
-- `claimSlotById()`: Claim existing slot
-- `claimFreeSpot()`: Claim free spot (creates new entry)
-- `retractSlotById()`: Retract offered slot
-- `settleSlotById()`: Mark slot as settled
-- `requestSlotSwapFromSchedule()`: Request swap for schedule slot
-- `acceptSlotSwapById()`: Accept swap offer
-- `findSlotById()`: Find slot by ID
-- `migrateExistingSlots()`: Add IDs to existing slots
-- `updateExpiredSlots()`: Mark slots as expired
-- `updateUserSmartSettlePreference()`: Update player smartSettle preference
-- `getSettlementBatches()`: Fetch settlement batches from Settlement Batches sheet
-- `getSettlementPairings()`: Fetch settlement pairings from Settlement Pairings sheet
-- `markSettlementTransactionCompleted()`: Mark individual settlement transactions as completed and create transaction records
-- `getSettlementTransactions()`: Fetch settlement transaction history
-- `markBatchAsSettled()`: Mark entire settlement batch as settled
+### Typography
+- **Bangers** - Graffiti headlines
+- **Permanent Marker** - Handwritten accents
+- **Inter** - Body text
 
-### Authentication Configuration (`lib/auth.ts`)
-- `authOptions`: NextAuth.js configuration with Google OAuth provider and session/JWT callbacks
+### Custom CSS Classes
+- `.font-graffiti` - Bubble letter font
+- `.font-marker` - Handwritten font
+- `.sticker-btn` - 3D button style
+- `.marker-card` - Hand-drawn card border
+- `.tag-label` - Tilted label style
+- `.badge-*` - Colored badges
+- `.concrete-bg` - Textured background
 
-### Settlement Calculation (`lib/settlementCalculator.ts`)
-- `calculatePlayerCredits()`: Calculate credits/debits for all players
-- `simplifyCredits()`: Simplify debts between players (Splitwise-like algorithm)
-- `getSlotCost()`: Determine slot cost based on duration (1h = €3.80, 2h = €7.60)
-- **Opt-out Logic**: Players who opt out have their given-away slots excluded from calculations
+## Authentication Flow
 
-## Feature Flags (LaunchDarkly)
+1. User clicks "Sign in with Google"
+2. NextAuth redirects to Google OAuth
+3. On success, JWT callback calls `getOrCreateUser()`
+4. User is created in AppUsers if new
+5. Session includes user email and name
+6. API routes validate session for protected endpoints
 
-### Current Flags
-- `admin-mode`: Enable admin functionality
-- `flags-tab`: Show feature flags debug tab
-- `tournament-splash`: Show tournament splash screen
+## Signup Timing Feature
 
-### Application Context
-- **Application ID**: From package.json name
-- **Version**: From package.json version
+Events can have configurable signup timing:
+- **Immediate** - Signup opens when event is created
+- **Relative** - Opens X days before event at event start time
+- **Absolute** - Opens at specific date/time
 
-## Data Flow
+The `signupOpensAt` field stores the calculated ISO timestamp.
 
-### Slot Lifecycle
-1. **Creation**: Offered from schedule or created as free spot
-2. **Trading**: Claimed, swapped, or reassigned
-3. **Completion**: Settled after session and payment (which is handled outside of the app)
-4. **Expiration**: Automatic expiration of offered slots
+## Security
 
-### Swap Process
-1. **Request**: From schedule slot → creates marketplace entry
-2. **Acceptance**: By eligible player → updates both sessions
-3. **Completion**: Both players swapped in schedule
+### Authentication
+- Google OAuth required for all operations
+- Session validated on every API request
 
-### Reassignment Process
-1. **Player Reassignment**: Player-initiated → updates schedule + marketplace
-2. **Admin Reassignment**: Admin-initiated → updates schedule + marketplace
+### Authorization
+- Global roles: `superadmin`, `user`
+- Group roles: `admin`, `member`
+- Actions checked against user's role
 
-## Security & Validation
+### Data Isolation
+- Each group has its own spreadsheet
+- Users can only access groups they're members of
+- Public groups visible to all authenticated users
 
-### Admin Functions
-- Require admin-mode flag
-- Validate user email in headers
-- Admin-only reassignment
+## Environment Variables
 
-### Slot Validation
-- Check slot exists before actions
-- Validate slot status for actions
-- Check user permissions (owner/admin)
-
-### Date/Time Validation
-- Prevent actions on past sessions
-- Validate date/time formats
-- Check session existence
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_CLIENT_ID` | OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | OAuth client secret |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account email |
+| `GOOGLE_PRIVATE_KEY` | Service account private key |
+| `GOOGLE_SHEET_ID` | Master spreadsheet ID |
+| `GOOGLE_DRIVE_FOLDER_ID` | Folder for group spreadsheets |
+| `NEXTAUTH_SECRET` | NextAuth encryption key |
+| `NEXTAUTH_URL` | Application URL |
+| `NEXT_PUBLIC_LD_CLIENT_ID` | LaunchDarkly client ID |
 
 ## Known Limitations
 
-### Data Consistency
-- Google Sheets API limitations
-- No transaction support
-- Potential race conditions
-
-### UI/UX
-- No real-time updates
-- Manual refresh required
-- Limited error handling
-
-### Performance
-- No caching layer
-- Full data fetch on each action
-- No pagination for large datasets
+1. **No real-time updates** - Manual refresh required
+2. **Google Sheets API limits** - Rate limiting applies
+3. **No offline support** - Requires internet connection
+4. **No push notifications** - Users must check app
 
 ## Future Considerations
 
-### Potential Improvements
-- Add real-time updates
-- Implement caching
-- Add better error handling
-- Improve performance
-- Add data validation
-- Implement proper transactions
-
-### Maintenance Notes
-- Keep ID-based system for all new slots
-- Maintain backward compatibility where needed
-- Document all API changes
-- Test reassignment functions thoroughly
-- Monitor marketplace data integrity 
+- Add real-time updates via polling or WebSockets
+- Implement caching layer for better performance
+- Add email notifications for events
+- Support multiple sports types
+- Add financial settlement features
+- Implement waiting lists for full events

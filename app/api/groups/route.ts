@@ -43,8 +43,8 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    // Filter out any null groups (shouldn't happen but be safe)
-    const validGroups = groups.filter(g => g !== null);
+    // Filter out any null/undefined groups (shouldn't happen but be safe)
+    const validGroups = groups.filter((g): g is NonNullable<typeof g> => g != null);
 
     return NextResponse.json({
       success: true,

@@ -160,13 +160,36 @@ export default function EventDetailModal({
   const availableSpots = event ? event.totalSpots - confirmedAttendees.length : 0;
 
   // Check if signup is open
-  const signupOpensAt = event ? new Date(event.signupOpensAt) : null;
-  const now = new Date();
-  const isSignupOpen = signupOpensAt ? signupOpensAt <= now : true;
+  // Handle empty, invalid, or epoch dates as "always open"
+  const getSignupStatus = () => {
+    if (!event?.signupOpensAt || event.signupOpensAt.trim() === '') {
+      return { isOpen: true, opensAt: null };
+    }
+    
+    const signupDate = new Date(event.signupOpensAt);
+    
+    // Check for invalid date
+    if (isNaN(signupDate.getTime())) {
+      return { isOpen: true, opensAt: null };
+    }
+    
+    // Check for epoch date (immediate signup - 1970-01-01 or very early dates)
+    // Anything before year 2000 is treated as "always open"
+    if (signupDate.getFullYear() < 2000) {
+      return { isOpen: true, opensAt: null };
+    }
+    
+    const now = new Date();
+    return { 
+      isOpen: signupDate <= now, 
+      opensAt: signupDate 
+    };
+  };
   
-  const formatSignupTime = (date: Date) => {
-    // If it's the epoch (immediate), return null
-    if (date.getTime() < 1000000) return null;
+  const { isOpen: isSignupOpen, opensAt: signupOpensAt } = getSignupStatus();
+  
+  const formatSignupTime = (date: Date | null) => {
+    if (!date) return null;
     return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
