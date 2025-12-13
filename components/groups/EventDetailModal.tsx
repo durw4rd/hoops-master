@@ -271,20 +271,23 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-2">
+              {/* Primary Action Buttons */}
+              <div className="space-y-3">
                 {!event.isAttending && availableSpots > 0 && isSignupOpen && (
                   <button
                     onClick={() => handleClaim()}
                     disabled={actionLoading === 'claim'}
-                    className="sticker-btn-green flex items-center gap-2"
+                    className="w-full relative bg-[#7FFF00] text-[#1A1A1A] border-4 border-[#1A1A1A] font-graffiti text-xl py-4 px-6 shadow-[6px_6px_0_#1A1A1A] hover:shadow-[8px_8px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                   >
                     {actionLoading === 'claim' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-6 h-6 animate-spin" />
                     ) : (
-                      <Check className="w-4 h-4" />
+                      <>
+                        <span className="text-2xl">🏀</span>
+                        <span>CLAIM SPOT</span>
+                        <Check className="w-6 h-6" />
+                      </>
                     )}
-                    Claim Spot
                   </button>
                 )}
                 
@@ -292,14 +295,16 @@ export default function EventDetailModal({
                   <button
                     onClick={handleOffer}
                     disabled={actionLoading === 'offer'}
-                    className="sticker-btn-outline flex items-center gap-2"
+                    className="w-full bg-[#FF6B1A] text-white border-3 border-[#1A1A1A] font-graffiti text-lg py-3 px-5 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {actionLoading === 'offer' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
-                      <Hand className="w-4 h-4" />
+                      <>
+                        <Hand className="w-5 h-5" />
+                        <span>OFFER MY SPOT</span>
+                      </>
                     )}
-                    Offer My Spot
                   </button>
                 )}
                 
@@ -307,14 +312,16 @@ export default function EventDetailModal({
                   <button
                     onClick={handleRetract}
                     disabled={actionLoading === 'retract'}
-                    className="sticker-btn-outline flex items-center gap-2"
+                    className="w-full bg-white text-[#1A1A1A] border-3 border-[#1A1A1A] font-graffiti text-lg py-3 px-5 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {actionLoading === 'retract' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
-                      <Undo2 className="w-4 h-4" />
+                      <>
+                        <Undo2 className="w-5 h-5" />
+                        <span>RETRACT OFFER</span>
+                      </>
                     )}
-                    Retract Offer
                   </button>
                 )}
               </div>
@@ -345,9 +352,13 @@ export default function EventDetailModal({
                           <button
                             onClick={() => handleClaim(attendee.attendeeId)}
                             disabled={actionLoading === 'claim'}
-                            className="sticker-btn text-sm py-1 px-3"
+                            className="bg-[#7FFF00] text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50"
                           >
-                            Claim
+                            {actionLoading === 'claim' ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              'CLAIM'
+                            )}
                           </button>
                         )}
                       </div>

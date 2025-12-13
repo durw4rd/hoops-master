@@ -1,7 +1,7 @@
 {
-  "name": "Summer Hoops Scheduler",
-  "short_name": "Summer Hoops",
-  "description": "App to view and manage summer hoops schedule",
+  "name": "Hoops Master",
+  "short_name": "Hoops",
+  "description": "Hoops event management platform",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
