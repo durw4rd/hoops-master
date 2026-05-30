@@ -7,7 +7,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getOrCreateUser, toAppUser } from '@/lib/queries/users';
+import { getUserByEmail } from '@/lib/queries/users';
 import { getUserGroups } from '@/lib/queries/groups';
 import { UserProfile } from '@/lib/types';
 
@@ -19,17 +19,19 @@ export async function GET() {
     }
 
     const email = session.user.email;
-    const displayName = session.user.name || email.split('@')[0];
 
-    // Upsert ensures the user row exists (and refreshes display name).
-    const userRow = await getOrCreateUser(email, displayName);
-    const user = toAppUser(userRow);
+    // Invite-only: the row must already exist (created by an admin invite or seed).
+    const user = await getUserByEmail(email);
+    if (!user) {
+      return NextResponse.json({ error: 'No account for this email' }, { status: 403 });
+    }
     const groups = await getUserGroups(email);
 
     const profile: UserProfile = {
       email: user.email,
       displayName: user.displayName,
       globalRole: user.globalRole,
+      onboarded: user.onboarded,
       createdAt: user.createdAt,
       groups,
     };

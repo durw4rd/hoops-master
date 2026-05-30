@@ -9,8 +9,10 @@ import GroupList from "@/components/groups/GroupList";
 import CreateGroupModal from "@/components/groups/CreateGroupModal";
 import JoinGroupModal from "@/components/groups/JoinGroupModal";
 import GroupDashboard from "@/components/groups/GroupDashboard";
+import OnboardingScreen from "@/components/OnboardingScreen";
+import InvitePlayerModal from "@/components/InvitePlayerModal";
 import { Group, UserProfile } from "@/lib/types";
-import { Plus, Users } from "lucide-react";
+import { Plus, Users, Mail } from "lucide-react";
 import Image from "next/image";
 
 export default function HoopsMaster() {
@@ -32,6 +34,14 @@ export default function HoopsMaster() {
   // Modal state
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
+
+  // Sign-in error (e.g. invite-only access denied), read from the URL.
+  const [authError, setAuthError] = useState<string | null>(null);
+  useEffect(() => {
+    const err = new URLSearchParams(window.location.search).get("error");
+    if (err) setAuthError(err);
+  }, []);
 
   // Fetch user profile
   const fetchUserProfile = useCallback(async () => {
@@ -149,7 +159,19 @@ export default function HoopsMaster() {
               className="mx-auto drop-shadow-[4px_4px_0_rgba(0,0,0,0.3)]"
               priority
             />
-            
+
+            {/* Invite-only access denied */}
+            {authError && (
+              <div className="max-w-md mx-auto bg-[#FFD700] border-3 border-[#1A1A1A] p-3 shadow-[4px_4px_0_#1A1A1A]">
+                <p className="font-graffiti text-[#1A1A1A]">
+                  This app is invite-only.
+                </p>
+                <p className="text-sm text-[#1A1A1A]/70 font-body mt-1">
+                  Ask an admin to invite your email, then sign in again.
+                </p>
+              </div>
+            )}
+
             {/* Tagline */}
             <div className="space-y-2">
               <p className="font-marker text-xl sm:text-2xl text-[#0084FF] transform -rotate-1">
@@ -169,6 +191,28 @@ export default function HoopsMaster() {
             </button>
           </div>
         </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  // First-login onboarding: invited users must choose a username before using the app.
+  if (!profileLoading && userProfile && !userProfile.onboarded) {
+    return (
+      <div className="min-h-screen concrete-bg flex flex-col">
+        <Header
+          session={session}
+          onSignIn={() => signIn("google")}
+          onSignOut={signOut}
+          userProfile={userProfile}
+        />
+        <OnboardingScreen
+          defaultUsername={userProfile.displayName}
+          onComplete={() => {
+            fetchUserProfile();
+            fetchGroups();
+          }}
+        />
         <Footer />
       </div>
     );
@@ -234,6 +278,15 @@ export default function HoopsMaster() {
               </button>
               {canCreateCrew && (
                 <button
+                  onClick={() => setInviteModalOpen(true)}
+                  className="sticker-btn-outline flex items-center gap-2"
+                >
+                  <Mail className="w-4 h-4" />
+                  Invite
+                </button>
+              )}
+              {canCreateCrew && (
+                <button
                   onClick={() => setCreateModalOpen(true)}
                   className="sticker-btn flex items-center gap-2"
                 >
@@ -266,6 +319,11 @@ export default function HoopsMaster() {
         onOpenChange={setJoinModalOpen}
         onGroupJoined={handleGroupJoined}
         existingGroupIds={groups.filter(g => g?.groupId).map(g => g.groupId)}
+      />
+
+      <InvitePlayerModal
+        open={inviteModalOpen}
+        onOpenChange={setInviteModalOpen}
       />
 
       <Footer />

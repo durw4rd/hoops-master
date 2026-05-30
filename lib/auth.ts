@@ -1,6 +1,6 @@
 import GoogleProvider from "next-auth/providers/google";
 import type { AuthOptions } from "next-auth";
-import { getOrCreateUser, getUserRowByEmail } from "./queries/users";
+import { getUserRowByEmail } from "./queries/users";
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -9,18 +9,24 @@ export const authOptions: AuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
+  pages: {
+    // Surface invite-only denials on the home page (?error=AccessDenied).
+    signIn: "/",
+    error: "/",
+  },
   callbacks: {
     async signIn({ user }) {
-      // Upsert the user in Neon on sign in.
-      if (user?.email) {
-        try {
-          await getOrCreateUser(user.email, user.name || user.email.split('@')[0]);
-        } catch (error) {
-          console.error('Error upserting user:', error);
-          // Don't block sign in if upsert fails.
-        }
+      // Invite-only: allow sign-in only if an account already exists for this
+      // email (created by an admin invite or the seed). Never auto-provision.
+      if (!user?.email) return false;
+      try {
+        const existing = await getUserRowByEmail(user.email);
+        return !!existing;
+      } catch (error) {
+        console.error('Error checking invite allowlist:', error);
+        // Fail closed: deny if we can't verify the allowlist.
+        return false;
       }
-      return true;
     },
     async session({ session, token }: { session: any; token: any }) {
       if (session?.user) {

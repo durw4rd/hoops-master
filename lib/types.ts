@@ -17,6 +17,7 @@ export interface AppUser {
   email: string;           // Primary key (Google login email)
   displayName: string;     // User's display name
   globalRole: GlobalRole;  // Global role: 'admin' | 'user'
+  onboarded: boolean;      // Has the user chosen their username on first sign-in
   createdAt: string;       // ISO timestamp
 }
 
@@ -203,6 +204,7 @@ export interface UserProfile {
   email: string;
   displayName: string;
   globalRole: GlobalRole;
+  onboarded: boolean;
   createdAt: string;
   groups: GroupMembership[];
 }

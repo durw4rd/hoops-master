@@ -31,6 +31,11 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   displayName: text('display_name').notNull(),
   globalRole: text('global_role').notNull().default('user'), // 'admin' | 'user'
+  // Invite-only access: a row exists only for invited/seeded users. `onboarded`
+  // flips true once the user has chosen their username on first sign-in.
+  onboarded: boolean('onboarded').notNull().default(false),
+  invitedBy: uuid('invited_by'),
+  invitedAt: timestamp('invited_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
