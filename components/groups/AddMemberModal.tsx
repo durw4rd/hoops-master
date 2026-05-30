@@ -14,6 +14,7 @@ import { Loader2, Search, UserPlus } from "lucide-react";
 interface AvailableUser {
   email: string;
   displayName: string;
+  onboarded: boolean;
 }
 
 interface AddMemberModalProps {
@@ -91,20 +92,22 @@ export default function AddMemberModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-[8px_8px_0_#1A1A1A]">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">Add to Crew</DialogTitle>
+          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">Put &apos;Em On</DialogTitle>
           <DialogDescription className="text-[#1A1A1A]/60 font-body">
-            Pick an existing player profile to add to this crew
+            Pull a name from the yard and put them down with the crew — they don&apos;t even
+            have to be signed in yet.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 mt-2">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]/40" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]/40 pointer-events-none" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search players…"
-              className="sketch-input pl-9"
+              placeholder="Search the yard…"
+              className="sketch-input"
+              style={{ paddingLeft: "2.5rem" }}
             />
           </div>
 
@@ -130,7 +133,14 @@ export default function AddMemberModal({
                   className="marker-card p-2.5 flex items-center justify-between bg-white"
                 >
                   <div className="min-w-0">
-                    <p className="font-marker text-[#1A1A1A] truncate">{u.displayName}</p>
+                    <p className="font-marker text-[#1A1A1A] truncate">
+                      {u.displayName}
+                      {!u.onboarded && (
+                        <span className="ml-1 text-[10px] text-[#1A1A1A]/50 font-graffiti">
+                          not on yet
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-[#1A1A1A]/50 font-body truncate">{u.email}</p>
                   </div>
                   <button

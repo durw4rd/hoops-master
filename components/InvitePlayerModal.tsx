@@ -112,10 +112,10 @@ export default function InvitePlayerModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto rounded-none shadow-[8px_8px_0_#1A1A1A]">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">Invite a Player</DialogTitle>
+          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">The Black Book</DialogTitle>
           <DialogDescription className="font-body text-[#1A1A1A]/70">
-            Only invited emails can sign in. The player picks their username when they first
-            sign in with Google.
+            Every writer in the book. Only names you put down here can get on. Drop an email to
+            put someone on the list — they tag their own handle the first time they sign in.
           </DialogDescription>
         </DialogHeader>
 
@@ -139,7 +139,7 @@ export default function InvitePlayerModal({
                 className="sticker-btn flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                Invite
+                Put On
               </button>
             </div>
           </div>
@@ -157,7 +157,7 @@ export default function InvitePlayerModal({
         </form>
 
         <div className="space-y-2">
-          <h3 className="font-graffiti text-lg text-[#1A1A1A]">Players ({users.length})</h3>
+          <h3 className="font-graffiti text-lg text-[#1A1A1A]">On The Wall ({users.length})</h3>
           <div className="space-y-1.5 max-h-64 overflow-y-auto">
             {users.map((u) => (
               <div

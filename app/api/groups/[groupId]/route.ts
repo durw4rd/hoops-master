@@ -15,8 +15,9 @@ import {
   getGroupMembers,
   toGroupDTO,
   updateGroup,
-  updateGroupStatus,
+  deleteGroup,
 } from '@/lib/queries/groups';
+import { getUserRowByEmail } from '@/lib/queries/users';
 import { GroupVisibility } from '@/lib/types';
 
 interface RouteParams {
@@ -110,15 +111,32 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { groupId } = await params;
-  const ctx = await requireGroupAdmin(groupId);
-  if (ctx instanceof NextResponse) return ctx;
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status: 401 });
 
   try {
-    const updated = await updateGroupStatus(groupId, 'archived');
-    if (!updated) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
-    return NextResponse.json({ success: true, message: 'Group archived successfully' });
+    const groupRow = await getGroupRowById(groupId);
+    if (!groupRow) return NextResponse.json({ error: 'Crew not found' }, { status: 404 });
+
+    // The Owner can delete any crew; a Capo can delete their own crew.
+    // Read the DB role (the JWT may be stale right after a promotion).
+    const dbUser = await getUserRowByEmail(user.email);
+    const isOwner = dbUser?.globalRole === 'owner';
+    const member = await getMemberRow(groupId, user.id);
+    const isCapo = member?.status === 'active' && member?.groupRole === 'admin';
+
+    if (!isOwner && !isCapo) {
+      return NextResponse.json(
+        { error: 'Only the Owner or this crew\'s Capo can delete it' },
+        { status: 403 }
+      );
+    }
+
+    const ok = await deleteGroup(groupId);
+    if (!ok) return NextResponse.json({ error: 'Crew not found' }, { status: 404 });
+    return NextResponse.json({ success: true, message: 'Crew deleted' });
   } catch (error) {
-    console.error('Error archiving group:', error);
-    return NextResponse.json({ error: 'Failed to archive group' }, { status: 500 });
+    console.error('Error deleting crew:', error);
+    return NextResponse.json({ error: 'Failed to delete crew', details: String(error) }, { status: 500 });
   }
 }

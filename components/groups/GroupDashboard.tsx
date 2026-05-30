@@ -24,13 +24,16 @@ import CreateEventModal from "./CreateEventModal";
 import EventDetailModal from "./EventDetailModal";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
+import RosterTab from "./RosterTab";
 import { crewRoleLabel, isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
+import { Shuffle, Trash2 } from "lucide-react";
 
 interface GroupDashboardProps {
   group: Group;
   userEmail: string;
   userProfile: UserProfile | null;
   onGroupUpdated: (group: Group) => void;
+  onGroupDeleted?: (groupId: string) => void;
 }
 
 interface EventWithCounts extends Event {
@@ -50,7 +53,8 @@ export default function GroupDashboard({
   group, 
   userEmail, 
   userProfile,
-  onGroupUpdated 
+  onGroupUpdated,
+  onGroupDeleted,
 }: GroupDashboardProps) {
   const [events, setEvents] = useState<EventWithCounts[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -61,14 +65,17 @@ export default function GroupDashboard({
   const [inviteCopied, setInviteCopied] = useState(false);
   const [visibility, setVisibility] = useState(group.visibility);
   const [savingVisibility, setSavingVisibility] = useState(false);
-  const [activeTab, setActiveTab] = useState<'events' | 'members' | 'credits' | 'settings'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'members' | 'roster' | 'credits' | 'settings'>('events');
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
+  const [deletingCrew, setDeletingCrew] = useState(false);
 
   // Crew roles: Capo (leader) has full control; Capo+King can manage events.
   const membership = userProfile?.groups.find(m => m.groupId === group.groupId);
   const isCapo = isCapoRole(membership?.groupRole ?? '');
   const canManage = isCrewManager(membership?.groupRole ?? '');
+  const isOwner = userProfile?.globalRole === 'owner';
+  const canDeleteCrew = isCapo || isOwner;
 
   // Fetch events
   const fetchEvents = useCallback(async () => {
@@ -132,6 +139,28 @@ export default function GroupDashboard({
       console.error('Failed to update visibility:', error);
     } finally {
       setSavingVisibility(false);
+    }
+  };
+
+  const handleDeleteCrew = async () => {
+    const confirmed = window.confirm(
+      `Delete the crew "${group.name}" for good? This wipes its games, waitlists, transactions and payments. This can't be undone.`
+    );
+    if (!confirmed) return;
+    setDeletingCrew(true);
+    try {
+      const res = await fetch(`/api/groups/${group.groupId}`, { method: 'DELETE' });
+      if (res.ok) {
+        onGroupDeleted?.(group.groupId);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || 'Failed to delete crew');
+      }
+    } catch (error) {
+      console.error('Failed to delete crew:', error);
+      alert('Failed to delete crew');
+    } finally {
+      setDeletingCrew(false);
     }
   };
 
@@ -215,6 +244,19 @@ export default function GroupDashboard({
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Members</span>
             </button>
+            {canManage && (
+              <button
+                onClick={() => setActiveTab('roster')}
+                className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
+                  activeTab === 'roster'
+                    ? 'bg-[#FF5A00] text-white'
+                    : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                }`}
+              >
+                <Shuffle className="w-4 h-4" />
+                <span className="hidden sm:inline">Rotation</span>
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('credits')}
               className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
@@ -226,7 +268,7 @@ export default function GroupDashboard({
               <Wallet className="w-4 h-4" />
               <span className="hidden sm:inline">Credits</span>
             </button>
-            {isCapo && (
+            {(isCapo || isOwner) && (
               <button
                 onClick={() => setActiveTab('settings')}
                 className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
@@ -247,7 +289,7 @@ export default function GroupDashboard({
               className="sticker-btn flex items-center justify-center gap-2 w-full sm:w-auto"
             >
               <Plus className="w-4 h-4" />
-              New Event
+              Drop a Game
             </button>
           )}
         </div>
@@ -359,7 +401,7 @@ export default function GroupDashboard({
                 className="sticker-btn-blue flex items-center justify-center gap-2 w-full sm:w-auto"
               >
                 <UserPlus className="w-4 h-4" />
-                Add Member
+                Put &apos;Em On
               </button>
             )}
             {membersLoading ? (
@@ -444,6 +486,19 @@ export default function GroupDashboard({
           </div>
         )}
 
+        {/* Rotation (round-robin) Tab */}
+        {activeTab === 'roster' && canManage && (
+          <RosterTab
+            groupId={group.groupId}
+            group={group}
+            members={members.map((m) => ({ userEmail: m.userEmail, displayName: m.displayName }))}
+            onEventsCreated={() => {
+              fetchEvents();
+              setActiveTab('events');
+            }}
+          />
+        )}
+
         {/* Credits Tab */}
         {activeTab === 'credits' && (
           <CreditDashboard
@@ -454,8 +509,8 @@ export default function GroupDashboard({
           />
         )}
 
-        {/* Settings Tab (Capo only) */}
-        {activeTab === 'settings' && isCapo && (
+        {/* Settings Tab (Capo or Owner) */}
+        {activeTab === 'settings' && (isCapo || isOwner) && (
           <div className="space-y-4">
             <div className="marker-card p-4">
               <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-4">Visibility</h3>
@@ -534,6 +589,31 @@ export default function GroupDashboard({
                 </div>
               </div>
             </div>
+
+            {canDeleteCrew && (
+              <div className="marker-card p-4 border-[#FF5A00]">
+                <h3 className="font-graffiti text-xl text-[#FF5A00] mb-2">Burn It Down</h3>
+                <p className="text-sm text-[#1A1A1A]/70 font-body mb-3">
+                  Delete this crew for good — games, waitlists, ledger and payments all go with it.
+                  No take-backs.
+                  {isOwner && !isCapo && (
+                    <span className="block mt-1 text-[#1A1A1A]/50">You can do this as the Owner.</span>
+                  )}
+                </p>
+                <button
+                  onClick={handleDeleteCrew}
+                  disabled={deletingCrew}
+                  className="sticker-btn flex items-center gap-2 disabled:opacity-50"
+                >
+                  {deletingCrew ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  Delete Crew
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

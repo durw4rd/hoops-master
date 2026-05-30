@@ -2,7 +2,8 @@
  * Available users for adding to a crew.
  *
  * GET /api/groups/[groupId]/members/available
- *   Returns onboarded player profiles who are NOT already active members.
+ *   Returns player profiles (seeded or onboarded) who are NOT already active
+ *   members. Seeded players can be added before they have signed in.
  *   Accessible to crew managers (Capo / King).
  */
 
@@ -27,8 +28,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     );
 
     const available = allUsers
-      .filter((u) => u.onboarded && !activeEmails.has(u.email.toLowerCase()))
-      .map((u) => ({ email: u.email, displayName: u.displayName }))
+      .filter((u) => !activeEmails.has(u.email.toLowerCase()))
+      .map((u) => ({
+        email: u.email,
+        displayName: u.displayName || u.email.split('@')[0],
+        onboarded: u.onboarded,
+      }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
 
     return NextResponse.json({ success: true, data: available });

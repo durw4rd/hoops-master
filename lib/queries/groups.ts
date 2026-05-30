@@ -4,7 +4,7 @@
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { groups, groupMembers, users } from '@/lib/db/schema';
+import { groups, groupMembers, users, spotTransactions, payments } from '@/lib/db/schema';
 import { getUserRowByEmail } from './users';
 import type {
   Group,
@@ -140,6 +140,20 @@ export async function updateGroup(
 export async function updateGroupStatus(groupId: string, status: GroupStatus): Promise<Group | null> {
   const [row] = await db.update(groups).set({ status }).where(eq(groups.id, groupId)).returning();
   return row ? toGroupDTO(row) : null;
+}
+
+/**
+ * Permanently delete a crew and everything tied to it. Ledger rows and payments
+ * have no cascade FK, so they're removed first; deleting the group then cascades
+ * members, events (→ attendees + waitlist) and the round-robin roster.
+ */
+export async function deleteGroup(groupId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    await tx.delete(spotTransactions).where(eq(spotTransactions.groupId, groupId));
+    await tx.delete(payments).where(eq(payments.groupId, groupId));
+    const deleted = await tx.delete(groups).where(eq(groups.id, groupId)).returning();
+    return deleted.length > 0;
+  });
 }
 
 // ---------------------------------------------------------------------------

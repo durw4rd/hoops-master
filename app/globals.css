@@ -122,7 +122,11 @@ body {
 }
 
 /* Sticker-style buttons */
-.sticker-btn {
+.sticker-btn,
+.sticker-btn-blue,
+.sticker-btn-green,
+.sticker-btn-purple,
+.sticker-btn-outline {
   position: relative;
   background: var(--subway-orange);
   color: white;
@@ -137,12 +141,20 @@ body {
   transform: rotate(-1deg);
 }
 
-.sticker-btn:hover {
+.sticker-btn:hover,
+.sticker-btn-blue:hover,
+.sticker-btn-green:hover,
+.sticker-btn-purple:hover,
+.sticker-btn-outline:hover {
   transform: rotate(0deg) translateY(-2px);
   box-shadow: 6px 6px 0 var(--asphalt-black);
 }
 
-.sticker-btn:active {
+.sticker-btn:active,
+.sticker-btn-blue:active,
+.sticker-btn-green:active,
+.sticker-btn-purple:active,
+.sticker-btn-outline:active {
   transform: rotate(0deg) translateY(2px);
   box-shadow: 2px 2px 0 var(--asphalt-black);
 }

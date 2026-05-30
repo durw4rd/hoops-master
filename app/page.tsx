@@ -12,7 +12,7 @@ import GroupDashboard from "@/components/groups/GroupDashboard";
 import OnboardingScreen from "@/components/OnboardingScreen";
 import InvitePlayerModal from "@/components/InvitePlayerModal";
 import { Group, UserProfile } from "@/lib/types";
-import { Plus, Users, Mail } from "lucide-react";
+import { Plus, Users, BookText } from "lucide-react";
 import Image from "next/image";
 
 export default function HoopsMaster() {
@@ -238,6 +238,11 @@ export default function HoopsMaster() {
             userEmail={session.user?.email || ''}
             userProfile={userProfile}
             onGroupUpdated={(updatedGroup) => setSelectedGroup(updatedGroup)}
+            onGroupDeleted={() => {
+              setSelectedGroup(null);
+              fetchGroups();
+              fetchUserProfile();
+            }}
           />
         </div>
         <Footer />
@@ -282,9 +287,10 @@ export default function HoopsMaster() {
                 <button
                   onClick={() => setInviteModalOpen(true)}
                   className="sticker-btn-outline flex items-center gap-2"
+                  title="Manage players — invites and admin roles"
                 >
-                  <Mail className="w-4 h-4" />
-                  Invite
+                  <BookText className="w-4 h-4" />
+                  Black Book
                 </button>
               )}
               {canCreateCrew && (

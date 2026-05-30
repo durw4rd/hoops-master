@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CreditBalance } from "@/lib/types";
-import { Loader2, Download, Euro } from "lucide-react";
+import { Loader2, Download, Euro, ChevronDown, ChevronRight } from "lucide-react";
 
 interface CreditDashboardProps {
   groupId: string;
@@ -27,6 +27,7 @@ export default function CreditDashboard({
   const [payDescription, setPayDescription] = useState("");
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [recording, setRecording] = useState(false);
+  const [showPayForm, setShowPayForm] = useState(false);
 
   const fetchBalances = useCallback(async () => {
     setLoading(true);
@@ -92,7 +93,18 @@ export default function CreditDashboard({
       {isGroupAdmin && (
         <div className="marker-card p-4 space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
-            <h3 className="font-graffiti text-xl text-[#1A1A1A]">Record Payment</h3>
+            <button
+              type="button"
+              onClick={() => setShowPayForm((v) => !v)}
+              className="flex items-center gap-1 font-graffiti text-xl text-[#1A1A1A] hover:text-[#FF5A00] transition-colors"
+            >
+              {showPayForm ? (
+                <ChevronDown className="w-5 h-5" />
+              ) : (
+                <ChevronRight className="w-5 h-5" />
+              )}
+              Square Up
+            </button>
             <div className="flex gap-2">
               <button
                 onClick={() => exportCsv("balances")}
@@ -115,6 +127,7 @@ export default function CreditDashboard({
             </div>
           </div>
 
+          {showPayForm && (
           <form onSubmit={handleRecordPayment} className="grid sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-graffiti text-[#1A1A1A]">Player</label>
@@ -178,6 +191,7 @@ export default function CreditDashboard({
               </button>
             </div>
           </form>
+          )}
 
           {error && (
             <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">

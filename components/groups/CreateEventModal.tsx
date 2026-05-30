@@ -270,9 +270,9 @@ export default function CreateEventModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-[8px_8px_0_#1A1A1A]">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">Create Game</DialogTitle>
+          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">Drop a Game</DialogTitle>
           <DialogDescription className="text-[#1A1A1A]/60 font-body">
-            Add a single game or create a recurring series
+            Set up a one-off run or lock in a whole season
           </DialogDescription>
         </DialogHeader>
 
@@ -404,10 +404,10 @@ export default function CreateEventModal({
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin inline" />
-                  Creating...
+                  Dropping...
                 </>
               ) : (
-                "Create Game"
+                "Drop It"
               )}
             </button>
           </form>
@@ -542,10 +542,10 @@ export default function CreateEventModal({
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin inline" />
-                  Creating...
+                  Locking it in...
                 </>
               ) : (
-                "Create Recurring Games"
+                "Lock the Season"
               )}
             </button>
           </form>
