@@ -43,6 +43,8 @@ export interface Group {
   createdAt: string;         // ISO timestamp
   inviteCode: string;        // Unique invite code for private groups
   status: GroupStatus;
+  memberCount?: number;      // Active members (populated in list views)
+  eventCount?: number;       // Scheduled games (populated in list views)
 }
 
 export type GroupVisibility = 'public' | 'private';

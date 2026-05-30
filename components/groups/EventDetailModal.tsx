@@ -419,7 +419,7 @@ export default function EventDetailModal({
                     ) : (
                       <>
                         <ListPlus className="w-5 h-5" />
-                        <span>JOIN WAITLIST</span>
+                        <span>GET ON THE BENCH</span>
                       </>
                     )}
                   </button>
@@ -429,7 +429,7 @@ export default function EventDetailModal({
                 {event.myWaitlistPosition !== null && (
                   <div className="space-y-2">
                     <div className="bg-[#0084FF]/10 border-2 border-[#0084FF] p-3 text-center font-graffiti text-[#0084FF]">
-                      You&apos;re #{event.myWaitlistPosition} on the waitlist
+                      You&apos;re #{event.myWaitlistPosition} on the bench
                     </div>
                     <button
                       onClick={handleLeaveWaitlist}
@@ -441,7 +441,7 @@ export default function EventDetailModal({
                       ) : (
                         <>
                           <LogOut className="w-5 h-5" />
-                          <span>LEAVE WAITLIST</span>
+                          <span>OFF THE BENCH</span>
                         </>
                       )}
                     </button>
@@ -471,8 +471,8 @@ export default function EventDetailModal({
                         className="bg-[#1A1A1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] enabled:hover:shadow-[6px_6px_0_#1A1A1A] enabled:hover:translate-y-[-2px] enabled:active:shadow-[2px_2px_0_#1A1A1A] enabled:active:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         title={
                           waitlist.length > 0
-                            ? 'Releasing passes your spot to the next person on the waitlist'
-                            : 'Release is only available when someone is on the waitlist — use Offer instead'
+                            ? 'Releasing passes your spot to the next head on the bench'
+                            : 'Release only works when someone is on the bench — use Offer instead'
                         }
                       >
                         {actionLoading === 'release' ? (
@@ -487,7 +487,7 @@ export default function EventDetailModal({
                     </div>
                     {waitlist.length === 0 && (
                       <p className="text-xs text-[#1A1A1A]/60 font-body text-center">
-                        Release becomes available once someone joins the waitlist. To give up your
+                        Release opens up once someone&apos;s on the bench. To give up your
                         spot now, use <span className="font-semibold">Offer</span>.
                       </p>
                     )}
@@ -660,7 +660,7 @@ export default function EventDetailModal({
               {waitlist.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="font-graffiti text-lg text-[#0084FF]">
-                    Waitlist ({waitlist.length})
+                    The Bench ({waitlist.length})
                   </h3>
                   <div className="space-y-2">
                     {waitlist.map((entry, index) => (

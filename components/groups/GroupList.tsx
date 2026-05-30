@@ -79,10 +79,14 @@ export default function GroupList({ groups, loading, onSelectGroup, userEmail }:
                   {group.description}
                 </p>
               )}
-              <div className="flex items-center gap-3 mt-2">
-                <span className="flex items-center gap-1 text-xs text-[#1A1A1A]/50 font-body">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {group.defaultEventSpots} spots/event
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span className="badge-purple text-[10px] flex items-center gap-1 transform -rotate-1">
+                  <Users className="w-3 h-3" />
+                  {group.memberCount ?? 0} {(group.memberCount ?? 0) === 1 ? "HEAD" : "HEADS"}
+                </span>
+                <span className="badge-blue text-[10px] flex items-center gap-1 transform rotate-1">
+                  <Calendar className="w-3 h-3" />
+                  {group.eventCount ?? 0} {(group.eventCount ?? 0) === 1 ? "GAME" : "GAMES"}
                 </span>
                 {group.createdBy === userEmail && (
                   <span className="tag-label-orange text-[10px] transform rotate-0">

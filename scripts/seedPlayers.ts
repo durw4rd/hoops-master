@@ -3,8 +3,8 @@
  *
  *   pnpm tsx scripts/seedPlayers.ts
  *
- * Upserts each player by email (lowercased). Updates the display name but never
- * downgrades an existing role (so the seeded admin stays an admin).
+ * Inserts each player by email (lowercased). Existing rows are left untouched
+ * (onConflictDoNothing) so chosen usernames and roles are never overwritten.
  *
  * Reads env from .env.local / .env. Override DATABASE_URL inline to target prod:
  *   DATABASE_URL="<prod-pooled>" pnpm tsx scripts/seedPlayers.ts
@@ -42,6 +42,13 @@ const PLAYERS: { name: string; email: string }[] = [
   { name: 'Tasos', email: 'tkokkos@gmail.com' },
   { name: 'Fran', email: 'franmarquezb@gmail.com' },
   { name: 'Romario', email: 'romario@ferrao.co.za' },
+  { name: 'Marco', email: 'marconovelli9@gmail.com' },
+  { name: 'Mehmet', email: 'karavelioglumehmet@gmail.com' },
+  { name: 'Nick', email: 'nfmueller@gmail.com' },
+  { name: 'Luuk', email: 'luukvandeven@gmail.com' },
+  { name: 'Anita', email: 'sharpeaes@gmail.com' },
+  { name: 'Ben', email: 'ben.dryden@gmail.com' },
+  { name: 'Ricardo', email: 'sendtoricardoleite@gmail.com' },
 ];
 
 async function main() {
@@ -56,10 +63,7 @@ async function main() {
     await db
       .insert(schema.users)
       .values({ email: normalized, displayName: name })
-      .onConflictDoUpdate({
-        target: schema.users.email,
-        set: { displayName: name }, // never touches global_role
-      });
+      .onConflictDoNothing({ target: schema.users.email });
     console.log(`Seeded player: ${name} <${normalized}>`);
   }
 

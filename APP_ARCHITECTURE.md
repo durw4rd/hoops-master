@@ -1,453 +1,198 @@
-# Hoops Master - Application Architecture
+# Hoops Master — Architecture
 
-## Overview
+> Reference doc for engineers and AI agents. Describes the current Neon/Drizzle
+> architecture. For language/copy conventions, see [`VOCABULARY.md`](./VOCABULARY.md).
 
-Hoops Master is a Next.js 15 application for managing multi-group sports events. It uses a hybrid Google Sheets architecture for data persistence, Google OAuth for authentication, and features a graffiti-inspired "Subway Court Kings" UI theme.
+## What it is
 
-## System Architecture
+Hoops Master is a multi-crew (multi-tenant) basketball event organizer. App admins
+create **crews** (groups), schedule **games** (events), and manage who plays.
+Players claim spots, trade them, sit on a waitlist, and every spot movement is
+tracked as credit scoped to the crew. The UI is a 1980s NYC subway-graffiti theme.
+
+## Stack
+
+- **Framework**: Next.js 15 (App Router) + React 19 + TypeScript
+- **Auth**: NextAuth v4, Google OAuth, JWT sessions (invite-only — see below)
+- **DB**: Neon Postgres (serverless, free tier)
+- **ORM**: Drizzle ORM + drizzle-kit (migrations)
+- **DB driver**: `@neondatabase/serverless` WebSocket `Pool` (supports transactions)
+- **Feature flags**: LaunchDarkly (Vercel server SDK + Edge Config) — additive only
+- **Styling**: Tailwind CSS + shadcn/ui (Radix primitives)
+- **Hosting**: Vercel (free tier). Package manager: `pnpm`.
+
+## Layout
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Frontend (Next.js)                       │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────────────┐│
-│  │   Header    │ │   Footer    │ │   Group Components      ││
-│  └─────────────┘ └─────────────┘ │  - GroupList            ││
-│                                   │  - GroupDashboard       ││
-│                                   │  - CreateGroupModal     ││
-│                                   │  - CreateEventModal     ││
-│                                   │  - EventDetailModal     ││
-│                                   └─────────────────────────┘│
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    API Routes (Next.js)                      │
-│  /api/user/profile     /api/groups          /api/setup      │
-│  /api/groups/[id]/events    /api/groups/[id]/members        │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Service Layer                              │
-│  ┌──────────────────┐  ┌──────────────────┐                 │
-│  │   masterSheet.ts │  │   groupSheet.ts  │                 │
-│  │   (AppUsers,     │  │   (Events,       │                 │
-│  │    Groups,       │  │    Attendees,    │                 │
-│  │    GroupMembers) │  │    Transactions) │                 │
-│  └──────────────────┘  └──────────────────┘                 │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Google Sheets API                          │
-│  ┌─────────────────────┐  ┌───────────────────────────────┐ │
-│  │  Master Spreadsheet │  │  Per-Group Spreadsheets       │ │
-│  │  - AppUsers         │  │  - Events                     │ │
-│  │  - Groups           │  │  - EventAttendees             │ │
-│  │  - GroupMembers     │  │  - Transactions               │ │
-│  └─────────────────────┘  └───────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+app/
+  page.tsx                 # Home: crew list, create/join/Black Book, onboarding gate
+  api/                     # Route handlers (see API map below)
+components/
+  groups/                  # GroupDashboard, modals, RosterTab, CreditDashboard, etc.
+  InvitePlayerModal.tsx    # "Black Book" — app-admin player + role management
+  OnboardingScreen.tsx     # First-login username picker
+lib/
+  db/schema.ts             # Drizzle schema (source of truth for tables)
+  db/index.ts              # Neon Pool + drizzle client
+  queries/                 # All DB access (events, groups, users, waitlist, credits, ...)
+  apiGuards.ts             # requireAuth / requireMember / requireGroupAdmin / requireCrewManager
+  auth.ts                  # NextAuth config (invite-only signIn callback)
+  session.ts               # getSessionUser() — id/email/globalRole from JWT
+  launchdarkly.ts          # isAppAdmin() + server flag eval (fail-closed)
+  roles.ts                 # Role labels + capability helpers (client + server)
+  datetime.ts / eventTiming.ts / eventRules.ts  # timezone + signup-window logic
+scripts/
+  seedPlayers.ts           # Seed/allowlist players (idempotent, onConflictDoNothing)
+  setRole.ts               # Set a user's global role (owner|admin|user)
 ```
 
-## Core Data Types
+## Data model (`lib/db/schema.ts`)
 
-### AppUser
-```typescript
-interface AppUser {
-  email: string;           // Primary key (Google login email)
-  displayName: string;     // User's display name
-  globalRole: 'superadmin' | 'user';  // Application-wide role
-  createdAt: string;       // ISO timestamp
-}
+| Table | Purpose | Key columns / notes |
+|---|---|---|
+| `users` | App users / invite allowlist | `email` unique, `display_name`, `global_role` (`owner`/`admin`/`user`), `onboarded` |
+| `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide` |
+| `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
+| `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
+| `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`); unique `(event,user)` |
+| `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user)` |
+| `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
+| `spot_transactions` | Append-only credit ledger | `from_user_id` (nullable), `to_user_id`, `amount`, `type` (audit only) |
+| `payments` | Admin-recorded cash in | `user_id`, `amount`, `payment_date` |
+| `player_credit_balances` | **View** | `balance = paid − spent(to_user) + earned(from_user)` per active member |
+
+Notes for agents:
+- **Times are absolute** (`timestamptz`). The crew's `timezone` is the source of
+  truth for rendering/input conversions (`lib/datetime.ts`). Don't store wall-clock.
+- **Credit math is symmetric & type-agnostic.** The ledger balance never filters on
+  `type`; `type` is display/audit only. Claiming/being assigned a spot debits
+  `to_user`; giving up a spot credits `from_user`. Initial admin/round-robin/waitlist
+  assignments are all recorded the same way (`from_user` may be NULL).
+- **Cascades:** deleting a `group` cascades `group_members`, `events`
+  (→ `event_attendees`, `event_waitlist`), and `round_robin_rosters`.
+  `spot_transactions` and `payments` have **no** cascade FK — `deleteGroup()`
+  removes them first inside a transaction.
+
+## Authorization
+
+Two independent role axes:
+
+- **App role** (`users.global_role`): `owner` > `admin` > `user`.
+  Owner == admin functionally, but the owner cannot be demoted by others.
+  App admins can create crews, use the Black Book (invites + role changes), and
+  delete any crew (owner) — see `lib/roles.ts` `isAppAdminRole`.
+- **Crew role** (`group_members.group_role`): `admin` (**Capo**) > `coleader`
+  (**King**) > `member`. `isCapo` = full crew control; `isCrewManager` = Capo or
+  King (manage games + add players).
+
+API guards (`lib/apiGuards.ts`): `requireAuth`, `requireMember`,
+`requireGroupAdmin` (Capo only), `requireCrewManager` (Capo or King).
+
+**LaunchDarkly** (`lib/launchdarkly.ts`) is an *additive* override for app-admin
+only via the `app-admins` flag (list of emails). The DB is authoritative and the
+system **fails closed**: if LD/Edge Config is unreachable, only the DB role grants
+access. Never make authorization depend on a flag being reachable.
+
+## Auth flow (invite-only)
+
+1. Google OAuth via NextAuth. The `signIn` callback allows login **only if a
+   `users` row already exists** for that email (created by an admin invite or the
+   seed). No auto-provisioning — unknown emails are denied (`?error=AccessDenied`).
+2. JWT caches the DB `userId` and `globalRole` (avoids per-request lookups).
+   After a role change, the token can be stale until re-login — for owner-gated
+   destructive actions, re-read the role from the DB (see `DELETE /api/groups/[id]`).
+3. First login with `onboarded=false` → `OnboardingScreen` forces the user to pick
+   a unique username (`display_name`), then flips `onboarded=true`.
+
+## Concurrency
+
+Spot-mutating operations (claim, offer, release, reassign, batch/round-robin
+assign, waitlist promotion) run inside **serializable transactions** with
+`SELECT ... FOR UPDATE` on the event row (`lib/queries/_tx.ts`,
+`lib/queries/events.ts`, `waitlist.ts`). This prevents oversell and double-claims.
+
+## Assignment modes (`events.assignment_mode`)
+
+- `admin_assign` — Capo/King assigns players (single or batch).
+- `player_signup` — players self-claim once `signup_opens_at` passes.
+- `round_robin` — sliding-window auto-assignment over the active rotation roster.
+  For event _k_: `start = (startOffset + k*slide) mod N`, take `min(spots, N)`
+  players cyclically. Configured + generated from the **Rotation** tab.
+
+## API map
+
+```
+POST   /api/setup                                   # one-time bootstrap
+GET    /api/user/profile                            # current user + memberships
+POST   /api/user/onboard                            # set username (first login)
+
+GET    /api/groups                                  # my crews (+ member/event counts)
+POST   /api/groups                                  # create crew (app-admin)
+GET    /api/groups/public                           # public crews
+POST   /api/groups/join                             # join by invite code
+GET    /api/groups/[id]                             # crew detail
+PATCH  /api/groups/[id]                             # update settings (Capo)
+DELETE /api/groups/[id]                             # hard delete (Owner any / Capo own)
+
+GET    /api/groups/[id]/members                     # list members
+POST   /api/groups/[id]/members                     # add member (Capo/King)
+PATCH  /api/groups/[id]/members                     # change crew role (Capo)
+GET    /api/groups/[id]/members/available           # addable player profiles
+
+GET    /api/groups/[id]/events                      # list games
+POST   /api/groups/[id]/events                      # create game (Capo/King)
+GET    /api/groups/[id]/events/[eventId]            # game detail
+PATCH  /api/groups/[id]/events/[eventId]            # edit game (Capo/King)
+DELETE /api/groups/[id]/events/[eventId]            # delete game (Capo/King)
+POST   /api/groups/[id]/events/bulk                 # recurring series
+POST   /api/groups/[id]/events/round-robin          # rotation series (+preview)
+POST   /api/groups/[id]/events/batch-assign         # batch assign
+POST   .../events/[eventId]/claim|offer|retract|release|reassign|waitlist
+
+GET    /api/groups/[id]/roster                      # rotation roster
+PUT    /api/groups/[id]/roster                      # set/reorder roster (Capo/King)
+
+GET    /api/groups/[id]/credits                     # balances (view)
+GET    /api/groups/[id]/credits/[userId]/transactions
+POST   /api/groups/[id]/payments                    # record payment (Capo)
+GET    /api/groups/[id]/export                      # CSV export
+
+GET    /api/admin/invite  POST /api/admin/invite    # Black Book invites (app-admin)
+PATCH  /api/admin/role                              # change app role (app-admin)
 ```
 
-### Group
-```typescript
-interface Group {
-  groupId: string;         // UUID primary key
-  name: string;            // Group name
-  description: string;     // Group description
-  visibility: 'public' | 'private';
-  spreadsheetId: string;   // ID of group's data spreadsheet
-  defaultEventSpots: number;
-  createdBy: string;       // Email of creator
-  createdAt: string;       // ISO timestamp
-  inviteCode: string;      // 8-char code for private groups
-  status: 'active' | 'archived';
-}
+## Environment variables
+
+```bash
+DATABASE_URL=             # Neon POOLED connection string (required)
+NEXTAUTH_SECRET=          # random secret
+NEXTAUTH_URL=             # no trailing slash
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+SEED_ADMIN_EMAIL=         # email promoted to admin on seed/setup (optional)
+# LaunchDarkly (optional; app-admin override + observability/session replay)
+NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=
+EDGE_CONFIG=              # Vercel Edge Config connection (server-side LD eval)
 ```
 
-### GroupMember
-```typescript
-interface GroupMember {
-  groupId: string;         // FK to Groups
-  userEmail: string;       // FK to AppUsers
-  groupRole: 'admin' | 'member';
-  joinedAt: string;        // ISO timestamp
-  invitedBy: string;       // Email of inviter
-  status: 'active' | 'inactive';
-}
+## Common workflows
+
+```bash
+pnpm install
+pnpm dev                       # local dev (reads .env.local)
+pnpm db:generate               # generate migration from schema changes
+pnpm db:push                   # push schema to DB (dev)
+pnpm db:migrate                # apply migrations
+pnpm tsx scripts/seedPlayers.ts        # seed/allowlist players (idempotent)
+EMAIL=x@y.com ROLE=owner pnpm tsx scripts/setRole.ts
+npx tsc --noEmit && pnpm build # verify before commit
 ```
 
-### Event
-```typescript
-interface Event {
-  eventId: string;         // UUID primary key
-  date: string;            // YYYY-MM-DD format
-  startTime: string;       // HH:MM format
-  endTime: string;         // HH:MM format
-  totalSpots: number;      // Maximum players
-  slotCost: number;        // Cost per slot
-  location: string;        // Venue name/address
-  description: string;     // Event notes
-  eventType: 'regular' | 'tournament' | 'special';
-  status: 'scheduled' | 'cancelled' | 'completed';
-  signupOpensAt: string;   // ISO timestamp when signup opens
-  createdBy: string;       // Email of creator
-  createdAt: string;       // ISO timestamp
-}
-```
+## Conventions for agents
 
-### EventAttendee
-```typescript
-interface EventAttendee {
-  attendeeId: string;      // UUID primary key
-  eventId: string;         // FK to Events
-  userEmail: string;       // FK to AppUsers
-  originalUserEmail: string; // Original holder (for transfers)
-  status: 'confirmed' | 'offered' | 'cancelled';
-  offeredAt?: string;      // When spot was offered
-  assignedBy?: string;     // Admin who assigned
-  assignedAt?: string;     // When admin assigned
-}
-```
-
-### Transaction
-```typescript
-interface Transaction {
-  transactionId: string;   // UUID primary key
-  eventId: string;         // FK to Events
-  attendeeId: string;      // FK to EventAttendees
-  type: 'claim' | 'offer' | 'retract' | 'reassign';
-  fromUserEmail: string;   // Source user
-  toUserEmail: string;     // Target user
-  amount: number;          // Calculated slot cost
-  timestamp: string;       // ISO timestamp
-  settledAt?: string;      // When payment settled
-  notes?: string;
-}
-```
-
-## Database Schema
-
-### Master Spreadsheet
-
-**AppUsers Sheet**
-| Column | Field | Type |
-|--------|-------|------|
-| A | email | String (PK) |
-| B | displayName | String |
-| C | globalRole | Enum |
-| D | createdAt | ISO Date |
-
-**Groups Sheet**
-| Column | Field | Type |
-|--------|-------|------|
-| A | groupId | UUID (PK) |
-| B | name | String |
-| C | description | String |
-| D | visibility | Enum |
-| E | spreadsheetId | String |
-| F | defaultEventSpots | Number |
-| G | createdBy | Email |
-| H | createdAt | ISO Date |
-| I | inviteCode | String(8) |
-| J | status | Enum |
-
-**GroupMembers Sheet**
-| Column | Field | Type |
-|--------|-------|------|
-| A | groupId | UUID (FK) |
-| B | userEmail | Email (FK) |
-| C | groupRole | Enum |
-| D | joinedAt | ISO Date |
-| E | invitedBy | Email |
-| F | status | Enum |
-
-### Per-Group Spreadsheet
-
-**Events Sheet**
-| Column | Field | Type |
-|--------|-------|------|
-| A | eventId | UUID (PK) |
-| B | date | YYYY-MM-DD |
-| C | startTime | HH:MM |
-| D | endTime | HH:MM |
-| E | totalSpots | Number |
-| F | slotCost | Number |
-| G | location | String |
-| H | description | String |
-| I | eventType | Enum |
-| J | status | Enum |
-| K | signupOpensAt | ISO Date |
-| L | createdBy | Email |
-| M | createdAt | ISO Date |
-
-**EventAttendees Sheet**
-| Column | Field | Type |
-|--------|-------|------|
-| A | attendeeId | UUID (PK) |
-| B | eventId | UUID (FK) |
-| C | userEmail | Email |
-| D | originalUserEmail | Email |
-| E | status | Enum |
-| F | offeredAt | ISO Date |
-| G | assignedBy | Email |
-| H | assignedAt | ISO Date |
-
-**Transactions Sheet**
-| Column | Field | Type |
-|--------|-------|------|
-| A | transactionId | UUID (PK) |
-| B | eventId | UUID (FK) |
-| C | attendeeId | UUID (FK) |
-| D | type | Enum |
-| E | fromUserEmail | Email |
-| F | toUserEmail | Email |
-| G | amount | Number |
-| H | timestamp | ISO Date |
-| I | settledAt | ISO Date |
-| J | notes | String |
-
-## API Routes
-
-### Setup & Authentication
-
-#### `POST /api/setup`
-Initialize master spreadsheet and create first superadmin.
-- **Auth**: None (bootstrap endpoint)
-- **Returns**: Setup status and created user
-
-#### `GET /api/user/profile`
-Get current user's profile and group memberships.
-- **Auth**: Required
-- **Returns**: UserProfile with groups array
-
-### Groups
-
-#### `GET /api/groups`
-List groups the user is a member of.
-- **Auth**: Required
-- **Returns**: Array of Group objects
-
-#### `POST /api/groups`
-Create a new group.
-- **Auth**: Required (admin only)
-- **Body**: `{ name, description, visibility, defaultEventSpots, spreadsheetId? }`
-- **Returns**: Created Group object
-
-#### `GET /api/groups/public`
-List all public groups.
-- **Auth**: Required
-- **Returns**: Array of public Group objects
-
-#### `POST /api/groups/join`
-Join a group by groupId or inviteCode.
-- **Auth**: Required
-- **Body**: `{ groupId? } | { inviteCode? }`
-- **Returns**: Joined Group object
-
-#### `GET /api/groups/[groupId]`
-Get group details.
-- **Auth**: Required (member or public group)
-- **Returns**: Group with membership info
-
-#### `PATCH /api/groups/[groupId]`
-Update group settings.
-- **Auth**: Required (admin only)
-- **Body**: `{ visibility?, description?, defaultEventSpots? }`
-- **Returns**: Updated Group
-
-#### `GET /api/groups/[groupId]/members`
-List group members.
-- **Auth**: Required (member only)
-- **Returns**: Array of member info
-
-### Events
-
-#### `GET /api/groups/[groupId]/events`
-List group events.
-- **Auth**: Required (member only)
-- **Query**: `includePast?, from?, to?`
-- **Returns**: Array of Event objects with counts
-
-#### `POST /api/groups/[groupId]/events`
-Create a single event.
-- **Auth**: Required (admin only)
-- **Body**: `{ date, startTime, endTime, totalSpots, slotCost?, location?, signupOpenType?, signupOpenValue? }`
-- **Returns**: Created Event
-
-#### `POST /api/groups/[groupId]/events/bulk`
-Create recurring events.
-- **Auth**: Required (admin only)
-- **Body**: `{ startDate, endDate, dayOfWeek, startTime, endTime, ... }`
-- **Returns**: Array of created Events
-
-#### `GET /api/groups/[groupId]/events/[eventId]`
-Get event details with attendees.
-- **Auth**: Required (member only)
-- **Returns**: Event with attendees array
-
-### Spot Management
-
-#### `POST /api/groups/[groupId]/events/[eventId]/claim`
-Claim a spot in an event.
-- **Auth**: Required (member only)
-- **Body**: `{ attendeeId? }` (for claiming offered spots)
-- **Validation**: Checks signupOpensAt before allowing
-
-#### `POST /api/groups/[groupId]/events/[eventId]/offer`
-Offer your spot to others.
-- **Auth**: Required (spot holder only)
-
-#### `POST /api/groups/[groupId]/events/[eventId]/retract`
-Retract an offered spot.
-- **Auth**: Required (spot holder only)
-
-## Core Components
-
-### Layout Components
-
-- **Header** - Logo, user info, navigation
-- **Footer** - Copyright, branding
-
-### Group Components
-
-- **GroupList** - Display user's groups
-- **GroupDashboard** - Main group view with tabs (Events, Members, Settings)
-- **CreateGroupModal** - Form for creating new groups
-- **JoinGroupModal** - Join via code or browse public groups
-
-### Event Components
-
-- **CreateEventModal** - Single or recurring event creation
-- **EventDetailModal** - Event details, attendees, spot actions
-
-## Service Layer
-
-### `lib/masterSheet.ts`
-Handles master spreadsheet operations:
-- `getMasterSheetsClient()` - Get authenticated Sheets client
-- `getOrCreateUser()` - Ensure user exists in AppUsers
-- `createGroup()` - Create new group record
-- `getGroups()` / `getPublicGroups()` - Query groups
-- `joinGroup()` - Add member to group
-- `updateGroup()` - Update group settings
-
-### `lib/groupSheet.ts`
-Handles per-group spreadsheet operations:
-- `getGroupSheetsClient()` - Get client for group spreadsheet
-- `initializeGroupSpreadsheet()` - Create sheets with headers
-- `createEvent()` / `bulkCreateEvents()` - Create events
-- `getEvents()` / `getEventById()` - Query events
-- `getEventAttendees()` - Get attendees for event
-- `claimSpot()` / `offerSpot()` / `retractSpot()` - Manage spots
-- `createTransaction()` - Record spot transactions
-
-### `lib/driveService.ts`
-Handles Google Drive operations:
-- `createSpreadsheetInFolder()` - Create group spreadsheet
-
-### `lib/auth.ts`
-NextAuth.js configuration with Google OAuth.
-
-## UI Theme: "Subway Court Kings"
-
-### Color Palette
-| Name | Hex | Usage |
-|------|-----|-------|
-| Concrete Canvas | `#E8E4DE` | Background |
-| Asphalt Black | `#1A1A1A` | Text, borders |
-| Subway Orange | `#FF6B1A` | Primary CTA |
-| Electric Blue | `#3B9EFF` | Secondary |
-| Slime Green | `#7FFF00` | Success |
-| Sunflare Yellow | `#FFD700` | Warnings |
-| Purple Accent | `#8B5CF6` | Accents |
-
-### Typography
-- **Bangers** - Graffiti headlines
-- **Permanent Marker** - Handwritten accents
-- **Inter** - Body text
-
-### Custom CSS Classes
-- `.font-graffiti` - Bubble letter font
-- `.font-marker` - Handwritten font
-- `.sticker-btn` - 3D button style
-- `.marker-card` - Hand-drawn card border
-- `.tag-label` - Tilted label style
-- `.badge-*` - Colored badges
-- `.concrete-bg` - Textured background
-
-## Authentication Flow
-
-1. User clicks "Sign in with Google"
-2. NextAuth redirects to Google OAuth
-3. On success, JWT callback calls `getOrCreateUser()`
-4. User is created in AppUsers if new
-5. Session includes user email and name
-6. API routes validate session for protected endpoints
-
-## Signup Timing Feature
-
-Events can have configurable signup timing:
-- **Immediate** - Signup opens when event is created
-- **Relative** - Opens X days before event at event start time
-- **Absolute** - Opens at specific date/time
-
-The `signupOpensAt` field stores the calculated ISO timestamp.
-
-## Security
-
-### Authentication
-- Google OAuth required for all operations
-- Session validated on every API request
-
-### Authorization
-- Global roles: `superadmin`, `user`
-- Group roles: `admin`, `member`
-- Actions checked against user's role
-
-### Data Isolation
-- Each group has its own spreadsheet
-- Users can only access groups they're members of
-- Public groups visible to all authenticated users
-
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `GOOGLE_CLIENT_ID` | OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | OAuth client secret |
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Service account email |
-| `GOOGLE_PRIVATE_KEY` | Service account private key |
-| `GOOGLE_SHEET_ID` | Master spreadsheet ID |
-| `GOOGLE_DRIVE_FOLDER_ID` | Folder for group spreadsheets |
-| `NEXTAUTH_SECRET` | NextAuth encryption key |
-| `NEXTAUTH_URL` | Application URL |
-| `NEXT_PUBLIC_LD_CLIENT_ID` | LaunchDarkly client ID |
-
-## Known Limitations
-
-1. **No real-time updates** - Manual refresh required
-2. **Google Sheets API limits** - Rate limiting applies
-3. **No offline support** - Requires internet connection
-4. **No push notifications** - Users must check app
-
-## Future Considerations
-
-- Add real-time updates via polling or WebSockets
-- Implement caching layer for better performance
-- Add email notifications for events
-- Support multiple sports types
-- Add financial settlement features
-- Implement waiting lists for full events
+- All DB access goes through `lib/queries/*` — don't query Drizzle directly from
+  route handlers or components.
+- Use the `apiGuards` helpers for authz; don't re-implement role checks inline.
+- Currency is always **€**. Display players by `display_name`, never raw email.
+- Keep authorization fail-closed; LD is additive, never required.
+- Match the app's voice — read [`VOCABULARY.md`](./VOCABULARY.md) before writing copy.

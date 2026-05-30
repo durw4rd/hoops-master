@@ -233,17 +233,6 @@ export default function GroupDashboard({
               <Calendar className="w-4 h-4" />
               <span className="hidden sm:inline">Events</span>
             </button>
-            <button
-              onClick={() => setActiveTab('members')}
-              className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
-                activeTab === 'members' 
-                  ? 'bg-[#8B5CF6] text-white' 
-                  : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span className="hidden sm:inline">Members</span>
-            </button>
             {canManage && (
               <button
                 onClick={() => setActiveTab('roster')}
@@ -258,6 +247,17 @@ export default function GroupDashboard({
               </button>
             )}
             <button
+              onClick={() => setActiveTab('members')}
+              className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
+                activeTab === 'members' 
+                  ? 'bg-[#8B5CF6] text-white' 
+                  : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Players</span>
+            </button>
+            <button
               onClick={() => setActiveTab('credits')}
               className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
                 activeTab === 'credits'
@@ -266,7 +266,7 @@ export default function GroupDashboard({
               }`}
             >
               <Wallet className="w-4 h-4" />
-              <span className="hidden sm:inline">Credits</span>
+              <span className="hidden sm:inline">Balances</span>
             </button>
             {(isCapo || isOwner) && (
               <button
@@ -637,7 +637,6 @@ export default function GroupDashboard({
         onOpenChange={setAddMemberOpen}
         groupId={group.groupId}
         onMemberAdded={() => {
-          setAddMemberOpen(false);
           fetchMembers();
         }}
       />

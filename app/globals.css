@@ -300,6 +300,15 @@ body {
   font-size: 0.75rem;
 }
 
+.badge-purple {
+  background: var(--purple-accent);
+  color: white;
+  border: 2px solid var(--asphalt-black);
+  font-family: 'Bangers', cursive;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
 /* Court lines pattern */
 .court-pattern {
   background-image: 

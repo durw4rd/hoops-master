@@ -2,9 +2,9 @@
  * Group + membership queries (Neon/Drizzle).
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { groups, groupMembers, users, spotTransactions, payments } from '@/lib/db/schema';
+import { groups, groupMembers, users, spotTransactions, payments, events } from '@/lib/db/schema';
 import { getUserRowByEmail } from './users';
 import type {
   Group,
@@ -326,7 +326,24 @@ export async function getUserGroupRecords(email: string): Promise<Group[]> {
     .from(groupMembers)
     .innerJoin(groups, eq(groups.id, groupMembers.groupId))
     .where(and(eq(groupMembers.userId, user.id), eq(groupMembers.status, 'active')));
-  return rows.map(({ g }) => toGroupDTO(g));
+
+  return Promise.all(
+    rows.map(async ({ g }) => {
+      const [memberRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(groupMembers)
+        .where(and(eq(groupMembers.groupId, g.id), eq(groupMembers.status, 'active')));
+      const [eventRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(events)
+        .where(and(eq(events.groupId, g.id), eq(events.status, 'scheduled')));
+      return {
+        ...toGroupDTO(g),
+        memberCount: memberRow?.count ?? 0,
+        eventCount: eventRow?.count ?? 0,
+      };
+    })
+  );
 }
 
 export type { GroupRow, MemberRow };
