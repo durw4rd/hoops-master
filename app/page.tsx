@@ -82,12 +82,16 @@ export default function HoopsMaster() {
     setGroups(prev => [...prev, newGroup]);
     setCreateModalOpen(false);
     setSelectedGroup(newGroup);
+    // Refresh profile so the new membership (creator = group admin) is reflected,
+    // which gates the New Event button / Settings tab in the dashboard.
+    fetchUserProfile();
   };
 
   // Handle joining a group
   const handleGroupJoined = (joinedGroup: Group) => {
     setGroups(prev => [...prev, joinedGroup]);
     setJoinModalOpen(false);
+    fetchUserProfile();
   };
 
   // Handle group selection
