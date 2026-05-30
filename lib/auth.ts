@@ -1,6 +1,6 @@
 import GoogleProvider from "next-auth/providers/google";
 import type { AuthOptions } from "next-auth";
-import { getOrCreateUser } from "./masterSheet";
+import { getOrCreateUser, getUserRowByEmail } from "./queries/users";
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -10,14 +10,14 @@ export const authOptions: AuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
-      // Register user in AppUsers sheet on sign in
+    async signIn({ user }) {
+      // Upsert the user in Neon on sign in.
       if (user?.email) {
         try {
           await getOrCreateUser(user.email, user.name || user.email.split('@')[0]);
         } catch (error) {
-          console.error('Error registering user in AppUsers:', error);
-          // Don't block sign in if registration fails
+          console.error('Error upserting user:', error);
+          // Don't block sign in if upsert fails.
         }
       }
       return true;
@@ -26,6 +26,8 @@ export const authOptions: AuthOptions = {
       if (session?.user) {
         session.user.email = token.email;
         session.user.name = token.name;
+        session.user.id = token.userId; // DB user id (UUID)
+        session.user.globalRole = token.globalRole;
       }
       return session;
     },
@@ -34,8 +36,20 @@ export const authOptions: AuthOptions = {
         token.email = profile.email;
         token.name = profile.name;
       }
+      // Resolve and cache the DB user id + role on the token. Done on first sign-in
+      // (account/profile present) and refreshed if missing.
+      if (token.email && (!token.userId || (account && profile))) {
+        try {
+          const dbUser = await getUserRowByEmail(token.email as string);
+          if (dbUser) {
+            token.userId = dbUser.id;
+            token.globalRole = dbUser.globalRole;
+          }
+        } catch (error) {
+          console.error('Error resolving user id for JWT:', error);
+        }
+      }
       return token;
     },
   },
 };
-

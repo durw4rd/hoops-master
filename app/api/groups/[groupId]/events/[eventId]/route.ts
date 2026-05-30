@@ -1,76 +1,65 @@
 /**
  * Individual Event API
- * 
- * GET /api/groups/[groupId]/events/[eventId] - Get event with attendees
- * PATCH /api/groups/[groupId]/events/[eventId] - Update event (admin only)
+ *
+ * GET    /api/groups/[groupId]/events/[eventId] - Get event with attendees + waitlist
  * DELETE /api/groups/[groupId]/events/[eventId] - Cancel event (admin only)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { getGroupById, getGroupMember, isGroupAdmin } from '@/lib/masterSheet';
-import { getEventWithAttendees, updateEventStatus } from '@/lib/groupSheet';
+import { requireMember, requireGroupAdmin } from '@/lib/apiGuards';
+import {
+  getEventRowById,
+  getEventAttendees,
+  getWaitlistEntries,
+  toEventDTO,
+  updateEventStatus,
+} from '@/lib/queries/events';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
 }
 
-/**
- * GET /api/groups/[groupId]/events/[eventId] - Get event with attendees
- */
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { groupId, eventId } = await params;
+  const ctx = await requireMember(groupId);
+  if (ctx instanceof NextResponse) return ctx;
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      );
+    const eventRow = await getEventRowById(eventId);
+    if (!eventRow || eventRow.groupId !== groupId) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    const { groupId, eventId } = await params;
-    const userEmail = session.user.email;
+    const [attendees, waitlist] = await Promise.all([
+      getEventAttendees(eventId),
+      getWaitlistEntries(eventId),
+    ]);
 
-    // Get the group
-    const group = await getGroupById(groupId);
-    if (!group) {
-      return NextResponse.json(
-        { error: 'Group not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if user is a member
-    const member = await getGroupMember(groupId, userEmail);
-    if (!member || member.status !== 'active') {
-      return NextResponse.json(
-        { error: 'You are not a member of this group' },
-        { status: 403 }
-      );
-    }
-
-    // Get the event with attendees
-    const event = await getEventWithAttendees(group.spreadsheetId, eventId);
-    if (!event) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if current user is attending
-    const userAttendance = event.attendees.find(
-      a => a.userEmail.toLowerCase() === userEmail.toLowerCase()
+    const dto = toEventDTO(eventRow, ctx.group.timezone);
+    const userAttendance = attendees.find(
+      (a) => a.userEmail.toLowerCase() === ctx.user.email.toLowerCase()
     );
+    const myWaitlist = waitlist.find(
+      (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase()
+    );
+
+    // Occupancy includes confirmed + offered spots (an offered spot is still held
+    // until claimed, so it does not free a general signup slot).
+    const occupancy = attendees.filter(
+      (a) => a.status === 'confirmed' || a.status === 'offered'
+    ).length;
+    const availableSpots = Math.max(0, dto.totalSpots - occupancy);
 
     return NextResponse.json({
       success: true,
       data: {
-        ...event,
+        ...dto,
+        attendees,
+        waitlist,
+        availableSpots,
         isAttending: !!userAttendance,
         myAttendance: userAttendance || null,
+        myWaitlistPosition: myWaitlist ? myWaitlist.position : null,
       },
     });
   } catch (error) {
@@ -82,55 +71,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-/**
- * DELETE /api/groups/[groupId]/events/[eventId] - Cancel event (admin only)
- */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { groupId, eventId } = await params;
+  const ctx = await requireGroupAdmin(groupId);
+  if (ctx instanceof NextResponse) return ctx;
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      );
+    const eventRow = await getEventRowById(eventId);
+    if (!eventRow || eventRow.groupId !== groupId) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-
-    const { groupId, eventId } = await params;
-    const userEmail = session.user.email;
-
-    // Get the group
-    const group = await getGroupById(groupId);
-    if (!group) {
-      return NextResponse.json(
-        { error: 'Group not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if user is group admin
-    const isAdmin = await isGroupAdmin(groupId, userEmail);
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Only group admins can cancel events' },
-        { status: 403 }
-      );
-    }
-
-    // Cancel the event (mark as cancelled, don't delete)
-    const updatedEvent = await updateEventStatus(group.spreadsheetId, eventId, 'cancelled');
-
-    if (!updatedEvent) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Event cancelled successfully',
-    });
+    await updateEventStatus(eventId, 'cancelled');
+    return NextResponse.json({ success: true, message: 'Event cancelled successfully' });
   } catch (error) {
     console.error('Error cancelling event:', error);
     return NextResponse.json(
@@ -139,4 +91,3 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     );
   }
 }
-

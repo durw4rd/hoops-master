@@ -25,7 +25,10 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [defaultSpots, setDefaultSpots] = useState("10");
-  const [spreadsheetId, setSpreadsheetId] = useState("");
+  const [defaultCost, setDefaultCost] = useState("0");
+  const [timezone, setTimezone] = useState(
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Prague"
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,18 +46,15 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
           description,
           visibility,
           defaultEventSpots: parseInt(defaultSpots) || 10,
-          ...(spreadsheetId && { spreadsheetId }),
+          defaultSlotCost: parseFloat(defaultCost) || 0,
+          timezone,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        if (data.instructions) {
-          setError(`${data.error}\n\n${data.instructions.join('\n')}`);
-        } else {
-          setError(data.error || 'Failed to create group');
-        }
+        setError(data.error || 'Failed to create group');
         return;
       }
 
@@ -62,8 +62,8 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
       setDescription("");
       setVisibility("private");
       setDefaultSpots("10");
-      setSpreadsheetId("");
-      
+      setDefaultCost("0");
+
       onGroupCreated(data.data);
     } catch (err) {
       setError('An unexpected error occurred');
@@ -139,32 +139,44 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="spots" className="font-graffiti text-[#1A1A1A]">Default Spots</Label>
-            <Input
-              id="spots"
-              type="number"
-              min="1"
-              max="50"
-              value={defaultSpots}
-              onChange={(e) => setDefaultSpots(e.target.value)}
-              className="sketch-input w-24"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="spots" className="font-graffiti text-[#1A1A1A]">Default Spots</Label>
+              <Input
+                id="spots"
+                type="number"
+                min="1"
+                max="50"
+                value={defaultSpots}
+                onChange={(e) => setDefaultSpots(e.target.value)}
+                className="sketch-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cost" className="font-graffiti text-[#1A1A1A]">Default Cost</Label>
+              <Input
+                id="cost"
+                type="number"
+                min="0"
+                step="0.01"
+                value={defaultCost}
+                onChange={(e) => setDefaultCost(e.target.value)}
+                className="sketch-input"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="spreadsheetId" className="font-graffiti text-[#1A1A1A]">
-              Spreadsheet ID <span className="text-[#1A1A1A]/40 font-body">(optional)</span>
-            </Label>
+            <Label htmlFor="timezone" className="font-graffiti text-[#1A1A1A]">Timezone</Label>
             <Input
-              id="spreadsheetId"
-              value={spreadsheetId}
-              onChange={(e) => setSpreadsheetId(e.target.value)}
-              placeholder="Leave empty for auto-creation"
+              id="timezone"
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              placeholder="Europe/Prague"
               className="sketch-input text-sm"
             />
             <p className="text-xs text-[#1A1A1A]/40 font-body">
-              If auto-creation fails, you&apos;ll need to create one manually
+              IANA timezone used for all event dates &amp; times
             </p>
           </div>
 

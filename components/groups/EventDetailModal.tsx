@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { EventAttendee } from "@/lib/types";
+import { EventAttendee, WaitlistEntry } from "@/lib/types";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +19,8 @@ import {
   Hand,
   Undo2,
   Lock,
+  LogOut,
+  ListPlus,
 } from "lucide-react";
 
 interface EventDetailModalProps {
@@ -41,10 +43,14 @@ interface EventDetail {
   location?: string;
   description?: string;
   status: string;
+  assignmentMode: string;
   signupOpensAt: string;
   attendees: EventAttendee[];
+  waitlist: WaitlistEntry[];
+  availableSpots: number;
   isAttending: boolean;
   myAttendance: EventAttendee | null;
+  myWaitlistPosition: number | null;
 }
 
 export default function EventDetailModal({
@@ -60,6 +66,8 @@ export default function EventDetailModal({
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [members, setMembers] = useState<string[]>([]);
+  const [assignEmail, setAssignEmail] = useState("");
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -76,11 +84,25 @@ export default function EventDetailModal({
     }
   }, [groupId, eventId]);
 
+  const fetchMembers = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/members`);
+      if (res.ok) {
+        const data = await res.json();
+        const list: string[] = (data.data?.members || []).map((m: { userEmail: string }) => m.userEmail);
+        setMembers(list);
+      }
+    } catch (err) {
+      console.error('Failed to fetch members:', err);
+    }
+  }, [groupId]);
+
   useEffect(() => {
     if (open) {
       fetchEvent();
+      if (isGroupAdmin) fetchMembers();
     }
-  }, [open, fetchEvent]);
+  }, [open, fetchEvent, isGroupAdmin, fetchMembers]);
 
   const handleClaim = async (attendeeId?: string) => {
     setActionLoading('claim');
@@ -155,9 +177,63 @@ export default function EventDetailModal({
     }
   };
 
+  const runAction = async (key: string, path: string, method: string = 'POST') => {
+    setActionLoading(key);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      fetchEvent();
+      onEventUpdated();
+    } catch (err) {
+      setError(`Failed to ${key}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRelease = () => runAction('release', 'release');
+  const handleJoinWaitlist = () => runAction('waitlist', 'waitlist', 'POST');
+  const handleLeaveWaitlist = () => runAction('waitlist', 'waitlist', 'DELETE');
+
+  const handleAssign = async () => {
+    if (!assignEmail) return;
+    setActionLoading('assign');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/batch-assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventIds: [eventId], userEmails: [assignEmail] }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      setAssignEmail("");
+      fetchEvent();
+      onEventUpdated();
+    } catch (err) {
+      setError('Failed to assign player');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const confirmedAttendees = event?.attendees.filter(a => a.status === 'confirmed') || [];
   const offeredSpots = event?.attendees.filter(a => a.status === 'offered') || [];
-  const availableSpots = event ? event.totalSpots - confirmedAttendees.length : 0;
+  // Occupancy includes offered spots (still held until claimed).
+  const availableSpots = event ? event.availableSpots : 0;
+  const isFull = availableSpots <= 0;
+  const waitlist = event?.waitlist || [];
 
   // Check if signup is open
   // Handle empty, invalid, or epoch dates as "always open"
@@ -291,23 +367,81 @@ export default function EventDetailModal({
                   </button>
                 )}
                 
-                {event.myAttendance?.status === 'confirmed' && (
+                {/* Join waitlist when the event is full */}
+                {!event.isAttending && isFull && isSignupOpen && event.myWaitlistPosition === null && (
                   <button
-                    onClick={handleOffer}
-                    disabled={actionLoading === 'offer'}
-                    className="w-full bg-[#FF6B1A] text-white border-3 border-[#1A1A1A] font-graffiti text-lg py-3 px-5 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    onClick={handleJoinWaitlist}
+                    disabled={actionLoading === 'waitlist'}
+                    className="w-full bg-[#0084FF] text-white border-3 border-[#1A1A1A] font-graffiti text-lg py-3 px-5 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {actionLoading === 'offer' ? (
+                    {actionLoading === 'waitlist' ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
                       <>
-                        <Hand className="w-5 h-5" />
-                        <span>OFFER MY SPOT</span>
+                        <ListPlus className="w-5 h-5" />
+                        <span>JOIN WAITLIST</span>
                       </>
                     )}
                   </button>
                 )}
-                
+
+                {/* On the waitlist */}
+                {event.myWaitlistPosition !== null && (
+                  <div className="space-y-2">
+                    <div className="bg-[#0084FF]/10 border-2 border-[#0084FF] p-3 text-center font-graffiti text-[#0084FF]">
+                      You&apos;re #{event.myWaitlistPosition} on the waitlist
+                    </div>
+                    <button
+                      onClick={handleLeaveWaitlist}
+                      disabled={actionLoading === 'waitlist'}
+                      className="w-full bg-white text-[#1A1A1A] border-3 border-[#1A1A1A] font-graffiti text-base py-2.5 px-5 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[5px_5px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {actionLoading === 'waitlist' ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <LogOut className="w-5 h-5" />
+                          <span>LEAVE WAITLIST</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {event.myAttendance?.status === 'confirmed' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleOffer}
+                      disabled={actionLoading === 'offer'}
+                      className="bg-[#FF6B1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {actionLoading === 'offer' ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <Hand className="w-5 h-5" />
+                          <span>OFFER</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleRelease}
+                      disabled={actionLoading === 'release'}
+                      className="bg-[#1A1A1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      title={waitlist.length > 0 ? 'Releasing passes your spot to the next person on the waitlist' : 'Release your spot'}
+                    >
+                      {actionLoading === 'release' ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <LogOut className="w-5 h-5" />
+                          <span>RELEASE</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
                 {event.myAttendance?.status === 'offered' && (
                   <button
                     onClick={handleRetract}
@@ -329,6 +463,44 @@ export default function EventDetailModal({
               {error && (
                 <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
                   <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+                </div>
+              )}
+
+              {/* Admin: assign a player to an open spot */}
+              {isGroupAdmin && availableSpots > 0 && (
+                <div className="border-2 border-dashed border-[#1A1A1A]/40 p-3 space-y-2">
+                  <h3 className="font-graffiti text-sm text-[#1A1A1A]">Admin: assign player</h3>
+                  <div className="flex gap-2">
+                    <select
+                      value={assignEmail}
+                      onChange={(e) => setAssignEmail(e.target.value)}
+                      className="sketch-input flex-1 text-sm"
+                    >
+                      <option value="">Select a member…</option>
+                      {members
+                        .filter(
+                          (m) =>
+                            !confirmedAttendees.some((a) => a.userEmail === m) &&
+                            !offeredSpots.some((a) => a.userEmail === m)
+                        )
+                        .map((m) => (
+                          <option key={m} value={m}>
+                            {m.split('@')[0]}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      onClick={handleAssign}
+                      disabled={!assignEmail || actionLoading === 'assign'}
+                      className="bg-[#7FFF00] text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50"
+                    >
+                      {actionLoading === 'assign' ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        'ASSIGN'
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -404,6 +576,34 @@ export default function EventDetailModal({
                   ))}
                 </div>
               </div>
+
+              {/* Waitlist */}
+              {waitlist.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="font-graffiti text-lg text-[#0084FF]">
+                    Waitlist ({waitlist.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {waitlist.map((entry, index) => (
+                      <div
+                        key={entry.userEmail}
+                        className={`marker-card p-2 flex items-center gap-2 ${
+                          entry.userEmail === userEmail ? 'bg-[#0084FF]/15' : 'bg-white'
+                        }`}
+                        style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
+                      >
+                        <span className="font-graffiti text-[#0084FF] w-6">#{entry.position}</span>
+                        <span className="font-marker text-sm text-[#1A1A1A] truncate">
+                          {entry.userEmail.split('@')[0]}
+                          {entry.userEmail === userEmail && (
+                            <span className="text-[#1A1A1A]/60 ml-1">(you)</span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </>
         ) : (

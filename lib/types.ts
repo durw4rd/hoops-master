@@ -31,8 +31,11 @@ export interface Group {
   name: string;              // Group name
   description: string;       // Group description
   visibility: GroupVisibility;
-  spreadsheetId: string;     // Google Sheets ID for group data
+  spreadsheetId?: string;    // Legacy (Google Sheets) — optional, no longer used
+  timezone: string;          // IANA timezone for event date/time logic
   defaultEventSpots: number; // Default spots per event
+  defaultSlotCost: number;   // Default cost per spot
+  roundRobinSlide: number;   // Positions to shift per event in round-robin mode
   createdBy: string;         // Email of creator
   createdAt: string;         // ISO timestamp
   inviteCode: string;        // Unique invite code for private groups
@@ -68,14 +71,19 @@ export type MemberStatus = 'active' | 'inactive' | 'banned';
  */
 export interface Event {
   eventId: string;           // UUID primary key
-  date: string;              // YYYY-MM-DD format
-  startTime: string;         // HH:MM format
-  endTime: string;           // HH:MM format
+  groupId?: string;          // FK to Groups.groupId
+  date: string;              // YYYY-MM-DD (in group timezone)
+  startTime: string;         // HH:MM (in group timezone)
+  endTime: string;           // HH:MM (in group timezone)
+  startsAt: string;          // ISO timestamp (absolute, authoritative)
+  endsAt: string;            // ISO timestamp (absolute, authoritative)
   totalSpots: number;        // Maximum players
   slotCost: number;          // Cost per slot
   location: string;          // Venue name/address
   description: string;       // Event notes
   eventType: EventType;
+  assignmentMode: AssignmentMode;
+  roundRobinOffset?: number | null;
   status: EventStatus;
   signupOpensAt: string;     // ISO timestamp when signup opens
   createdBy: string;         // Email of admin who created
@@ -84,6 +92,7 @@ export interface Event {
 
 export type EventType = 'regular' | 'tournament' | 'special';
 export type EventStatus = 'scheduled' | 'cancelled' | 'completed';
+export type AssignmentMode = 'admin_assign' | 'player_signup' | 'round_robin';
 
 /**
  * Signup open timing options for event creation
@@ -124,7 +133,64 @@ export interface Transaction {
   notes: string;                // Additional notes
 }
 
-export type TransactionType = 'claim' | 'offer' | 'retract' | 'reassign' | 'admin-reassign';
+export type TransactionType =
+  | 'admin_assign'
+  | 'round_robin_assign'
+  | 'signup'
+  | 'offer'
+  | 'claim'
+  | 'retract'
+  | 'reassign'
+  | 'admin_reassign'
+  | 'release'
+  | 'waitlist_promote';
+
+// =============================================================================
+// WAITLIST / ROSTER / CREDIT TYPES
+// =============================================================================
+
+export interface WaitlistEntry {
+  userEmail: string;
+  position: number;          // computed FIFO position (1-based)
+  joinedAt: string;          // ISO timestamp
+}
+
+export interface RosterEntry {
+  userEmail: string;
+  displayName: string;
+  sortKey: number;
+  isActive: boolean;
+}
+
+export interface CreditBalance {
+  userEmail: string;
+  displayName: string;
+  totalPaid: number;
+  totalSpent: number;        // spots received (cost)
+  totalEarned: number;       // spots given up (credit returned)
+  balance: number;           // paid - spent + earned
+}
+
+export interface PaymentRecord {
+  paymentId: string;
+  userEmail: string;
+  amount: number;
+  recordedBy: string;
+  description: string;
+  paymentDate: string;       // YYYY-MM-DD
+  createdAt: string;
+}
+
+export interface CreditTransaction {
+  transactionId: string;
+  eventId: string;
+  type: TransactionType;
+  fromUserEmail: string | null;
+  toUserEmail: string;
+  amount: number;
+  createdAt: string;
+  notes: string;
+}
 
 // =============================================================================
 // API REQUEST/RESPONSE TYPES
@@ -173,7 +239,8 @@ export interface CreateEventRequest {
   location?: string;
   description?: string;
   eventType?: EventType;
-  assignedUsers?: string[];  // Emails of users to pre-assign
+  assignmentMode?: AssignmentMode;
+  assignedUsers?: string[];  // Emails of users to pre-assign (admin_assign)
 }
 
 /**
@@ -197,6 +264,7 @@ export interface BulkCreateEventsRequest {
  */
 export interface EventWithAttendees extends Event {
   attendees: EventAttendee[];
+  waitlist: WaitlistEntry[];
   availableSpots: number;
   offeredSpots: number;
 }

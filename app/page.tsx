@@ -1,6 +1,7 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
+import { useFlags } from "launchdarkly-react-client-sdk";
 import { useState, useEffect, useCallback } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
@@ -14,6 +15,10 @@ import Image from "next/image";
 
 export default function HoopsMaster() {
   const { data: session, status } = useSession();
+  // LD `app-admins` flag (JSON array of emails). DB role is still authoritative
+  // server-side; this only mirrors the gate for UX.
+  const flags = useFlags();
+  const appAdmins: string[] = Array.isArray(flags?.appAdmins) ? flags.appAdmins : [];
   
   // User state
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -95,6 +100,11 @@ export default function HoopsMaster() {
     setSelectedGroup(null);
     fetchGroups(); // Refresh groups list
   };
+
+  // Can the current user create crews? DB admin OR present in the LD app-admins flag.
+  const userEmail = session?.user?.email?.toLowerCase() || '';
+  const canCreateCrew =
+    userProfile?.globalRole === 'admin' || appAdmins.map((e) => e.toLowerCase()).includes(userEmail);
 
   // Loading state
   if (status === "loading") {
@@ -218,7 +228,7 @@ export default function HoopsMaster() {
                 <Users className="w-4 h-4" />
                 Join
               </button>
-              {userProfile?.globalRole === 'admin' && (
+              {canCreateCrew && (
                 <button
                   onClick={() => setCreateModalOpen(true)}
                   className="sticker-btn flex items-center gap-2"

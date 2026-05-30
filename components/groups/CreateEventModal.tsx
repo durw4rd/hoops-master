@@ -71,6 +71,9 @@ export default function CreateEventModal({
   const [totalSpots, setTotalSpots] = useState(String(defaultSpots));
   const [slotCost, setSlotCost] = useState("0");
   const [location, setLocation] = useState("");
+  const [assignmentMode, setAssignmentMode] = useState<"player_signup" | "admin_assign">(
+    "player_signup"
+  );
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -116,6 +119,7 @@ export default function CreateEventModal({
           totalSpots: parseInt(totalSpots) || defaultSpots,
           slotCost: parseFloat(slotCost) || 0,
           location: location || undefined,
+          assignmentMode,
           ...getSignupPayload(),
         }),
       });
@@ -154,6 +158,7 @@ export default function CreateEventModal({
           totalSpots: parseInt(totalSpots) || defaultSpots,
           slotCost: parseFloat(slotCost) || 0,
           location: location || undefined,
+          assignmentMode,
           ...getSignupPayload(),
         }),
       });
@@ -183,12 +188,31 @@ export default function CreateEventModal({
     setTotalSpots(String(defaultSpots));
     setSlotCost("0");
     setLocation("");
+    setAssignmentMode("player_signup");
     setSignupOpenType("immediate");
     setSignupDaysBefore(7);
     setSignupAbsoluteDate("");
     setSignupAbsoluteTime("09:00");
     setError(null);
   };
+
+  const AssignmentModeSection = () => (
+    <div className="space-y-2">
+      <Label className="font-graffiti text-[#1A1A1A]">Assignment Mode</Label>
+      <Select value={assignmentMode} onValueChange={(v) => setAssignmentMode(v as any)}>
+        <SelectTrigger className="sketch-input">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="player_signup">Players sign up</SelectItem>
+          <SelectItem value="admin_assign">Admin assigns players</SelectItem>
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-[#1A1A1A]/40 font-body">
+        Round-robin scheduling is set up from the Roster tab.
+      </p>
+    </div>
+  );
 
   const SignupTimingSection = () => (
     <div className="space-y-3 border-t-2 border-[#1A1A1A]/20 pt-3 mt-3">
@@ -360,7 +384,9 @@ export default function CreateEventModal({
               />
             </div>
 
-            <SignupTimingSection />
+            <AssignmentModeSection />
+
+            {assignmentMode === "player_signup" && <SignupTimingSection />}
 
             {error && (
               <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
@@ -496,7 +522,9 @@ export default function CreateEventModal({
               />
             </div>
 
-            <SignupTimingSection />
+            <AssignmentModeSection />
+
+            {assignmentMode === "player_signup" && <SignupTimingSection />}
 
             {error && (
               <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">

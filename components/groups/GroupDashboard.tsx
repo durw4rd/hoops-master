@@ -15,9 +15,11 @@ import {
   Lock,
   Globe,
   Loader2,
+  Wallet,
 } from "lucide-react";
 import CreateEventModal from "./CreateEventModal";
 import EventDetailModal from "./EventDetailModal";
+import CreditDashboard from "./CreditDashboard";
 
 interface GroupDashboardProps {
   group: Group;
@@ -53,7 +55,7 @@ export default function GroupDashboard({
   const [inviteCopied, setInviteCopied] = useState(false);
   const [visibility, setVisibility] = useState(group.visibility);
   const [savingVisibility, setSavingVisibility] = useState(false);
-  const [activeTab, setActiveTab] = useState<'events' | 'members' | 'settings'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'members' | 'credits' | 'settings'>('events');
 
   // Check if current user is admin of this group
   const membership = userProfile?.groups.find(m => m.groupId === group.groupId);
@@ -187,6 +189,17 @@ export default function GroupDashboard({
             >
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Members</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('credits')}
+              className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
+                activeTab === 'credits'
+                  ? 'bg-[#FFD700] text-[#1A1A1A]'
+                  : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+              }`}
+            >
+              <Wallet className="w-4 h-4" />
+              <span className="hidden sm:inline">Credits</span>
             </button>
             {isGroupAdmin && (
               <button
@@ -368,6 +381,16 @@ export default function GroupDashboard({
           </div>
         )}
 
+        {/* Credits Tab */}
+        {activeTab === 'credits' && (
+          <CreditDashboard
+            groupId={group.groupId}
+            userEmail={userEmail}
+            isGroupAdmin={isGroupAdmin}
+            members={members}
+          />
+        )}
+
         {/* Settings Tab (Admin only) */}
         {activeTab === 'settings' && isGroupAdmin && (
           <div className="space-y-4">
@@ -428,11 +451,25 @@ export default function GroupDashboard({
             </div>
 
             <div className="marker-card p-4">
-              <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-4">Technical</h3>
-              <label className="text-xs text-[#1A1A1A]/50 font-body">Spreadsheet ID</label>
-              <p className="font-mono text-xs bg-[#1A1A1A] text-[#96E600] px-3 py-2 mt-1.5 break-all border-2 border-[#1A1A1A]">
-                {group.spreadsheetId}
-              </p>
+              <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-4">Configuration</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm font-body">
+                <div>
+                  <label className="text-xs text-[#1A1A1A]/50">Timezone</label>
+                  <p className="font-graffiti text-[#1A1A1A]">{group.timezone}</p>
+                </div>
+                <div>
+                  <label className="text-xs text-[#1A1A1A]/50">Default Spots</label>
+                  <p className="font-graffiti text-[#1A1A1A]">{group.defaultEventSpots}</p>
+                </div>
+                <div>
+                  <label className="text-xs text-[#1A1A1A]/50">Default Cost</label>
+                  <p className="font-graffiti text-[#1A1A1A]">{group.defaultSlotCost?.toFixed(2)}</p>
+                </div>
+                <div>
+                  <label className="text-xs text-[#1A1A1A]/50">Round-Robin Slide</label>
+                  <p className="font-graffiti text-[#1A1A1A]">{group.roundRobinSlide}</p>
+                </div>
+              </div>
             </div>
           </div>
         )}

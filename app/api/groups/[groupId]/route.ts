@@ -1,230 +1,124 @@
 /**
  * Individual Group API
- * 
- * GET /api/groups/[groupId] - Get group details
- * PATCH /api/groups/[groupId] - Update group settings (admin only)
+ *
+ * GET    /api/groups/[groupId] - Get group details
+ * PATCH  /api/groups/[groupId] - Update group settings (admin only)
  * DELETE /api/groups/[groupId] - Archive group (admin only)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { 
-  getGroupById,
-  getGroupMember,
+import { requireGroupAdmin } from '@/lib/apiGuards';
+import { getSessionUser } from '@/lib/session';
+import {
+  getGroupRowById,
+  getMemberRow,
   getGroupMembers,
-  isGroupAdmin,
-  updateGroupStatus,
+  toGroupDTO,
   updateGroup,
-} from '@/lib/masterSheet';
+  updateGroupStatus,
+} from '@/lib/queries/groups';
 import { GroupVisibility } from '@/lib/types';
 
 interface RouteParams {
   params: Promise<{ groupId: string }>;
 }
 
-/**
- * GET /api/groups/[groupId] - Get group details
- */
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized - Please sign in' }, { status: 401 });
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      );
-    }
-
     const { groupId } = await params;
-    const userEmail = session.user.email;
+    const groupRow = await getGroupRowById(groupId);
+    if (!groupRow) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
 
-    // Get the group
-    const group = await getGroupById(groupId);
-    if (!group) {
-      return NextResponse.json(
-        { error: 'Group not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if user is a member (or if group is public)
-    const member = await getGroupMember(groupId, userEmail);
+    const member = await getMemberRow(groupId, user.id);
     const isMember = member && member.status === 'active';
     const isAdmin = member?.groupRole === 'admin';
 
-    if (!isMember && group.visibility !== 'public') {
-      return NextResponse.json(
-        { error: 'You do not have access to this group' },
-        { status: 403 }
-      );
+    if (!isMember && groupRow.visibility !== 'public') {
+      return NextResponse.json({ error: 'You do not have access to this group' }, { status: 403 });
     }
 
-    // Build response based on access level
+    const group = toGroupDTO(groupRow);
     const response: Record<string, unknown> = {
       groupId: group.groupId,
       name: group.name,
       description: group.description,
       visibility: group.visibility,
+      timezone: group.timezone,
       defaultEventSpots: group.defaultEventSpots,
+      defaultSlotCost: group.defaultSlotCost,
+      roundRobinSlide: group.roundRobinSlide,
       createdAt: group.createdAt,
       status: group.status,
     };
 
-    // Include additional info for members
     if (isMember) {
-      response.spreadsheetId = group.spreadsheetId;
       response.membership = {
-        groupRole: member.groupRole,
-        joinedAt: member.joinedAt,
-        status: member.status,
+        groupRole: member!.groupRole,
+        joinedAt: member!.joinedAt.toISOString(),
+        status: member!.status,
       };
     }
 
-    // Include admin-only info
     if (isAdmin) {
       response.inviteCode = group.inviteCode;
       response.createdBy = group.createdBy;
-      
-      // Get member count
       const members = await getGroupMembers(groupId);
-      response.memberCount = members.filter(m => m.status === 'active').length;
+      response.memberCount = members.filter((m) => m.status === 'active').length;
     }
 
-    return NextResponse.json({
-      success: true,
-      data: response,
-    });
+    return NextResponse.json({ success: true, data: response });
   } catch (error) {
     console.error('Error fetching group:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch group' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch group' }, { status: 500 });
   }
 }
 
-/**
- * PATCH /api/groups/[groupId] - Update group settings (admin only)
- * 
- * Body: { visibility?, description?, defaultEventSpots? }
- */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  const { groupId } = await params;
+  const ctx = await requireGroupAdmin(groupId);
+  if (ctx instanceof NextResponse) return ctx;
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      );
-    }
-
-    const { groupId } = await params;
-    const userEmail = session.user.email;
-
-    // Check if user is group admin
-    const isAdmin = await isGroupAdmin(groupId, userEmail);
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Only group admins can update group settings' },
-        { status: 403 }
-      );
-    }
-
-    // Parse request body
     const body = await request.json();
-    const { visibility, description, defaultEventSpots } = body;
+    const { visibility, description, defaultEventSpots, defaultSlotCost, timezone, roundRobinSlide, name } =
+      body;
 
-    // Validate visibility if provided
     if (visibility && !['public', 'private'].includes(visibility)) {
-      return NextResponse.json(
-        { error: 'visibility must be "public" or "private"' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'visibility must be "public" or "private"' }, { status: 400 });
     }
 
-    // Update the group
-    const updates: {
-      visibility?: GroupVisibility;
-      description?: string;
-      defaultEventSpots?: number;
-    } = {};
-
-    if (visibility) updates.visibility = visibility as GroupVisibility;
-    if (description !== undefined) updates.description = description;
-    if (defaultEventSpots !== undefined) updates.defaultEventSpots = defaultEventSpots;
-
-    const updatedGroup = await updateGroup(groupId, updates);
-
-    if (!updatedGroup) {
-      return NextResponse.json(
-        { error: 'Group not found' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: updatedGroup,
-      message: 'Group settings updated successfully',
+    const updated = await updateGroup(groupId, {
+      visibility: visibility as GroupVisibility | undefined,
+      description,
+      defaultEventSpots,
+      defaultSlotCost,
+      timezone,
+      roundRobinSlide,
+      name,
     });
+    if (!updated) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+
+    return NextResponse.json({ success: true, data: updated, message: 'Group settings updated' });
   } catch (error) {
     console.error('Error updating group:', error);
-    return NextResponse.json(
-      { error: 'Failed to update group settings' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to update group settings' }, { status: 500 });
   }
 }
 
-/**
- * DELETE /api/groups/[groupId] - Archive group (admin only)
- */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { groupId } = await params;
+  const ctx = await requireGroupAdmin(groupId);
+  if (ctx instanceof NextResponse) return ctx;
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      );
-    }
-
-    const { groupId } = await params;
-    const userEmail = session.user.email;
-
-    // Check if user is group admin
-    const isAdmin = await isGroupAdmin(groupId, userEmail);
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Only group admins can archive groups' },
-        { status: 403 }
-      );
-    }
-
-    // Archive the group (don't delete, just mark as archived)
-    const updatedGroup = await updateGroupStatus(groupId, 'archived');
-
-    if (!updatedGroup) {
-      return NextResponse.json(
-        { error: 'Group not found' },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Group archived successfully',
-    });
+    const updated = await updateGroupStatus(groupId, 'archived');
+    if (!updated) return NextResponse.json({ error: 'Group not found' }, { status: 404 });
+    return NextResponse.json({ success: true, message: 'Group archived successfully' });
   } catch (error) {
     console.error('Error archiving group:', error);
-    return NextResponse.json(
-      { error: 'Failed to archive group' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to archive group' }, { status: 500 });
   }
 }
-

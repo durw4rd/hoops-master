@@ -1,189 +1,91 @@
 /**
- * Reassign Event Spot API (Admin)
- * 
- * POST /api/groups/[groupId]/events/[eventId]/reassign - Reassign a spot to another user
+ * Reassign Event Spot API
+ *
+ * POST /api/groups/[groupId]/events/[eventId]/reassign
+ * Body: { attendeeId?: string, fromUserEmail?: string, toUserEmail: string }
+ *
+ * Members may reassign their OWN spot. Group admins may reassign any spot
+ * (or fill a fresh one if capacity allows).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { getGroupById, getGroupMember, isGroupAdmin, getUserByEmail } from '@/lib/masterSheet';
-import {
-  getEventById,
-  getEventAttendees,
-  getAttendeeById,
-  addEventAttendee,
-  transferAttendeeSpot,
-  createTransaction,
-} from '@/lib/groupSheet';
+import { requireMember } from '@/lib/apiGuards';
+import { getEventRowById, reassignSpot } from '@/lib/queries/events';
+import { getActiveMembersWithUsers } from '@/lib/queries/groups';
+import { SpotError } from '@/lib/queries/_tx';
+import { isPastEvent } from '@/lib/eventRules';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
 }
 
-/**
- * POST /api/groups/[groupId]/events/[eventId]/reassign
- * 
- * Body: { attendeeId?: string, fromUserEmail?: string, toUserEmail: string }
- * - attendeeId: The specific attendee record to reassign
- * - fromUserEmail: Alternative way to specify whose spot to reassign
- * - toUserEmail: The user to assign the spot to
- */
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { groupId, eventId } = await params;
+  const ctx = await requireMember(groupId);
+  if (ctx instanceof NextResponse) return ctx;
+
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.email) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Please sign in' },
-        { status: 401 }
-      );
+    const eventRow = await getEventRowById(eventId);
+    if (!eventRow || eventRow.groupId !== groupId) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+    if (isPastEvent(eventRow)) {
+      return NextResponse.json({ error: 'Cannot reassign spots for past events' }, { status: 400 });
     }
 
-    const { groupId, eventId } = await params;
-    const adminEmail = session.user.email;
-
-    // Get the group
-    const group = await getGroupById(groupId);
-    if (!group) {
-      return NextResponse.json(
-        { error: 'Group not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if user is group admin
-    const isAdmin = await isGroupAdmin(groupId, adminEmail);
-    if (!isAdmin) {
-      return NextResponse.json(
-        { error: 'Only group admins can reassign spots' },
-        { status: 403 }
-      );
-    }
-
-    // Get the event
-    const event = await getEventById(group.spreadsheetId, eventId);
-    if (!event) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
-    }
-
-    // Parse request body
     const body = await request.json();
-    const { attendeeId, fromUserEmail, toUserEmail } = body;
-
+    const { attendeeId, fromUserEmail, toUserEmail } = body ?? {};
     if (!toUserEmail) {
-      return NextResponse.json(
-        { error: 'toUserEmail is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'toUserEmail is required' }, { status: 400 });
     }
 
-    // Verify target user exists and is a group member
-    const targetUser = await getUserByEmail(toUserEmail);
-    if (!targetUser) {
-      return NextResponse.json(
-        { error: 'Target user not found in the system' },
-        { status: 404 }
-      );
-    }
+    const members = await getActiveMembersWithUsers(groupId);
+    const emailToId = new Map(members.map((m) => [m.email.toLowerCase(), m.membership.userId]));
 
-    const targetMember = await getGroupMember(groupId, toUserEmail);
-    if (!targetMember || targetMember.status !== 'active') {
+    const toUserId = emailToId.get(String(toUserEmail).toLowerCase());
+    if (!toUserId) {
       return NextResponse.json(
         { error: 'Target user is not an active member of this group' },
         { status: 400 }
       );
     }
 
-    const spreadsheetId = group.spreadsheetId;
+    const isAdmin = ctx.member.groupRole === 'admin';
+    const fromUserId = fromUserEmail ? emailToId.get(String(fromUserEmail).toLowerCase()) : undefined;
 
-    // Check if target user is already attending
-    const attendees = await getEventAttendees(spreadsheetId, eventId);
-    const targetAlreadyAttending = attendees.find(
-      a => a.userEmail.toLowerCase() === toUserEmail.toLowerCase() && a.status === 'confirmed'
-    );
-
-    if (targetAlreadyAttending) {
-      return NextResponse.json(
-        { error: 'Target user is already attending this event' },
-        { status: 409 }
-      );
+    // Non-admins may only give up their own spot.
+    if (!isAdmin) {
+      if (attendeeId) {
+        return NextResponse.json(
+          { error: 'Only admins can reassign by attendee id' },
+          { status: 403 }
+        );
+      }
+      if (fromUserId && fromUserId !== ctx.user.id) {
+        return NextResponse.json({ error: 'You can only reassign your own spot' }, { status: 403 });
+      }
     }
 
-    let targetAttendeeId: string;
-    let previousHolder: string | null = null;
+    const effectiveFromUserId = isAdmin ? fromUserId : ctx.user.id;
 
-    if (attendeeId) {
-      // Reassign specific attendee record
-      const attendee = await getAttendeeById(spreadsheetId, attendeeId);
-      if (!attendee || attendee.eventId !== eventId) {
-        return NextResponse.json(
-          { error: 'Attendee record not found for this event' },
-          { status: 404 }
-        );
-      }
-      targetAttendeeId = attendeeId;
-      previousHolder = attendee.userEmail;
-
-      // Transfer the spot
-      await transferAttendeeSpot(spreadsheetId, attendeeId, toUserEmail);
-    } else if (fromUserEmail) {
-      // Find attendee by email
-      const attendee = attendees.find(
-        a => a.userEmail.toLowerCase() === fromUserEmail.toLowerCase()
-      );
-      if (!attendee) {
-        return NextResponse.json(
-          { error: 'User is not attending this event' },
-          { status: 404 }
-        );
-      }
-      targetAttendeeId = attendee.attendeeId;
-      previousHolder = attendee.userEmail;
-
-      // Transfer the spot
-      await transferAttendeeSpot(spreadsheetId, attendee.attendeeId, toUserEmail);
-    } else {
-      // Create new spot for the user
-      const confirmedCount = attendees.filter(a => a.status === 'confirmed').length;
-      if (confirmedCount >= event.totalSpots) {
-        return NextResponse.json(
-          { error: 'No available spots. Specify attendeeId or fromUserEmail to reassign an existing spot.' },
-          { status: 400 }
-        );
-      }
-
-      const newAttendee = await addEventAttendee(spreadsheetId, eventId, toUserEmail, adminEmail);
-      targetAttendeeId = newAttendee.attendeeId;
-    }
-
-    // Create transaction record
-    await createTransaction(spreadsheetId, {
+    const attendee = await reassignSpot({
       eventId,
-      attendeeId: targetAttendeeId,
-      type: 'admin-reassign',
-      fromUserEmail: previousHolder,
-      toUserEmail,
-      amount: event.slotCost,
-      notes: `Admin reassignment by ${adminEmail}`,
+      toUserId,
+      fromUserId: effectiveFromUserId,
+      attendeeId: isAdmin ? attendeeId : undefined,
+      byUserId: ctx.user.id,
+      isAdmin,
     });
 
     return NextResponse.json({
       success: true,
-      message: previousHolder 
-        ? `Spot reassigned from ${previousHolder} to ${toUserEmail}`
-        : `Spot assigned to ${toUserEmail}`,
-      data: {
-        eventId,
-        attendeeId: targetAttendeeId,
-        previousHolder,
-        newHolder: toUserEmail,
-      },
+      message: `Spot reassigned to ${toUserEmail}`,
+      data: { eventId, attendeeId: attendee.id, newHolder: toUserEmail },
     });
   } catch (error) {
+    if (error instanceof SpotError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error reassigning spot:', error);
     return NextResponse.json(
       { error: 'Failed to reassign spot', details: String(error) },
@@ -191,4 +93,3 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     );
   }
 }
-
