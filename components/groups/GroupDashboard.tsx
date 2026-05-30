@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Group, Event, GroupMember, UserProfile } from "@/lib/types";
+import { Group, Event, UserProfile } from "@/lib/types";
 import { 
   Calendar, 
   Users, 
@@ -16,10 +16,15 @@ import {
   Globe,
   Loader2,
   Wallet,
+  Crown,
+  Star,
+  UserPlus,
 } from "lucide-react";
 import CreateEventModal from "./CreateEventModal";
 import EventDetailModal from "./EventDetailModal";
 import CreditDashboard from "./CreditDashboard";
+import AddMemberModal from "./AddMemberModal";
+import { crewRoleLabel, isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
 
 interface GroupDashboardProps {
   group: Group;
@@ -36,6 +41,7 @@ interface EventWithCounts extends Event {
 
 interface MemberInfo {
   userEmail: string;
+  displayName: string;
   groupRole: string;
   joinedAt: string;
 }
@@ -56,10 +62,13 @@ export default function GroupDashboard({
   const [visibility, setVisibility] = useState(group.visibility);
   const [savingVisibility, setSavingVisibility] = useState(false);
   const [activeTab, setActiveTab] = useState<'events' | 'members' | 'credits' | 'settings'>('events');
+  const [addMemberOpen, setAddMemberOpen] = useState(false);
+  const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
 
-  // Check if current user is admin of this group
+  // Crew roles: Capo (leader) has full control; Capo+King can manage events.
   const membership = userProfile?.groups.find(m => m.groupId === group.groupId);
-  const isGroupAdmin = membership?.groupRole === 'admin';
+  const isCapo = isCapoRole(membership?.groupRole ?? '');
+  const canManage = isCrewManager(membership?.groupRole ?? '');
 
   // Fetch events
   const fetchEvents = useCallback(async () => {
@@ -126,6 +135,22 @@ export default function GroupDashboard({
     }
   };
 
+  const changeMemberRole = async (userEmail: string, groupRole: 'coleader' | 'member') => {
+    setRoleUpdating(userEmail);
+    try {
+      const res = await fetch(`/api/groups/${group.groupId}/members`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userEmail, groupRole }),
+      });
+      if (res.ok) await fetchMembers();
+    } catch (error) {
+      console.error('Failed to update member role:', error);
+    } finally {
+      setRoleUpdating(null);
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
       {/* Group Info Card */}
@@ -146,7 +171,7 @@ export default function GroupDashboard({
               </span>
             </div>
             
-            {isGroupAdmin && group.inviteCode && (
+            {isCapo && group.inviteCode && (
               <button
                 onClick={copyInviteCode}
                 className="flex items-center gap-2 bg-[#1A1A1A] text-[#F2EFE9] px-3 py-1.5 border-2 border-[#1A1A1A] font-mono text-sm hover:bg-[#FF5A00] transition-colors"
@@ -201,7 +226,7 @@ export default function GroupDashboard({
               <Wallet className="w-4 h-4" />
               <span className="hidden sm:inline">Credits</span>
             </button>
-            {isGroupAdmin && (
+            {isCapo && (
               <button
                 onClick={() => setActiveTab('settings')}
                 className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
@@ -216,7 +241,7 @@ export default function GroupDashboard({
             )}
           </div>
 
-          {isGroupAdmin && (
+          {canManage && activeTab === 'events' && (
             <button
               onClick={() => setCreateEventOpen(true)}
               className="sticker-btn flex items-center justify-center gap-2 w-full sm:w-auto"
@@ -253,7 +278,7 @@ export default function GroupDashboard({
                   <div>
                     <h3 className="font-graffiti text-2xl text-[#1A1A1A]">No Games Yet!</h3>
                     <p className="text-[#1A1A1A]/60 text-sm mt-2 font-body">
-                      {isGroupAdmin 
+                      {canManage 
                         ? "Create your first event to get started"
                         : "Check back later for new games"
                       }
@@ -328,6 +353,15 @@ export default function GroupDashboard({
         {/* Members Tab */}
         {activeTab === 'members' && (
           <div className="space-y-3">
+            {canManage && (
+              <button
+                onClick={() => setAddMemberOpen(true)}
+                className="sticker-btn-blue flex items-center justify-center gap-2 w-full sm:w-auto"
+              >
+                <UserPlus className="w-4 h-4" />
+                Add Member
+              </button>
+            )}
             {membersLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3, 4].map((i) => (
@@ -354,23 +388,52 @@ export default function GroupDashboard({
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-[#8B5CF6] border-2 border-[#1A1A1A] flex items-center justify-center shadow-[2px_2px_0_#1A1A1A]">
                           <span className="text-white font-graffiti text-sm">
-                            {member.userEmail.charAt(0).toUpperCase()}
+                            {(member.displayName || member.userEmail).charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div>
                           <p className="font-marker text-[#1A1A1A]">
-                            {member.userEmail.split('@')[0]}
+                            {member.displayName}
                           </p>
-                          <p className="text-xs text-[#1A1A1A]/50 font-body">{member.userEmail}</p>
+                          <p className="text-xs text-[#1A1A1A]/50 font-body">
+                            {crewRoleLabel(member.groupRole)}
+                          </p>
                         </div>
                       </div>
                       
                       <div className="flex items-center gap-2">
                         {member.groupRole === 'admin' && (
-                          <span className="badge-orange">ADMIN</span>
+                          <span className="badge-orange flex items-center gap-1">
+                            <Crown className="w-3 h-3" /> CAPO
+                          </span>
+                        )}
+                        {member.groupRole === 'coleader' && (
+                          <span className="badge-purple flex items-center gap-1">
+                            <Star className="w-3 h-3" /> KING
+                          </span>
                         )}
                         {member.userEmail === userEmail && (
                           <span className="badge-green">YOU</span>
+                        )}
+                        {/* Capo-only role controls (cannot target other Capos) */}
+                        {isCapo && member.groupRole !== 'admin' && (
+                          roleUpdating === member.userEmail ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-[#1A1A1A]/60" />
+                          ) : member.groupRole === 'coleader' ? (
+                            <button
+                              onClick={() => changeMemberRole(member.userEmail, 'member')}
+                              className="text-xs font-graffiti border-2 border-[#1A1A1A] bg-white px-2 py-1 shadow-[2px_2px_0_#1A1A1A] hover:bg-[#F2EFE9] transition-colors"
+                            >
+                              Demote
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => changeMemberRole(member.userEmail, 'coleader')}
+                              className="text-xs font-graffiti border-2 border-[#1A1A1A] bg-[#8B5CF6] text-white px-2 py-1 shadow-[2px_2px_0_#1A1A1A] hover:bg-[#7c4ddb] transition-colors flex items-center gap-1"
+                            >
+                              <Star className="w-3 h-3" /> Make King
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
@@ -386,13 +449,13 @@ export default function GroupDashboard({
           <CreditDashboard
             groupId={group.groupId}
             userEmail={userEmail}
-            isGroupAdmin={isGroupAdmin}
+            isGroupAdmin={isCapo}
             members={members}
           />
         )}
 
-        {/* Settings Tab (Admin only) */}
-        {activeTab === 'settings' && isGroupAdmin && (
+        {/* Settings Tab (Capo only) */}
+        {activeTab === 'settings' && isCapo && (
           <div className="space-y-4">
             <div className="marker-card p-4">
               <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-4">Visibility</h3>
@@ -463,7 +526,7 @@ export default function GroupDashboard({
                 </div>
                 <div>
                   <label className="text-xs text-[#1A1A1A]/50">Default Cost</label>
-                  <p className="font-graffiti text-[#1A1A1A]">{group.defaultSlotCost?.toFixed(2)}</p>
+                  <p className="font-graffiti text-[#1A1A1A]">€{group.defaultSlotCost?.toFixed(2)}</p>
                 </div>
                 <div>
                   <label className="text-xs text-[#1A1A1A]/50">Round-Robin Slide</label>
@@ -481,9 +544,21 @@ export default function GroupDashboard({
         onOpenChange={setCreateEventOpen}
         groupId={group.groupId}
         defaultSpots={group.defaultEventSpots}
+        defaultCost={group.defaultSlotCost}
         onEventCreated={() => {
           setCreateEventOpen(false);
           fetchEvents();
+        }}
+      />
+
+      {/* Add Member Modal */}
+      <AddMemberModal
+        open={addMemberOpen}
+        onOpenChange={setAddMemberOpen}
+        groupId={group.groupId}
+        onMemberAdded={() => {
+          setAddMemberOpen(false);
+          fetchMembers();
         }}
       />
 
@@ -495,7 +570,7 @@ export default function GroupDashboard({
           groupId={group.groupId}
           eventId={selectedEventId}
           userEmail={userEmail}
-          isGroupAdmin={isGroupAdmin}
+          canManage={canManage}
           onEventUpdated={fetchEvents}
         />
       )}

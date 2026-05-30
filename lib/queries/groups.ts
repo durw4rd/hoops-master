@@ -170,6 +170,32 @@ export async function getGroupMember(groupId: string, email: string): Promise<Gr
   return {
     groupId: row.groupId,
     userEmail: user.email,
+    displayName: user.displayName,
+    groupRole: row.groupRole as GroupRole,
+    joinedAt: row.joinedAt.toISOString(),
+    invitedBy: row.invitedBy,
+    status: row.status as MemberStatus,
+  };
+}
+
+/** Set a member's crew role (Capo-only action). Returns updated member. */
+export async function updateMemberRole(
+  groupId: string,
+  email: string,
+  groupRole: GroupRole
+): Promise<GroupMember | null> {
+  const user = await getUserRowByEmail(email);
+  if (!user) return null;
+  const [row] = await db
+    .update(groupMembers)
+    .set({ groupRole })
+    .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, user.id)))
+    .returning();
+  if (!row) return null;
+  return {
+    groupId: row.groupId,
+    userEmail: user.email,
+    displayName: user.displayName,
     groupRole: row.groupRole as GroupRole,
     joinedAt: row.joinedAt.toISOString(),
     invitedBy: row.invitedBy,
@@ -184,14 +210,15 @@ export async function isGroupAdmin(groupId: string, email: string): Promise<bool
 
 export async function getGroupMembers(groupId: string): Promise<GroupMember[]> {
   const rows = await db
-    .select({ m: groupMembers, email: users.email })
+    .select({ m: groupMembers, email: users.email, displayName: users.displayName })
     .from(groupMembers)
     .innerJoin(users, eq(users.id, groupMembers.userId))
     .where(eq(groupMembers.groupId, groupId));
 
-  return rows.map(({ m, email }) => ({
+  return rows.map(({ m, email, displayName }) => ({
     groupId: m.groupId,
     userEmail: email,
+    displayName,
     groupRole: m.groupRole as GroupRole,
     joinedAt: m.joinedAt.toISOString(),
     invitedBy: m.invitedBy,
@@ -234,6 +261,7 @@ export async function addGroupMember(
     return {
       groupId: row.groupId,
       userEmail: user.email,
+      displayName: user.displayName,
       groupRole: row.groupRole as GroupRole,
       joinedAt: row.joinedAt.toISOString(),
       invitedBy: row.invitedBy,
@@ -249,6 +277,7 @@ export async function addGroupMember(
   return {
     groupId: row.groupId,
     userEmail: user.email,
+    displayName: user.displayName,
     groupRole: row.groupRole as GroupRole,
     joinedAt: row.joinedAt.toISOString(),
     invitedBy: row.invitedBy,

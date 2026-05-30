@@ -2,18 +2,22 @@
  * Individual Event API
  *
  * GET    /api/groups/[groupId]/events/[eventId] - Get event with attendees + waitlist
- * DELETE /api/groups/[groupId]/events/[eventId] - Cancel event (admin only)
+ * PATCH  /api/groups/[groupId]/events/[eventId] - Edit event (Capo / King)
+ * DELETE /api/groups/[groupId]/events/[eventId] - Delete event (Capo / King)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireMember, requireGroupAdmin } from '@/lib/apiGuards';
+import { requireMember, requireCrewManager } from '@/lib/apiGuards';
 import {
   getEventRowById,
   getEventAttendees,
   getWaitlistEntries,
   toEventDTO,
-  updateEventStatus,
+  updateEvent,
+  deleteEvent,
 } from '@/lib/queries/events';
+import { computeSignupOpensAt } from '@/lib/eventTiming';
+import type { AssignmentMode } from '@/lib/types';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -71,9 +75,76 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  const { groupId, eventId } = await params;
+  const ctx = await requireCrewManager(groupId);
+  if (ctx instanceof NextResponse) return ctx;
+
+  try {
+    const timezone = ctx.group.timezone;
+    const eventRow = await getEventRowById(eventId);
+    if (!eventRow || eventRow.groupId !== groupId) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+
+    const body = await request.json();
+    const {
+      date,
+      startTime,
+      endTime,
+      totalSpots,
+      slotCost,
+      location,
+      description,
+      assignmentMode,
+      signupOpenType,
+      signupOpenValue,
+    } = body;
+
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return NextResponse.json({ error: 'date must be in YYYY-MM-DD format' }, { status: 400 });
+    }
+    if ((startTime && !/^\d{2}:\d{2}$/.test(startTime)) || (endTime && !/^\d{2}:\d{2}$/.test(endTime))) {
+      return NextResponse.json({ error: 'times must be in HH:MM format' }, { status: 400 });
+    }
+
+    let signupOpensAt: string | null | undefined;
+    if (signupOpenType !== undefined) {
+      const start = toEventDTO(eventRow, timezone);
+      signupOpensAt = computeSignupOpensAt(
+        timezone,
+        date ?? start.date,
+        startTime ?? start.startTime,
+        signupOpenType,
+        signupOpenValue
+      );
+    }
+
+    const updated = await updateEvent(eventId, timezone, {
+      date,
+      startTime,
+      endTime,
+      totalSpots,
+      slotCost,
+      location,
+      description,
+      assignmentMode: assignmentMode as AssignmentMode | undefined,
+      signupOpensAt,
+    });
+
+    return NextResponse.json({ success: true, data: updated, message: 'Event updated' });
+  } catch (error) {
+    console.error('Error updating event:', error);
+    return NextResponse.json(
+      { error: 'Failed to update event', details: String(error) },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { groupId, eventId } = await params;
-  const ctx = await requireGroupAdmin(groupId);
+  const ctx = await requireCrewManager(groupId);
   if (ctx instanceof NextResponse) return ctx;
 
   try {
@@ -81,12 +152,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     if (!eventRow || eventRow.groupId !== groupId) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-    await updateEventStatus(eventId, 'cancelled');
-    return NextResponse.json({ success: true, message: 'Event cancelled successfully' });
+    await deleteEvent(eventId);
+    return NextResponse.json({ success: true, message: 'Event deleted successfully' });
   } catch (error) {
-    console.error('Error cancelling event:', error);
+    console.error('Error deleting event:', error);
     return NextResponse.json(
-      { error: 'Failed to cancel event', details: String(error) },
+      { error: 'Failed to delete event', details: String(error) },
       { status: 500 }
     );
   }

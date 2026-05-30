@@ -9,11 +9,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import EditEventModal from "./EditEventModal";
 import { 
   Clock, 
   MapPin, 
   Users, 
-  DollarSign,
+  Euro,
   Loader2,
   Check,
   Hand,
@@ -21,6 +29,8 @@ import {
   Lock,
   LogOut,
   ListPlus,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 
 interface EventDetailModalProps {
@@ -29,7 +39,8 @@ interface EventDetailModalProps {
   groupId: string;
   eventId: string;
   userEmail: string;
-  isGroupAdmin: boolean;
+  /** Capo or King — can assign players, edit, and delete the event. */
+  canManage: boolean;
   onEventUpdated: () => void;
 }
 
@@ -59,15 +70,16 @@ export default function EventDetailModal({
   groupId,
   eventId,
   userEmail,
-  isGroupAdmin,
+  canManage,
   onEventUpdated,
 }: EventDetailModalProps) {
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [members, setMembers] = useState<string[]>([]);
+  const [members, setMembers] = useState<{ userEmail: string; displayName: string }[]>([]);
   const [assignEmail, setAssignEmail] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -89,7 +101,12 @@ export default function EventDetailModal({
       const res = await fetch(`/api/groups/${groupId}/members`);
       if (res.ok) {
         const data = await res.json();
-        const list: string[] = (data.data?.members || []).map((m: { userEmail: string }) => m.userEmail);
+        const list = (data.data?.members || []).map(
+          (m: { userEmail: string; displayName: string }) => ({
+            userEmail: m.userEmail,
+            displayName: m.displayName,
+          })
+        );
         setMembers(list);
       }
     } catch (err) {
@@ -100,9 +117,31 @@ export default function EventDetailModal({
   useEffect(() => {
     if (open) {
       fetchEvent();
-      if (isGroupAdmin) fetchMembers();
+      if (canManage) fetchMembers();
     }
-  }, [open, fetchEvent, isGroupAdmin, fetchMembers]);
+  }, [open, fetchEvent, canManage, fetchMembers]);
+
+  const handleDelete = async () => {
+    if (!confirm('Delete this game for everyone? This also removes its spot transactions and credit effects.')) {
+      return;
+    }
+    setActionLoading('delete');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      onEventUpdated();
+      onOpenChange(false);
+    } catch {
+      setError('Failed to delete game');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const handleClaim = async (attendeeId?: string) => {
     setActionLoading('claim');
@@ -284,6 +323,7 @@ export default function EventDetailModal({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-lg max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto rounded-none shadow-[8px_8px_0_#1A1A1A]">
         <DialogHeader>
@@ -329,7 +369,7 @@ export default function EventDetailModal({
                 </span>
                 {event.slotCost > 0 && (
                   <span className="bg-[#FFD700] text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti px-2 py-0.5 text-xs flex items-center gap-1">
-                    <DollarSign className="w-3 h-3" />
+                    <Euro className="w-3 h-3" />
                     {event.slotCost.toFixed(2)}
                   </span>
                 )}
@@ -409,36 +449,48 @@ export default function EventDetailModal({
                 )}
 
                 {event.myAttendance?.status === 'confirmed' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={handleOffer}
-                      disabled={actionLoading === 'offer'}
-                      className="bg-[#FF6B1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    >
-                      {actionLoading === 'offer' ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <>
-                          <Hand className="w-5 h-5" />
-                          <span>OFFER</span>
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={handleRelease}
-                      disabled={actionLoading === 'release'}
-                      className="bg-[#1A1A1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      title={waitlist.length > 0 ? 'Releasing passes your spot to the next person on the waitlist' : 'Release your spot'}
-                    >
-                      {actionLoading === 'release' ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <>
-                          <LogOut className="w-5 h-5" />
-                          <span>RELEASE</span>
-                        </>
-                      )}
-                    </button>
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={handleOffer}
+                        disabled={actionLoading === 'offer'}
+                        className="bg-[#FF6B1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'offer' ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <>
+                            <Hand className="w-5 h-5" />
+                            <span>OFFER</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={handleRelease}
+                        disabled={actionLoading === 'release' || waitlist.length === 0}
+                        className="bg-[#1A1A1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] enabled:hover:shadow-[6px_6px_0_#1A1A1A] enabled:hover:translate-y-[-2px] enabled:active:shadow-[2px_2px_0_#1A1A1A] enabled:active:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        title={
+                          waitlist.length > 0
+                            ? 'Releasing passes your spot to the next person on the waitlist'
+                            : 'Release is only available when someone is on the waitlist — use Offer instead'
+                        }
+                      >
+                        {actionLoading === 'release' ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <>
+                            <LogOut className="w-5 h-5" />
+                            <span>RELEASE</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {waitlist.length === 0 && (
+                      <p className="text-xs text-[#1A1A1A]/60 font-body text-center">
+                        Release becomes available once someone joins the waitlist. To give up your
+                        spot now, use <span className="font-semibold">Offer</span>.
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -466,29 +518,56 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Admin: assign a player to an open spot */}
-              {isGroupAdmin && availableSpots > 0 && (
+              {/* Manager: edit / delete the game */}
+              {canManage && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEditOpen(true)}
+                    className="flex-1 bg-white text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti text-sm py-2 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all flex items-center justify-center gap-2"
+                  >
+                    <Pencil className="w-4 h-4" />
+                    EDIT GAME
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={actionLoading === 'delete'}
+                    className="flex-1 bg-[#FF5A00] text-white border-2 border-[#1A1A1A] font-graffiti text-sm py-2 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {actionLoading === 'delete' ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        DELETE
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Manager: assign a player to an open spot */}
+              {canManage && availableSpots > 0 && (
                 <div className="border-2 border-dashed border-[#1A1A1A]/40 p-3 space-y-2">
-                  <h3 className="font-graffiti text-sm text-[#1A1A1A]">Admin: assign player</h3>
+                  <h3 className="font-graffiti text-sm text-[#1A1A1A]">Assign a player</h3>
                   <div className="flex gap-2">
-                    <select
-                      value={assignEmail}
-                      onChange={(e) => setAssignEmail(e.target.value)}
-                      className="sketch-input flex-1 text-sm"
-                    >
-                      <option value="">Select a member…</option>
-                      {members
-                        .filter(
-                          (m) =>
-                            !confirmedAttendees.some((a) => a.userEmail === m) &&
-                            !offeredSpots.some((a) => a.userEmail === m)
-                        )
-                        .map((m) => (
-                          <option key={m} value={m}>
-                            {m.split('@')[0]}
-                          </option>
-                        ))}
-                    </select>
+                    <Select value={assignEmail} onValueChange={setAssignEmail}>
+                      <SelectTrigger className="flex-1 bg-white border-2 border-[#1A1A1A] rounded-none font-body text-sm focus:ring-0 focus:ring-offset-0 shadow-[2px_2px_0_#1A1A1A]">
+                        <SelectValue placeholder="Select a player…" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#F2EFE9] border-2 border-[#1A1A1A] rounded-none">
+                        {members
+                          .filter(
+                            (m) =>
+                              !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
+                              !offeredSpots.some((a) => a.userEmail === m.userEmail)
+                          )
+                          .map((m) => (
+                            <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                              {m.displayName}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                     <button
                       onClick={handleAssign}
                       disabled={!assignEmail || actionLoading === 'assign'}
@@ -518,7 +597,7 @@ export default function EventDetailModal({
                         style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                       >
                         <span className="font-marker text-[#FF5A00]">
-                          {attendee.userEmail.split('@')[0]}&apos;s spot
+                          {attendee.userName}&apos;s spot
                         </span>
                         {!event.isAttending && isSignupOpen && (
                           <button
@@ -556,7 +635,7 @@ export default function EventDetailModal({
                       style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
                     >
                       <span className="font-marker text-sm text-[#1A1A1A] truncate block">
-                        {attendee.userEmail.split('@')[0]}
+                        {attendee.userName}
                         {attendee.userEmail === userEmail && (
                           <span className="text-[#1A1A1A]/60 ml-1">(you)</span>
                         )}
@@ -594,7 +673,7 @@ export default function EventDetailModal({
                       >
                         <span className="font-graffiti text-[#0084FF] w-6">#{entry.position}</span>
                         <span className="font-marker text-sm text-[#1A1A1A] truncate">
-                          {entry.userEmail.split('@')[0]}
+                          {entry.displayName}
                           {entry.userEmail === userEmail && (
                             <span className="text-[#1A1A1A]/60 ml-1">(you)</span>
                           )}
@@ -613,5 +692,29 @@ export default function EventDetailModal({
         )}
       </DialogContent>
     </Dialog>
+
+    {event && (
+      <EditEventModal
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        groupId={groupId}
+        event={{
+          eventId: event.eventId,
+          date: event.date,
+          startTime: event.startTime,
+          endTime: event.endTime,
+          totalSpots: event.totalSpots,
+          slotCost: event.slotCost,
+          location: event.location ?? '',
+          description: event.description ?? '',
+        }}
+        onSaved={() => {
+          setEditOpen(false);
+          fetchEvent();
+          onEventUpdated();
+        }}
+      />
+    )}
+    </>
   );
 }

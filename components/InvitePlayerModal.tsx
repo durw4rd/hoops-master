@@ -10,11 +10,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Mail, Check, Clock } from "lucide-react";
+import { Loader2, Mail, Check, Clock, Crown, ShieldCheck, ChevronUp, ChevronDown } from "lucide-react";
 
 interface InvitePlayerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  currentUserEmail?: string;
 }
 
 interface InviteUser {
@@ -25,12 +26,17 @@ interface InviteUser {
   invitedAt: string | null;
 }
 
-export default function InvitePlayerModal({ open, onOpenChange }: InvitePlayerModalProps) {
+export default function InvitePlayerModal({
+  open,
+  onOpenChange,
+  currentUserEmail,
+}: InvitePlayerModalProps) {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [users, setUsers] = useState<InviteUser[]>([]);
+  const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -51,6 +57,30 @@ export default function InvitePlayerModal({ open, onOpenChange }: InvitePlayerMo
       setSuccess(null);
     }
   }, [open, fetchUsers]);
+
+  const changeRole = async (targetEmail: string, role: "admin" | "user") => {
+    setRoleUpdating(targetEmail);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch("/api/admin/role", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: targetEmail, role }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to update role");
+        return;
+      }
+      setSuccess(data.message || "Role updated");
+      fetchUsers();
+    } catch {
+      setError("An unexpected error occurred");
+    } finally {
+      setRoleUpdating(null);
+    }
+  };
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,26 +162,57 @@ export default function InvitePlayerModal({ open, onOpenChange }: InvitePlayerMo
             {users.map((u) => (
               <div
                 key={u.email}
-                className="flex items-center justify-between bg-white border-2 border-[#1A1A1A] px-3 py-2"
+                className="flex items-center justify-between gap-2 bg-white border-2 border-[#1A1A1A] px-3 py-2"
               >
                 <div className="min-w-0">
-                  <p className="font-marker text-sm text-[#1A1A1A] truncate">
+                  <p className="font-marker text-sm text-[#1A1A1A] truncate flex items-center gap-1">
                     {u.onboarded ? u.displayName : u.email.split("@")[0]}
+                    {u.globalRole === "owner" && (
+                      <span className="text-[10px] text-[#FF5A00] font-graffiti flex items-center gap-0.5">
+                        <Crown className="w-3 h-3" /> OWNER
+                      </span>
+                    )}
                     {u.globalRole === "admin" && (
-                      <span className="ml-1 text-[10px] text-[#FF5A00] font-graffiti">ADMIN</span>
+                      <span className="text-[10px] text-[#FF5A00] font-graffiti flex items-center gap-0.5">
+                        <ShieldCheck className="w-3 h-3" /> ADMIN
+                      </span>
                     )}
                   </p>
                   <p className="text-xs text-[#1A1A1A]/50 font-body truncate">{u.email}</p>
                 </div>
-                {u.onboarded ? (
-                  <span className="flex items-center gap-1 text-[#0a8f3c] font-graffiti text-xs whitespace-nowrap">
-                    <Check className="w-3.5 h-3.5" /> active
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-[#1A1A1A]/50 font-graffiti text-xs whitespace-nowrap">
-                    <Clock className="w-3.5 h-3.5" /> invited
-                  </span>
-                )}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {u.onboarded ? (
+                    <span className="hidden sm:flex items-center gap-1 text-[#0a8f3c] font-graffiti text-xs whitespace-nowrap">
+                      <Check className="w-3.5 h-3.5" /> active
+                    </span>
+                  ) : (
+                    <span className="hidden sm:flex items-center gap-1 text-[#1A1A1A]/50 font-graffiti text-xs whitespace-nowrap">
+                      <Clock className="w-3.5 h-3.5" /> invited
+                    </span>
+                  )}
+                  {/* Role controls — Owner is protected; can't change own role here. */}
+                  {u.globalRole !== "owner" &&
+                    u.email.toLowerCase() !== (currentUserEmail ?? "").toLowerCase() &&
+                    (roleUpdating === u.email ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-[#1A1A1A]/60" />
+                    ) : u.globalRole === "admin" ? (
+                      <button
+                        onClick={() => changeRole(u.email, "user")}
+                        title="Demote to Player"
+                        className="text-[11px] font-graffiti border-2 border-[#1A1A1A] bg-white px-2 py-0.5 shadow-[2px_2px_0_#1A1A1A] hover:bg-[#F2EFE9] transition-colors flex items-center gap-0.5"
+                      >
+                        <ChevronDown className="w-3 h-3" /> Demote
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => changeRole(u.email, "admin")}
+                        title="Promote to Admin"
+                        className="text-[11px] font-graffiti border-2 border-[#1A1A1A] bg-[#FF5A00] text-white px-2 py-0.5 shadow-[2px_2px_0_#1A1A1A] hover:bg-[#e65200] transition-colors flex items-center gap-0.5"
+                      >
+                        <ChevronUp className="w-3 h-3" /> Admin
+                      </button>
+                    ))}
+                </div>
               </div>
             ))}
           </div>

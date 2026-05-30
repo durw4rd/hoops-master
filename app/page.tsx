@@ -118,7 +118,9 @@ export default function HoopsMaster() {
   // Can the current user create crews? DB admin OR present in the LD app-admins flag.
   const userEmail = session?.user?.email?.toLowerCase() || '';
   const canCreateCrew =
-    userProfile?.globalRole === 'admin' || appAdmins.map((e) => e.toLowerCase()).includes(userEmail);
+    userProfile?.globalRole === 'admin' ||
+    userProfile?.globalRole === 'owner' ||
+    appAdmins.map((e) => e.toLowerCase()).includes(userEmail);
 
   // Loading state
   if (status === "loading") {
@@ -324,6 +326,7 @@ export default function HoopsMaster() {
       <InvitePlayerModal
         open={inviteModalOpen}
         onOpenChange={setInviteModalOpen}
+        currentUserEmail={session?.user?.email ?? undefined}
       />
 
       <Footer />

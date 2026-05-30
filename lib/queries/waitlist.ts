@@ -82,7 +82,8 @@ export async function releaseSpot(params: { eventId: string; userId: string }): 
       .limit(1);
     if (!attendee) throw new SpotError('You are not attending this event', 404);
 
-    // Earliest waitlist member, if any.
+    // Earliest waitlist member. Releasing is only allowed when someone is
+    // waiting — otherwise the holder should use "Offer" to open the spot.
     const [next] = await tx
       .select()
       .from(eventWaitlist)
@@ -90,47 +91,38 @@ export async function releaseSpot(params: { eventId: string; userId: string }): 
       .orderBy(asc(eventWaitlist.joinedAt))
       .limit(1);
 
-    if (next) {
-      const promotedUserId = next.userId;
-      const [updated] = await tx
-        .update(eventAttendees)
-        .set({
-          userId: promotedUserId,
-          originalUserId: promotedUserId,
-          status: 'confirmed',
-          offeredAt: null,
-          assignedBy: null,
-        })
-        .where(eq(eventAttendees.id, attendee.id))
-        .returning();
-
-      await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, next.id));
-
-      await recordTransaction(tx, {
-        eventId: params.eventId,
-        groupId: event.groupId,
-        attendeeId: updated.id,
-        type: 'waitlist_promote',
-        fromUserId: params.userId,
-        toUserId: promotedUserId,
-        amount: Number(event.slotCost),
-        notes: 'Auto-promoted from waitlist on release',
-      });
-      return { promotedUserId };
+    if (!next) {
+      throw new SpotError(
+        'No one is on the waitlist. Use "Offer" to make your spot available instead.',
+        400
+      );
     }
 
-    // No waitlist: free the spot. Audit-only row (from == to => no credit move).
-    await tx.delete(eventAttendees).where(eq(eventAttendees.id, attendee.id));
+    const promotedUserId = next.userId;
+    const [updated] = await tx
+      .update(eventAttendees)
+      .set({
+        userId: promotedUserId,
+        originalUserId: promotedUserId,
+        status: 'confirmed',
+        offeredAt: null,
+        assignedBy: null,
+      })
+      .where(eq(eventAttendees.id, attendee.id))
+      .returning();
+
+    await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, next.id));
+
     await recordTransaction(tx, {
       eventId: params.eventId,
       groupId: event.groupId,
-      attendeeId: null,
-      type: 'release',
+      attendeeId: updated.id,
+      type: 'waitlist_promote',
       fromUserId: params.userId,
-      toUserId: params.userId,
+      toUserId: promotedUserId,
       amount: Number(event.slotCost),
-      notes: 'Released spot (no waitlist)',
+      notes: 'Auto-promoted from waitlist on release',
     });
-    return { promotedUserId: null };
+    return { promotedUserId };
   });
 }

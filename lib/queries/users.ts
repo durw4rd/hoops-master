@@ -79,6 +79,16 @@ export async function listUsers(): Promise<UserRow[]> {
   return db.select().from(users).orderBy(users.createdAt);
 }
 
+/** Set a user's app-level role ('admin' | 'user'). Returns updated row. */
+export async function setUserRole(userId: string, role: GlobalRole): Promise<UserRow | null> {
+  const [row] = await db
+    .update(users)
+    .set({ globalRole: role })
+    .where(eq(users.id, userId))
+    .returning();
+  return row ?? null;
+}
+
 export async function getUsersByIds(ids: string[]): Promise<Map<string, UserRow>> {
   if (ids.length === 0) return new Map();
   const rows = await db.select().from(users).where(inArray(users.id, ids));

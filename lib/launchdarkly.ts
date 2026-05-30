@@ -72,8 +72,8 @@ export async function getAppAdminEmails(email: string): Promise<string[]> {
  * @param dbGlobalRole   the user's global_role from the DB ('admin' | 'user')
  */
 export async function isAppAdmin(email: string, dbGlobalRole: string): Promise<boolean> {
-  // DB is authoritative / fallback.
-  if (dbGlobalRole === 'admin') return true;
+  // DB is authoritative / fallback. Owner and admin both have app-admin rights.
+  if (dbGlobalRole === 'admin' || dbGlobalRole === 'owner') return true;
 
   const normalized = email.toLowerCase();
   const admins = await getAppAdminEmails(normalized);

@@ -10,7 +10,7 @@
 import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/lib/db';
-import { events, eventAttendees, eventWaitlist, users, groups } from '@/lib/db/schema';
+import { events, eventAttendees, eventWaitlist, users, groups, spotTransactions } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
 import { withEventLock, serializableTx, SpotError, type Tx, type EventRow } from './_tx';
 import { zonedToUtc, utcToZonedParts, ALWAYS_OPEN_SENTINEL } from '@/lib/datetime';
@@ -118,6 +118,7 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
     .select({
       a: eventAttendees,
       holderEmail: holder.email,
+      holderName: holder.displayName,
       originalEmail: original.email,
       assignedByEmail: users.email,
     })
@@ -128,10 +129,11 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
     .where(eq(eventAttendees.eventId, eventId))
     .orderBy(asc(eventAttendees.assignedAt));
 
-  return rows.map(({ a, holderEmail, originalEmail, assignedByEmail }) => ({
+  return rows.map(({ a, holderEmail, holderName, originalEmail, assignedByEmail }) => ({
     attendeeId: a.id,
     eventId: a.eventId,
     userEmail: holderEmail,
+    userName: holderName,
     originalUserEmail: originalEmail,
     status: a.status as AttendeeStatus,
     offeredAt: a.offeredAt ? a.offeredAt.toISOString() : null,
@@ -142,13 +144,14 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
 
 export async function getWaitlistEntries(eventId: string): Promise<WaitlistEntry[]> {
   const rows = await db
-    .select({ w: eventWaitlist, email: users.email })
+    .select({ w: eventWaitlist, email: users.email, displayName: users.displayName })
     .from(eventWaitlist)
     .innerJoin(users, eq(users.id, eventWaitlist.userId))
     .where(eq(eventWaitlist.eventId, eventId))
     .orderBy(asc(eventWaitlist.joinedAt));
-  return rows.map(({ w, email }, idx) => ({
+  return rows.map(({ w, email, displayName }, idx) => ({
     userEmail: email,
+    displayName,
     position: idx + 1,
     joinedAt: w.joinedAt.toISOString(),
   }));
@@ -244,6 +247,68 @@ export async function updateEventStatus(eventId: string, status: EventStatus): P
   if (!row) return null;
   const [g] = await db.select({ tz: groups.timezone }).from(groups).where(eq(groups.id, row.groupId));
   return toEventDTO(row, g?.tz ?? 'UTC');
+}
+
+export interface UpdateEventInput {
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  totalSpots?: number;
+  slotCost?: number;
+  location?: string;
+  description?: string;
+  assignmentMode?: AssignmentMode;
+  signupOpensAt?: string | null;
+}
+
+/** Edit an event's details. Recomputes absolute times from group-local inputs. */
+export async function updateEvent(
+  eventId: string,
+  timezone: string,
+  input: UpdateEventInput
+): Promise<Event | null> {
+  const current = await getEventRowById(eventId);
+  if (!current) return null;
+
+  const patch: Record<string, unknown> = {};
+
+  // Recompute start/end if any date/time piece changed.
+  if (input.date || input.startTime || input.endTime) {
+    const cur = utcToZonedParts(current.startsAt, timezone);
+    const curEnd = utcToZonedParts(current.endsAt, timezone);
+    const date = input.date ?? cur.date;
+    const startTime = input.startTime ?? cur.time;
+    const endTime = input.endTime ?? curEnd.time;
+    const startsAt = zonedToUtc(date, startTime, timezone);
+    let endsAt = zonedToUtc(date, endTime, timezone);
+    if (endsAt <= startsAt) endsAt = new Date(endsAt.getTime() + 24 * 60 * 60 * 1000);
+    patch.startsAt = startsAt;
+    patch.endsAt = endsAt;
+  }
+  if (input.totalSpots !== undefined) patch.totalSpots = input.totalSpots;
+  if (input.slotCost !== undefined) patch.slotCost = String(input.slotCost);
+  if (input.location !== undefined) patch.location = input.location;
+  if (input.description !== undefined) patch.description = input.description;
+  if (input.assignmentMode !== undefined) patch.assignmentMode = input.assignmentMode;
+  if (input.signupOpensAt !== undefined) patch.signupOpensAt = resolveSignupOpensAt(input.signupOpensAt);
+
+  if (Object.keys(patch).length === 0) return toEventDTO(current, timezone);
+
+  const [row] = await db.update(events).set(patch).where(eq(events.id, eventId)).returning();
+  return row ? toEventDTO(row, timezone) : null;
+}
+
+/**
+ * Hard-delete an event and everything tied to it (attendees + waitlist cascade
+ * on FK; spot transactions are removed first since they have no cascade). This
+ * also reverses the event's credit effects, which is the intended semantics of
+ * deleting an event outright.
+ */
+export async function deleteEvent(eventId: string): Promise<void> {
+  await serializableTx(async (tx) => {
+    await tx.delete(spotTransactions).where(eq(spotTransactions.eventId, eventId));
+    await tx.delete(events).where(eq(events.id, eventId));
+  });
 }
 
 // ---------------------------------------------------------------------------

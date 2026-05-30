@@ -21,7 +21,9 @@ export interface AppUser {
   createdAt: string;       // ISO timestamp
 }
 
-export type GlobalRole = 'admin' | 'user';
+// App-level roles. 'owner' is functionally an admin but cannot be demoted by
+// other admins (only the owner role is protected).
+export type GlobalRole = 'owner' | 'admin' | 'user';
 
 /**
  * Groups Sheet - Group/community definitions
@@ -53,13 +55,18 @@ export type GroupStatus = 'active' | 'archived';
 export interface GroupMember {
   groupId: string;           // FK to Groups.groupId
   userEmail: string;         // FK to AppUsers.email
-  groupRole: GroupRole;      // 'admin' | 'member'
+  displayName: string;       // User's chosen username
+  groupRole: GroupRole;      // 'admin' (capo) | 'coleader' (king) | 'member'
   joinedAt: string;          // ISO timestamp
   invitedBy: string | null;  // Email of inviter (optional)
   status: MemberStatus;
 }
 
-export type GroupRole = 'admin' | 'member';
+// Crew-level roles (graffiti-themed):
+//   'admin'    -> Crew Capo (crew leader; full control)
+//   'coleader' -> King (elevated; manage events + add members)
+//   'member'   -> Crew (regular member)
+export type GroupRole = 'admin' | 'coleader' | 'member';
 export type MemberStatus = 'active' | 'inactive' | 'banned';
 
 // =============================================================================
@@ -108,6 +115,7 @@ export interface EventAttendee {
   attendeeId: string;           // UUID primary key
   eventId: string;              // FK to Events.eventId
   userEmail: string;            // FK to AppUsers.email (current holder)
+  userName: string;             // Display name of current holder
   originalUserEmail: string;    // Email of originally assigned user
   status: AttendeeStatus;
   offeredAt: string | null;     // ISO timestamp when offered
@@ -152,6 +160,7 @@ export type TransactionType =
 
 export interface WaitlistEntry {
   userEmail: string;
+  displayName: string;
   position: number;          // computed FIFO position (1-based)
   joinedAt: string;          // ISO timestamp
 }

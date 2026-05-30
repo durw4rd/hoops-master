@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireGroupAdmin } from '@/lib/apiGuards';
+import { requireCrewManager } from '@/lib/apiGuards';
 import { createEvent, fillSpots } from '@/lib/queries/events';
 import { getActiveRosterUserIds } from '@/lib/queries/roundRobin';
 import { getActiveMembersWithUsers } from '@/lib/queries/groups';
@@ -36,7 +36,7 @@ interface RREventInput {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { groupId } = await params;
-  const ctx = await requireGroupAdmin(groupId);
+  const ctx = await requireCrewManager(groupId);
   if (ctx instanceof NextResponse) return ctx;
 
   try {

@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireMember, requireGroupAdmin } from '@/lib/apiGuards';
+import { requireMember, requireCrewManager } from '@/lib/apiGuards';
 import {
   getEventRows,
   createEvent,
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { groupId } = await params;
-  const ctx = await requireGroupAdmin(groupId);
+  const ctx = await requireCrewManager(groupId);
   if (ctx instanceof NextResponse) return ctx;
 
   try {

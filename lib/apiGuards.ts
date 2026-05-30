@@ -43,12 +43,25 @@ export async function requireMember(groupId: string): Promise<MemberContext | Ne
   return { user, group, member };
 }
 
-/** Requires an active admin membership in the group. */
+/** Requires the Crew Capo (group leader) — full crew control. */
 export async function requireGroupAdmin(groupId: string): Promise<MemberContext | NextResponse> {
   const ctx = await requireMember(groupId);
   if (ctx instanceof NextResponse) return ctx;
   if (ctx.member.groupRole !== 'admin') {
-    return NextResponse.json({ error: 'Only group admins can perform this action' }, { status: 403 });
+    return NextResponse.json({ error: 'Only the Crew Capo can perform this action' }, { status: 403 });
+  }
+  return ctx;
+}
+
+/** Requires a crew manager (Capo or King) — manage events + add members. */
+export async function requireCrewManager(groupId: string): Promise<MemberContext | NextResponse> {
+  const ctx = await requireMember(groupId);
+  if (ctx instanceof NextResponse) return ctx;
+  if (ctx.member.groupRole !== 'admin' && ctx.member.groupRole !== 'coleader') {
+    return NextResponse.json(
+      { error: 'Only the Crew Capo or a King can perform this action' },
+      { status: 403 }
+    );
   }
   return ctx;
 }

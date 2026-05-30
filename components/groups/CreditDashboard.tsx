@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CreditBalance } from "@/lib/types";
-import { Loader2, Download, DollarSign } from "lucide-react";
+import { Loader2, Download, Euro } from "lucide-react";
 
 interface CreditDashboardProps {
   groupId: string;
   userEmail: string;
   isGroupAdmin: boolean;
-  members: { userEmail: string }[];
+  members: { userEmail: string; displayName?: string }[];
 }
 
 export default function CreditDashboard({
@@ -127,13 +127,13 @@ export default function CreditDashboard({
                 <option value="">Select a member…</option>
                 {members.map((m) => (
                   <option key={m.userEmail} value={m.userEmail}>
-                    {m.userEmail.split("@")[0]}
+                    {m.displayName || m.userEmail.split("@")[0]}
                   </option>
                 ))}
               </select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-graffiti text-[#1A1A1A]">Amount</label>
+              <label className="text-xs font-graffiti text-[#1A1A1A]">Amount (€)</label>
               <input
                 type="number"
                 step="0.01"
@@ -172,7 +172,7 @@ export default function CreditDashboard({
                 {recording ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <DollarSign className="w-4 h-4" />
+                  <Euro className="w-4 h-4" />
                 )}
                 Record Payment
               </button>
@@ -205,10 +205,10 @@ export default function CreditDashboard({
               <thead>
                 <tr className="text-left font-graffiti text-[#1A1A1A]/70 border-b-2 border-[#1A1A1A]/20">
                   <th className="py-2 pr-2">Player</th>
-                  <th className="py-2 px-2 text-right">Paid</th>
-                  <th className="py-2 px-2 text-right">Spent</th>
-                  <th className="py-2 px-2 text-right">Earned</th>
-                  <th className="py-2 pl-2 text-right">Balance</th>
+                  <th className="py-2 px-2 text-right">Paid (€)</th>
+                  <th className="py-2 px-2 text-right">Spent (€)</th>
+                  <th className="py-2 px-2 text-right">Earned (€)</th>
+                  <th className="py-2 pl-2 text-right">Balance (€)</th>
                 </tr>
               </thead>
               <tbody>
@@ -225,11 +225,11 @@ export default function CreditDashboard({
                         <span className="text-[#1A1A1A]/50 ml-1 text-xs">(you)</span>
                       )}
                     </td>
-                    <td className="py-2 px-2 text-right font-body">{b.totalPaid.toFixed(2)}</td>
-                    <td className="py-2 px-2 text-right font-body">{b.totalSpent.toFixed(2)}</td>
-                    <td className="py-2 px-2 text-right font-body">{b.totalEarned.toFixed(2)}</td>
+                    <td className="py-2 px-2 text-right font-body">€{b.totalPaid.toFixed(2)}</td>
+                    <td className="py-2 px-2 text-right font-body">€{b.totalSpent.toFixed(2)}</td>
+                    <td className="py-2 px-2 text-right font-body">€{b.totalEarned.toFixed(2)}</td>
                     <td className={`py-2 pl-2 text-right font-graffiti ${balanceColor(b.balance)}`}>
-                      {b.balance.toFixed(2)}
+                      €{b.balance.toFixed(2)}
                     </td>
                   </tr>
                 ))}

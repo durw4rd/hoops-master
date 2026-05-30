@@ -18,6 +18,7 @@ interface CreateEventModalProps {
   onOpenChange: (open: boolean) => void;
   groupId: string;
   defaultSpots: number;
+  defaultCost: number;
   onEventCreated: () => void;
 }
 
@@ -63,13 +64,14 @@ export default function CreateEventModal({
   onOpenChange,
   groupId,
   defaultSpots,
+  defaultCost,
   onEventCreated,
 }: CreateEventModalProps) {
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("19:00");
   const [endTime, setEndTime] = useState("21:00");
   const [totalSpots, setTotalSpots] = useState(String(defaultSpots));
-  const [slotCost, setSlotCost] = useState("0");
+  const [slotCost, setSlotCost] = useState(String(defaultCost));
   const [location, setLocation] = useState("");
   const [assignmentMode, setAssignmentMode] = useState<"player_signup" | "admin_assign">(
     "player_signup"
@@ -186,7 +188,7 @@ export default function CreateEventModal({
     setStartTime("19:00");
     setEndTime("21:00");
     setTotalSpots(String(defaultSpots));
-    setSlotCost("0");
+    setSlotCost(String(defaultCost));
     setLocation("");
     setAssignmentMode("player_signup");
     setSignupOpenType("immediate");
@@ -360,7 +362,7 @@ export default function CreateEventModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cost" className="font-graffiti text-[#1A1A1A]">Cost</Label>
+                <Label htmlFor="cost" className="font-graffiti text-[#1A1A1A]">Cost (€)</Label>
                 <Input
                   id="cost"
                   type="number"
@@ -498,7 +500,7 @@ export default function CreateEventModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="rCost" className="font-graffiti text-[#1A1A1A]">Cost</Label>
+                <Label htmlFor="rCost" className="font-graffiti text-[#1A1A1A]">Cost (€)</Label>
                 <Input
                   id="rCost"
                   type="number"
