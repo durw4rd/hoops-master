@@ -51,53 +51,78 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       assignmentMode = 'player_signup',
       signupOpenType = 'immediate',
       signupOpenValue,
+      events: explicitBlocks,
     } = body;
 
-    if (!startDate || !endDate || dayOfWeek === undefined || !startTime || !endTime) {
+    // Resolve the concrete event blocks: either an explicit list (multi-slot /
+    // block-split weekly schedule computed by the client) or a single weekly
+    // recurrence (legacy single day/time).
+    let blocks: { date: string; startTime: string; endTime: string }[];
+
+    if (Array.isArray(explicitBlocks) && explicitBlocks.length > 0) {
+      for (const b of explicitBlocks) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(b?.date ?? '')) {
+          return NextResponse.json({ error: 'each block needs a YYYY-MM-DD date' }, { status: 400 });
+        }
+        if (!/^\d{2}:\d{2}$/.test(b?.startTime ?? '') || !/^\d{2}:\d{2}$/.test(b?.endTime ?? '')) {
+          return NextResponse.json({ error: 'each block needs HH:MM times' }, { status: 400 });
+        }
+      }
+      blocks = explicitBlocks.map((b) => ({
+        date: b.date,
+        startTime: b.startTime,
+        endTime: b.endTime,
+      }));
+    } else {
+      if (!startDate || !endDate || dayOfWeek === undefined || !startTime || !endTime) {
+        return NextResponse.json(
+          { error: 'startDate, endDate, dayOfWeek, startTime, and endTime are required' },
+          { status: 400 }
+        );
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        return NextResponse.json({ error: 'dates must be in YYYY-MM-DD format' }, { status: 400 });
+      }
+      if (dayOfWeek < 0 || dayOfWeek > 6) {
+        return NextResponse.json({ error: 'dayOfWeek must be 0-6 (Sunday-Saturday)' }, { status: 400 });
+      }
+      if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+        return NextResponse.json({ error: 'times must be in HH:MM format' }, { status: 400 });
+      }
+      blocks = generateRecurringDates(startDate, endDate, dayOfWeek).map((date) => ({
+        date,
+        startTime,
+        endTime,
+      }));
+    }
+
+    if (blocks.length === 0) {
       return NextResponse.json(
-        { error: 'startDate, endDate, dayOfWeek, startTime, and endTime are required' },
+        { error: 'No games found for the specified schedule and date range' },
         { status: 400 }
       );
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-      return NextResponse.json({ error: 'dates must be in YYYY-MM-DD format' }, { status: 400 });
-    }
-    if (dayOfWeek < 0 || dayOfWeek > 6) {
-      return NextResponse.json({ error: 'dayOfWeek must be 0-6 (Sunday-Saturday)' }, { status: 400 });
-    }
-    if (!/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
-      return NextResponse.json({ error: 'times must be in HH:MM format' }, { status: 400 });
-    }
 
-    const dates = generateRecurringDates(startDate, endDate, dayOfWeek);
-    if (dates.length === 0) {
-      return NextResponse.json(
-        { error: 'No dates found in the specified range for the given day of week' },
-        { status: 400 }
-      );
-    }
-
-    const inputs = dates.map((date) => ({
-      date,
-      startTime,
-      endTime,
+    const inputs = blocks.map((b) => ({
+      date: b.date,
+      startTime: b.startTime,
+      endTime: b.endTime,
       totalSpots: totalSpots || ctx.group.defaultEventSpots,
       slotCost: slotCost ?? Number(ctx.group.defaultSlotCost),
       location,
       description,
       eventType: eventType as EventType,
       assignmentMode: assignmentMode as AssignmentMode,
-      signupOpensAt: computeSignupOpensAt(timezone, date, startTime, signupOpenType, signupOpenValue),
+      signupOpensAt: computeSignupOpensAt(timezone, b.date, b.startTime, signupOpenType, signupOpenValue),
     }));
 
     const created = await bulkCreateEvents(groupId, timezone, inputs, ctx.user.id);
 
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     return NextResponse.json({
       success: true,
       data: created,
       count: created.length,
-      message: `Created ${created.length} events for ${dayNames[dayOfWeek]}s`,
+      message: `Created ${created.length} games`,
     });
   } catch (error) {
     console.error('Error creating bulk events:', error);

@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, Repeat, Loader2 } from "lucide-react";
+import WeeklyScheduleBuilder from "./WeeklyScheduleBuilder";
+import { expandWeeklySchedule, type ScheduleSlot } from "@/lib/schedule";
 
 interface CreateEventModalProps {
   open: boolean;
@@ -21,16 +23,6 @@ interface CreateEventModalProps {
   defaultCost: number;
   onEventCreated: () => void;
 }
-
-const DAYS_OF_WEEK = [
-  { value: "0", label: "Sunday" },
-  { value: "1", label: "Monday" },
-  { value: "2", label: "Tuesday" },
-  { value: "3", label: "Wednesday" },
-  { value: "4", label: "Thursday" },
-  { value: "5", label: "Friday" },
-  { value: "6", label: "Saturday" },
-];
 
 const TIME_OPTIONS = [
   "00:00", "00:15", "00:30", "00:45",
@@ -79,7 +71,12 @@ export default function CreateEventModal({
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [dayOfWeek, setDayOfWeek] = useState("4");
+
+  // Recurring schedule: one or more weekly slots, optionally split into blocks.
+  const [slots, setSlots] = useState<ScheduleSlot[]>([
+    { dayOfWeek: 1, startTime: "18:00", endTime: "20:00" },
+  ]);
+  const [blockMinutes, setBlockMinutes] = useState(0);
 
   // Signup timing
   const [signupOpenType, setSignupOpenType] = useState<"immediate" | "relative" | "absolute">("immediate");
@@ -145,18 +142,20 @@ export default function CreateEventModal({
   const handleCreateRecurring = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
 
+    const blocks = expandWeeklySchedule(slots, blockMinutes, startDate, endDate);
+    if (blocks.length === 0) {
+      setError("No games in that range — check your slots and dates.");
+      return;
+    }
+
+    setLoading(true);
     try {
       const res = await fetch(`/api/groups/${groupId}/events/bulk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          startDate,
-          endDate,
-          dayOfWeek: parseInt(dayOfWeek),
-          startTime,
-          endTime,
+          events: blocks,
           totalSpots: parseInt(totalSpots) || defaultSpots,
           slotCost: parseFloat(slotCost) || 0,
           location: location || undefined,
@@ -190,6 +189,8 @@ export default function CreateEventModal({
     setTotalSpots(String(defaultSpots));
     setSlotCost(String(defaultCost));
     setLocation("");
+    setSlots([{ dayOfWeek: 1, startTime: "18:00", endTime: "20:00" }]);
+    setBlockMinutes(0);
     setAssignmentMode("player_signup");
     setSignupOpenType("immediate");
     setSignupDaysBefore(7);
@@ -211,7 +212,7 @@ export default function CreateEventModal({
         </SelectContent>
       </Select>
       <p className="text-xs text-[#1A1A1A]/40 font-body">
-        Round-robin scheduling is set up from the Roster tab.
+        Round-robin (sliding squads) is set up from the Rotation tab.
       </p>
     </div>
   );
@@ -416,22 +417,6 @@ export default function CreateEventModal({
         {/* Recurring Event Form */}
         {activeTab === 'recurring' && (
           <form onSubmit={handleCreateRecurring} className="space-y-3 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="dayOfWeek" className="font-graffiti text-[#1A1A1A]">Day of Week</Label>
-              <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
-                <SelectTrigger className="sketch-input">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DAYS_OF_WEEK.map((day) => (
-                    <SelectItem key={day.value} value={day.value}>
-                      {day.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="startDate" className="font-graffiti text-[#1A1A1A]">From</Label>
@@ -457,34 +442,12 @@ export default function CreateEventModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label className="font-graffiti text-[#1A1A1A]">Start</Label>
-                <Select value={startTime} onValueChange={setStartTime}>
-                  <SelectTrigger className="sketch-input">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {TIME_OPTIONS.map((time) => (
-                      <SelectItem key={`r-start-${time}`} value={time}>{time}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="font-graffiti text-[#1A1A1A]">End</Label>
-                <Select value={endTime} onValueChange={setEndTime}>
-                  <SelectTrigger className="sketch-input">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {TIME_OPTIONS.map((time) => (
-                      <SelectItem key={`r-end-${time}`} value={time}>{time}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            <WeeklyScheduleBuilder
+              slots={slots}
+              onSlotsChange={setSlots}
+              blockMinutes={blockMinutes}
+              onBlockMinutesChange={setBlockMinutes}
+            />
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">

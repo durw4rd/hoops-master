@@ -119,6 +119,15 @@ assign, waitlist promotion) run inside **serializable transactions** with
   For event _k_: `start = (startOffset + k*slide) mod N`, take `min(spots, N)`
   players cyclically. Configured + generated from the **Rotation** tab.
 
+**Weekly schedules** (`lib/schedule.ts`): a fixed weekly schedule is a set of slots
+(day-of-week + start/end time), each optionally split into fixed-length **blocks**
+(e.g. Mon 18:00–20:00 + Wed 17:00–19:00 with 60-min blocks → 4 one-hour games/week).
+`expandWeeklySchedule()` turns slots + block length + a date range into concrete
+event blocks sorted chronologically. The shared `WeeklyScheduleBuilder` component
+drives both the recurring creator (`POST /events/bulk` accepts an explicit `events`
+block array) and the Rotation tab (`POST /events/round-robin`, which slides players
+across all blocks in order).
+
 ## API map
 
 ```

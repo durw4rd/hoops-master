@@ -4,24 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { Group } from "@/lib/types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, ArrowUp, ArrowDown, Save, Shuffle, Eye } from "lucide-react";
-
-const TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, i) => {
-  const h = String(Math.floor(i / 4)).padStart(2, "0");
-  const m = String((i % 4) * 15).padStart(2, "0");
-  return `${h}:${m}`;
-});
-
-const DAYS = [
-  { value: "0", label: "Sunday" },
-  { value: "1", label: "Monday" },
-  { value: "2", label: "Tuesday" },
-  { value: "3", label: "Wednesday" },
-  { value: "4", label: "Thursday" },
-  { value: "5", label: "Friday" },
-  { value: "6", label: "Saturday" },
-];
+import WeeklyScheduleBuilder from "./WeeklyScheduleBuilder";
+import { expandWeeklySchedule, type ScheduleSlot } from "@/lib/schedule";
 
 interface RosterRow {
   userEmail: string;
@@ -38,7 +23,7 @@ interface PreviewData {
   rosterSize: number;
   slide: number;
   fairness: { userEmail: string; count: number }[];
-  events: { date: string; offset: number; assignedEmails: string[] }[];
+  events: { date: string; startTime: string; endTime: string; offset: number; assignedEmails: string[] }[];
 }
 
 interface RosterTabProps {
@@ -46,22 +31,6 @@ interface RosterTabProps {
   group: Group;
   members: MemberRow[];
   onEventsCreated: () => void;
-}
-
-/** Expand a [start, end] date range into all dates falling on `weekday` (0-6). */
-function datesForWeekday(start: string, end: string, weekday: number): string[] {
-  if (!start || !end) return [];
-  const out: string[] = [];
-  const s = new Date(`${start}T00:00:00`);
-  const e = new Date(`${end}T00:00:00`);
-  const d = new Date(s);
-  // Advance to the first matching weekday.
-  while (d.getDay() !== weekday && d <= e) d.setDate(d.getDate() + 1);
-  while (d <= e) {
-    out.push(d.toISOString().slice(0, 10));
-    d.setDate(d.getDate() + 7);
-  }
-  return out;
 }
 
 export default function RosterTab({ groupId, group, members, onEventsCreated }: RosterTabProps) {
@@ -74,9 +43,10 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
   // Generator state
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [dayOfWeek, setDayOfWeek] = useState("4");
-  const [startTime, setStartTime] = useState("19:00");
-  const [endTime, setEndTime] = useState("21:00");
+  const [slots, setSlots] = useState<ScheduleSlot[]>([
+    { dayOfWeek: 1, startTime: "18:00", endTime: "20:00" },
+  ]);
+  const [blockMinutes, setBlockMinutes] = useState(0);
   const [spots, setSpots] = useState(String(group.defaultEventSpots));
   const [slide, setSlide] = useState(String(group.roundRobinSlide));
   const [startOffset, setStartOffset] = useState("0");
@@ -153,10 +123,10 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
   };
 
   const buildEvents = () =>
-    datesForWeekday(startDate, endDate, parseInt(dayOfWeek)).map((date) => ({
-      date,
-      startTime,
-      endTime,
+    expandWeeklySchedule(slots, blockMinutes, startDate, endDate).map((b) => ({
+      date: b.date,
+      startTime: b.startTime,
+      endTime: b.endTime,
       totalSpots: parseInt(spots) || group.defaultEventSpots,
     }));
 
@@ -164,7 +134,7 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
     setError(null);
     const events = buildEvents();
     if (events.length === 0) {
-      setError("Pick a date range that includes at least one matching day.");
+      setError("Add at least one slot and a date range that includes it.");
       return;
     }
     setGenerating(true);
@@ -210,10 +180,11 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
       <div className="marker-card p-4 bg-[#FFD700]/15">
         <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-1">The Rotation</h3>
         <p className="text-sm text-[#1A1A1A]/70 font-body">
-          Got more writers than spots? Set the lineup order below, then drop a whole series of
-          games. The crew slides down the list each game so everyone gets their reps — game 1 takes
-          the players from the top, the next game slides down by your slide amount, and it wraps
-          back around. Assigned spots cost credit just like any other.
+          Got more writers than spots? Set the lineup order below, then build your weekly schedule —
+          add as many day/time slots as you run (e.g. Mon 18:00–20:00 + Wed 17:00–19:00) and split
+          each into blocks (e.g. 1-hour games). The crew slides down the list across every game in
+          order so everyone gets their reps — the next game slides down by your slide amount and
+          wraps back around. Assigned spots cost credit just like any other.
         </p>
       </div>
 
@@ -304,38 +275,12 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
           </div>
         </div>
 
-        <div className="space-y-1">
-          <Label className="font-graffiti text-[#1A1A1A]">Day of week</Label>
-          <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
-            <SelectTrigger className="sketch-input"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {DAYS.map((d) => (
-                <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <Label className="font-graffiti text-[#1A1A1A]">Start</Label>
-            <Select value={startTime} onValueChange={setStartTime}>
-              <SelectTrigger className="sketch-input"><SelectValue /></SelectTrigger>
-              <SelectContent className="max-h-60">
-                {TIME_OPTIONS.map((t) => <SelectItem key={`s-${t}`} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="font-graffiti text-[#1A1A1A]">End</Label>
-            <Select value={endTime} onValueChange={setEndTime}>
-              <SelectTrigger className="sketch-input"><SelectValue /></SelectTrigger>
-              <SelectContent className="max-h-60">
-                {TIME_OPTIONS.map((t) => <SelectItem key={`e-${t}`} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        <WeeklyScheduleBuilder
+          slots={slots}
+          onSlotsChange={setSlots}
+          blockMinutes={blockMinutes}
+          onBlockMinutesChange={setBlockMinutes}
+        />
 
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1">
@@ -389,14 +334,17 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
               </div>
             </div>
             <div className="space-y-1.5 max-h-56 overflow-y-auto">
-              {preview.events.map((ev) => (
-                <div key={ev.date} className="border-2 border-[#1A1A1A]/20 p-2">
+              {preview.events.map((ev, i) => (
+                <div key={`${ev.date}-${ev.startTime}-${i}`} className="border-2 border-[#1A1A1A]/20 p-2">
                   <p className="font-graffiti text-sm text-[#1A1A1A]">
                     {new Date(`${ev.date}T00:00:00`).toLocaleDateString("en-US", {
                       weekday: "short",
                       month: "short",
                       day: "numeric",
                     })}
+                    <span className="text-[#1A1A1A]/50 ml-1.5">
+                      {ev.startTime}–{ev.endTime}
+                    </span>
                   </p>
                   <p className="text-xs text-[#1A1A1A]/60 font-body">
                     {ev.assignedEmails.map((e) => nameFor(e)).join(", ")}
