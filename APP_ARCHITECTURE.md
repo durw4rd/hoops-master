@@ -28,7 +28,7 @@ app/
   page.tsx                 # Home: crew list, create/join/Black Book, onboarding gate
   api/                     # Route handlers (see API map below)
 components/
-  groups/                  # GroupDashboard, modals, RosterTab, CreditDashboard, etc.
+  groups/                  # GroupDashboard, modals, LineupEditor, CreditDashboard, etc.
   InvitePlayerModal.tsx    # "Black Book" — app-admin player + role management
   OnboardingScreen.tsx     # First-login username picker
 lib/
@@ -118,8 +118,8 @@ assign, waitlist promotion) run inside **serializable transactions** with
 - `round_robin` — sliding-window auto-assignment over the active rotation roster.
   For event _k_: `start = (startOffset + k*slide) mod N`, take `min(spots, N)`
   players cyclically. Chosen as the assignment mode in the **Recurring** tab of the
-  create-game flow; the **Rotation** tab only manages the persistent lineup order +
-  who's active (the saved roster the slide runs over).
+  create-game flow, which embeds the `LineupEditor` (order players + toggle who's
+  active) — the saved roster the slide runs over. There is no separate rotation tab.
 
 **Weekly schedules** (`lib/schedule.ts`): a fixed weekly schedule is a set of slots
 (day-of-week + start/end time), each optionally split into fixed-length **blocks**

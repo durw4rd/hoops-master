@@ -24,10 +24,9 @@ import CreateEventModal from "./CreateEventModal";
 import EventDetailModal from "./EventDetailModal";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
-import RosterTab from "./RosterTab";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { crewRoleLabel, isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
-import { Shuffle, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 
 interface GroupDashboardProps {
   group: Group;
@@ -68,7 +67,7 @@ export default function GroupDashboard({
   const [inviteCopied, setInviteCopied] = useState(false);
   const [visibility, setVisibility] = useState(group.visibility);
   const [savingVisibility, setSavingVisibility] = useState(false);
-  const [activeTab, setActiveTab] = useState<'events' | 'members' | 'roster' | 'credits' | 'settings'>('events');
+  const [activeTab, setActiveTab] = useState<'events' | 'members' | 'credits' | 'settings'>('events');
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
   const [deletingCrew, setDeletingCrew] = useState(false);
@@ -238,19 +237,6 @@ export default function GroupDashboard({
               <Calendar className="w-4 h-4" />
               <span className="hidden sm:inline">Events</span>
             </button>
-            {canManage && (
-              <button
-                onClick={() => setActiveTab('roster')}
-                className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
-                  activeTab === 'roster'
-                    ? 'bg-[#FF5A00] text-white'
-                    : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
-                }`}
-              >
-                <Shuffle className="w-4 h-4" />
-                <span className="hidden sm:inline">Rotation</span>
-              </button>
-            )}
             <button
               onClick={() => setActiveTab('members')}
               className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
@@ -524,15 +510,6 @@ export default function GroupDashboard({
               </div>
             )}
           </div>
-        )}
-
-        {/* Rotation (round-robin) Tab */}
-        {activeTab === 'roster' && canManage && (
-          <RosterTab
-            groupId={group.groupId}
-            group={group}
-            members={members.map((m) => ({ userEmail: m.userEmail, displayName: m.displayName }))}
-          />
         )}
 
         {/* Credits Tab */}
