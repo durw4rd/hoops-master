@@ -40,6 +40,7 @@ interface EventWithCounts extends Event {
   attendeeCount: number;
   offeredCount: number;
   availableSpots: number;
+  waitlistCount?: number;
   isAttending?: boolean;
   onWaitlist?: boolean;
 }
@@ -397,11 +398,16 @@ export default function GroupDashboard({
                           )}
                           <span className="flex items-center gap-1 font-graffiti text-[#1A1A1A]">
                             <Users className="w-3.5 h-3.5" />
-                            {event.attendeeCount}/{event.totalSpots}
+                            {event.availableSpots <= 0 ? 'FULL' : `${event.attendeeCount}/${event.totalSpots}`}
                           </span>
                           {event.offeredCount > 0 && (
                             <span className="badge-green text-[10px]">
                               {event.offeredCount} OPEN
+                            </span>
+                          )}
+                          {event.availableSpots <= 0 && (event.waitlistCount ?? 0) > 0 && (
+                            <span className="badge-blue text-[10px]">
+                              {event.waitlistCount} ON THE BENCH
                             </span>
                           )}
                         </div>

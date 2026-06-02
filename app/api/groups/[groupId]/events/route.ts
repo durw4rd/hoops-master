@@ -15,6 +15,7 @@ import {
   createEvent,
   getCountsForEvents,
   getUserStatusForEvents,
+  getWaitlistCountsForEvents,
   toEventDTO,
   fillSpots,
 } from '@/lib/queries/events';
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const ids = rows.map((r) => r.id);
     const counts = await getCountsForEvents(ids);
     const myStatus = await getUserStatusForEvents(ctx.user.id, ids);
+    const waitlistCounts = await getWaitlistCountsForEvents(ids);
 
     const data = rows.map((row) => {
       const dto = toEventDTO(row, ctx.group.timezone);
@@ -49,6 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         attendeeCount: c.confirmed,
         offeredCount: c.offered,
         availableSpots: row.totalSpots - c.occupancy,
+        waitlistCount: waitlistCounts.get(row.id) ?? 0,
         isAttending: s.attending,
         onWaitlist: s.onWaitlist,
       };

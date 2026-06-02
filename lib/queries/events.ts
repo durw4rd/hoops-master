@@ -141,6 +141,19 @@ export async function getUserStatusForEvents(
   return result;
 }
 
+/** Waitlist sizes for a set of events (for the games overview). */
+export async function getWaitlistCountsForEvents(eventIds: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  if (eventIds.length === 0) return result;
+  for (const id of eventIds) result.set(id, 0);
+  const rows = await db
+    .select({ eventId: eventWaitlist.eventId })
+    .from(eventWaitlist)
+    .where(inArray(eventWaitlist.eventId, eventIds));
+  for (const r of rows) result.set(r.eventId, (result.get(r.eventId) ?? 0) + 1);
+  return result;
+}
+
 export async function getEventAttendees(eventId: string): Promise<EventAttendee[]> {
   const holder = alias(users, 'holder');
   const original = alias(users, 'original');
