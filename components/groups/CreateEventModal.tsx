@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, Repeat, Loader2, Shuffle, Eye } from "lucide-react";
 import WeeklyScheduleBuilder from "./WeeklyScheduleBuilder";
+import LineupEditor from "./LineupEditor";
 import { expandWeeklySchedule, type ScheduleSlot } from "@/lib/schedule";
 
 type AssignmentMode = "player_signup" | "admin_assign" | "round_robin";
@@ -595,10 +596,19 @@ export default function CreateEventModal({
             {assignmentMode === "round_robin" && (
               <div className="space-y-3 border-t-2 border-[#1A1A1A]/20 pt-3 mt-3">
                 <p className="text-xs text-[#1A1A1A]/60 font-body">
-                  Squads slide down your saved Lineup so everyone gets fair reps. Set the lineup
-                  order and who&apos;s in from the <span className="font-graffiti">Rotation</span> tab.
+                  Squads slide down the lineup below so everyone gets fair reps. Reorder players and
+                  uncheck anyone sitting out, then <span className="font-graffiti">Save Lineup</span>.
                   Assigned spots cost credit like any other.
                 </p>
+
+                <div className="border-2 border-[#1A1A1A]/20 p-3">
+                  <LineupEditor
+                    groupId={groupId}
+                    members={members}
+                    onLineupSaved={() => setRotationPreview(null)}
+                  />
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="font-graffiti text-[#1A1A1A]">Slide</Label>
