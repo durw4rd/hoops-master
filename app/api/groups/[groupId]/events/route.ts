@@ -14,6 +14,7 @@ import {
   getEventRows,
   createEvent,
   getCountsForEvents,
+  getUserStatusForEvents,
   toEventDTO,
   fillSpots,
 } from '@/lib/queries/events';
@@ -35,16 +36,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const includePast = sp.get('includePast') === 'true';
 
     const rows = (await getEventRows(groupId, { includePast })).filter((e) => e.status !== 'cancelled');
-    const counts = await getCountsForEvents(rows.map((r) => r.id));
+    const ids = rows.map((r) => r.id);
+    const counts = await getCountsForEvents(ids);
+    const myStatus = await getUserStatusForEvents(ctx.user.id, ids);
 
     const data = rows.map((row) => {
       const dto = toEventDTO(row, ctx.group.timezone);
       const c = counts.get(row.id) ?? { confirmed: 0, offered: 0, occupancy: 0 };
+      const s = myStatus.get(row.id) ?? { attending: false, onWaitlist: false };
       return {
         ...dto,
         attendeeCount: c.confirmed,
         offeredCount: c.offered,
         availableSpots: row.totalSpots - c.occupancy,
+        isAttending: s.attending,
+        onWaitlist: s.onWaitlist,
       };
     });
 

@@ -56,26 +56,26 @@ export default function GroupList({ groups, loading, onSelectGroup, userEmail }:
           style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
           onClick={() => onSelectGroup(group)}
         >
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="font-graffiti text-xl text-[#1A1A1A] truncate tracking-wide">
+              <div className="flex items-start gap-2 min-w-0">
+                <h3 className="font-graffiti text-xl text-[#1A1A1A] tracking-wide min-w-0 break-words line-clamp-2">
                   {group.name}
                 </h3>
                 {group.visibility === 'private' ? (
-                  <span className="flex items-center gap-1 bg-[#1A1A1A] text-[#F2EFE9] px-2 py-0.5 text-[10px] font-graffiti border border-[#1A1A1A]">
+                  <span className="flex items-center gap-1 bg-[#1A1A1A] text-[#F2EFE9] px-2 py-0.5 text-[10px] font-graffiti border border-[#1A1A1A] flex-shrink-0 mt-1">
                     <Lock className="w-3 h-3" />
                     PRIVATE
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 bg-[#96E600] text-[#1A1A1A] px-2 py-0.5 text-[10px] font-graffiti border-2 border-[#1A1A1A]">
+                  <span className="flex items-center gap-1 bg-[#96E600] text-[#1A1A1A] px-2 py-0.5 text-[10px] font-graffiti border-2 border-[#1A1A1A] flex-shrink-0 mt-1">
                     <Globe className="w-3 h-3" />
                     PUBLIC
                   </span>
                 )}
               </div>
               {group.description && (
-                <p className="text-sm text-[#1A1A1A]/60 mt-1 truncate font-body">
+                <p className="text-sm text-[#1A1A1A]/60 mt-1 line-clamp-2 break-words font-body">
                   {group.description}
                 </p>
               )}

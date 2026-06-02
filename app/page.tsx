@@ -2,7 +2,7 @@
 
 import { useSession, signIn, signOut } from "next-auth/react";
 import { useFlags } from "launchdarkly-react-client-sdk";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import GroupList from "@/components/groups/GroupList";
@@ -30,6 +30,9 @@ export default function HoopsMaster() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(true);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  // Remember the last crew the user had open so we can land them there next session.
+  const autoOpenedRef = useRef(false);
+  const LAST_GROUP_KEY = "hoops:lastGroupId";
   
   // Modal state
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -87,6 +90,33 @@ export default function HoopsMaster() {
     }
   }, [status, fetchUserProfile, fetchGroups]);
 
+  // Once groups are loaded, jump straight to the last crew the user had open
+  // (only on the first load of the session).
+  useEffect(() => {
+    if (autoOpenedRef.current) return;
+    if (groupsLoading || groups.length === 0 || selectedGroup) return;
+    autoOpenedRef.current = true;
+    try {
+      const lastId = localStorage.getItem(LAST_GROUP_KEY);
+      if (lastId) {
+        const match = groups.find((g) => g.groupId === lastId);
+        if (match) setSelectedGroup(match);
+      }
+    } catch {
+      // localStorage unavailable — fall back to the crews overview.
+    }
+  }, [groupsLoading, groups, selectedGroup]);
+
+  // Persist the open crew so we can restore it next session.
+  useEffect(() => {
+    if (!selectedGroup) return;
+    try {
+      localStorage.setItem(LAST_GROUP_KEY, selectedGroup.groupId);
+    } catch {
+      // ignore
+    }
+  }, [selectedGroup]);
+
   // Handle group creation
   const handleGroupCreated = (newGroup: Group) => {
     setGroups(prev => [...prev, newGroup]);
@@ -112,6 +142,13 @@ export default function HoopsMaster() {
   // Handle back to groups list
   const handleBackToGroups = () => {
     setSelectedGroup(null);
+    // User chose the overview, so don't auto-reopen a crew this session or next.
+    autoOpenedRef.current = true;
+    try {
+      localStorage.removeItem(LAST_GROUP_KEY);
+    } catch {
+      // ignore
+    }
     fetchGroups(); // Refresh groups list
   };
 
@@ -240,6 +277,12 @@ export default function HoopsMaster() {
             onGroupUpdated={(updatedGroup) => setSelectedGroup(updatedGroup)}
             onGroupDeleted={() => {
               setSelectedGroup(null);
+              autoOpenedRef.current = true;
+              try {
+                localStorage.removeItem(LAST_GROUP_KEY);
+              } catch {
+                // ignore
+              }
               fetchGroups();
               fetchUserProfile();
             }}

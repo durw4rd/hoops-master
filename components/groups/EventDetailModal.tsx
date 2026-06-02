@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import EditEventModal from "./EditEventModal";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { 
   Clock, 
   MapPin, 
@@ -80,6 +81,8 @@ export default function EventDetailModal({
   const [members, setMembers] = useState<{ userEmail: string; displayName: string }[]>([]);
   const [assignEmail, setAssignEmail] = useState("");
   const [editOpen, setEditOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState<Record<string, string>>({});
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -122,9 +125,6 @@ export default function EventDetailModal({
   }, [open, fetchEvent, canManage, fetchMembers]);
 
   const handleDelete = async () => {
-    if (!confirm('Delete this game for everyone? This also removes its spot transactions and credit effects.')) {
-      return;
-    }
     setActionLoading('delete');
     setError(null);
     try {
@@ -134,6 +134,7 @@ export default function EventDetailModal({
         setError(data.error);
         return;
       }
+      setConfirmDeleteOpen(false);
       onEventUpdated();
       onOpenChange(false);
     } catch {
@@ -262,6 +263,59 @@ export default function EventDetailModal({
       onEventUpdated();
     } catch (err) {
       setError('Failed to assign player');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReassign = async (attendeeId: string) => {
+    const toUserEmail = reassignTarget[attendeeId];
+    if (!toUserEmail) return;
+    setActionLoading(`reassign-${attendeeId}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/reassign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendeeId, toUserEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      setReassignTarget((prev) => {
+        const next = { ...prev };
+        delete next[attendeeId];
+        return next;
+      });
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to reassign spot');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleUnassign = async (attendeeId: string) => {
+    setActionLoading(`unassign-${attendeeId}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/unassign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendeeId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to remove player');
     } finally {
       setActionLoading(null);
     }
@@ -529,7 +583,7 @@ export default function EventDetailModal({
                     EDIT GAME
                   </button>
                   <button
-                    onClick={handleDelete}
+                    onClick={() => setConfirmDeleteOpen(true)}
                     disabled={actionLoading === 'delete'}
                     className="flex-1 bg-[#FF5A00] text-white border-2 border-[#1A1A1A] font-graffiti text-sm py-2 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
@@ -579,6 +633,78 @@ export default function EventDetailModal({
                         'ASSIGN'
                       )}
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Manager: reassign or remove players already in the game */}
+              {canManage && confirmedAttendees.length > 0 && (
+                <div className="border-2 border-dashed border-[#1A1A1A]/40 p-3 space-y-2">
+                  <h3 className="font-graffiti text-sm text-[#1A1A1A]">Manage Squad</h3>
+                  <div className="space-y-2">
+                    {confirmedAttendees.map((attendee) => {
+                      const busy =
+                        actionLoading === `reassign-${attendee.attendeeId}` ||
+                        actionLoading === `unassign-${attendee.attendeeId}`;
+                      return (
+                        <div
+                          key={attendee.attendeeId}
+                          className="bg-white border-2 border-[#1A1A1A] p-2 space-y-2"
+                        >
+                          <span className="font-marker text-sm text-[#1A1A1A] block truncate">
+                            {attendee.userName}
+                          </span>
+                          <div className="flex gap-2">
+                            <Select
+                              value={reassignTarget[attendee.attendeeId] ?? ''}
+                              onValueChange={(v) =>
+                                setReassignTarget((prev) => ({ ...prev, [attendee.attendeeId]: v }))
+                              }
+                            >
+                              <SelectTrigger className="flex-1 bg-white border-2 border-[#1A1A1A] rounded-none font-body text-xs h-8 focus:ring-0 focus:ring-offset-0 shadow-[2px_2px_0_#1A1A1A]">
+                                <SelectValue placeholder="Swap with…" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-[#F2EFE9] border-2 border-[#1A1A1A] rounded-none">
+                                {members
+                                  .filter(
+                                    (m) =>
+                                      !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
+                                      !offeredSpots.some((a) => a.userEmail === m.userEmail)
+                                  )
+                                  .map((m) => (
+                                    <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                                      {m.displayName}
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                            <button
+                              onClick={() => handleReassign(attendee.attendeeId)}
+                              disabled={busy || !reassignTarget[attendee.attendeeId]}
+                              className="bg-[#0084FF] text-white border-2 border-[#1A1A1A] font-graffiti text-xs py-1 px-3 shadow-[2px_2px_0_#1A1A1A] hover:shadow-[3px_3px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50"
+                            >
+                              {actionLoading === `reassign-${attendee.attendeeId}` ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                'SWAP'
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleUnassign(attendee.attendeeId)}
+                              disabled={busy}
+                              title="Remove from game"
+                              className="bg-[#FF5A00] text-white border-2 border-[#1A1A1A] py-1 px-2.5 shadow-[2px_2px_0_#1A1A1A] hover:shadow-[3px_3px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50"
+                            >
+                              {actionLoading === `unassign-${attendee.attendeeId}` ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -715,6 +841,16 @@ export default function EventDetailModal({
         }}
       />
     )}
+
+    <ConfirmDialog
+      open={confirmDeleteOpen}
+      onOpenChange={setConfirmDeleteOpen}
+      title="Drop This Game?"
+      message="This deletes the game for everyone and reverses its spot transactions and credit effects. This can't be undone."
+      confirmLabel="DROP IT"
+      onConfirm={handleDelete}
+      loading={actionLoading === 'delete'}
+    />
     </>
   );
 }

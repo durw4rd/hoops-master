@@ -50,6 +50,7 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
   const [spots, setSpots] = useState(String(group.defaultEventSpots));
   const [slide, setSlide] = useState(String(group.roundRobinSlide));
   const [startOffset, setStartOffset] = useState("0");
+  const [location, setLocation] = useState("");
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [generating, setGenerating] = useState(false);
 
@@ -128,6 +129,7 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
       startTime: b.startTime,
       endTime: b.endTime,
       totalSpots: parseInt(spots) || group.defaultEventSpots,
+      location: location.trim() || undefined,
     }));
 
   const runGenerator = async (asPreview: boolean) => {
@@ -281,6 +283,17 @@ export default function RosterTab({ groupId, group, members, onEventsCreated }: 
           blockMinutes={blockMinutes}
           onBlockMinutesChange={setBlockMinutes}
         />
+
+        <div className="space-y-1">
+          <Label className="font-graffiti text-[#1A1A1A]">Where</Label>
+          <Input
+            type="text"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Court / gym (applies to all games)"
+            className="sketch-input"
+          />
+        </div>
 
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1">

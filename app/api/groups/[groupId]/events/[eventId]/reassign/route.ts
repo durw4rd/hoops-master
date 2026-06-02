@@ -14,6 +14,7 @@ import { getEventRowById, reassignSpot } from '@/lib/queries/events';
 import { getActiveMembersWithUsers } from '@/lib/queries/groups';
 import { SpotError } from '@/lib/queries/_tx';
 import { isPastEvent } from '@/lib/eventRules';
+import { isCrewManager } from '@/lib/roles';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -50,7 +51,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    const isAdmin = ctx.member.groupRole === 'admin';
+    // Crew Capo and King both wield manager powers over spots.
+    const isAdmin = isCrewManager(ctx.member.groupRole);
     const fromUserId = fromUserEmail ? emailToId.get(String(fromUserEmail).toLowerCase()) : undefined;
 
     // Non-admins may only give up their own spot.

@@ -25,6 +25,7 @@ import EventDetailModal from "./EventDetailModal";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
 import RosterTab from "./RosterTab";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { crewRoleLabel, isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
 import { Shuffle, Trash2 } from "lucide-react";
 
@@ -40,6 +41,8 @@ interface EventWithCounts extends Event {
   attendeeCount: number;
   offeredCount: number;
   availableSpots: number;
+  isAttending?: boolean;
+  onWaitlist?: boolean;
 }
 
 interface MemberInfo {
@@ -69,6 +72,8 @@ export default function GroupDashboard({
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
   const [deletingCrew, setDeletingCrew] = useState(false);
+  const [confirmDeleteCrewOpen, setConfirmDeleteCrewOpen] = useState(false);
+  const [gameFilter, setGameFilter] = useState<'all' | 'mine'>('all');
 
   // Crew roles: Capo (leader) has full control; Capo+King can manage events.
   const membership = userProfile?.groups.find(m => m.groupId === group.groupId);
@@ -76,6 +81,9 @@ export default function GroupDashboard({
   const canManage = isCrewManager(membership?.groupRole ?? '');
   const isOwner = userProfile?.globalRole === 'owner';
   const canDeleteCrew = isCapo || isOwner;
+
+  const myGameCount = events.filter((e) => e.isAttending || e.onWaitlist).length;
+  const visibleEvents = gameFilter === 'mine' ? events.filter((e) => e.isAttending || e.onWaitlist) : events;
 
   // Fetch events
   const fetchEvents = useCallback(async () => {
@@ -143,14 +151,11 @@ export default function GroupDashboard({
   };
 
   const handleDeleteCrew = async () => {
-    const confirmed = window.confirm(
-      `Delete the crew "${group.name}" for good? This wipes its games, waitlists, transactions and payments. This can't be undone.`
-    );
-    if (!confirmed) return;
     setDeletingCrew(true);
     try {
       const res = await fetch(`/api/groups/${group.groupId}`, { method: 'DELETE' });
       if (res.ok) {
+        setConfirmDeleteCrewOpen(false);
         onGroupDeleted?.(group.groupId);
       } else {
         const data = await res.json().catch(() => ({}));
@@ -297,6 +302,30 @@ export default function GroupDashboard({
         {/* Events Tab */}
         {activeTab === 'events' && (
           <div className="space-y-3">
+            {!eventsLoading && events.length > 0 && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setGameFilter('all')}
+                  className={`flex-1 sm:flex-none px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                    gameFilter === 'all'
+                      ? 'bg-[#1A1A1A] text-[#F2EFE9]'
+                      : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
+                  }`}
+                >
+                  All Games ({events.length})
+                </button>
+                <button
+                  onClick={() => setGameFilter('mine')}
+                  className={`flex-1 sm:flex-none px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                    gameFilter === 'mine'
+                      ? 'bg-[#96E600] text-[#1A1A1A]'
+                      : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
+                  }`}
+                >
+                  My Games ({myGameCount})
+                </button>
+              </div>
+            )}
             {eventsLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
@@ -311,29 +340,34 @@ export default function GroupDashboard({
                   </div>
                 ))}
               </div>
-            ) : events.length === 0 ? (
+            ) : visibleEvents.length === 0 ? (
               <div className="marker-card p-8 border-dashed border-[#1A1A1A]/30">
                 <div className="text-center space-y-4">
                   <div className="w-20 h-20 mx-auto rounded-full bg-[#FF5A00]/20 border-3 border-[#1A1A1A] flex items-center justify-center">
                     <Calendar className="w-10 h-10 text-[#FF5A00]" />
                   </div>
                   <div>
-                    <h3 className="font-graffiti text-2xl text-[#1A1A1A]">No Games Yet!</h3>
+                    <h3 className="font-graffiti text-2xl text-[#1A1A1A]">
+                      {gameFilter === 'mine' ? "You're Not In Any Games" : 'No Games Yet!'}
+                    </h3>
                     <p className="text-[#1A1A1A]/60 text-sm mt-2 font-body">
-                      {canManage 
-                        ? "Create your first event to get started"
-                        : "Check back later for new games"
-                      }
+                      {gameFilter === 'mine'
+                        ? 'Jump into a game and it’ll show up here'
+                        : canManage
+                        ? 'Create your first event to get started'
+                        : 'Check back later for new games'}
                     </p>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                {events.map((event, index) => (
+                {visibleEvents.map((event, index) => (
                   <div 
                     key={event.eventId}
-                    className="marker-card p-4 hover:shadow-[6px_6px_0_rgba(26,26,26,0.2)] transition-all cursor-pointer group"
+                    className={`marker-card p-4 hover:shadow-[6px_6px_0_rgba(26,26,26,0.2)] transition-all cursor-pointer group ${
+                      event.isAttending ? 'border-l-[6px] border-l-[#96E600]' : event.onWaitlist ? 'border-l-[6px] border-l-[#0084FF]' : ''
+                    }`}
                     style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                     onClick={() => setSelectedEventId(event.eventId)}
                   >
@@ -350,11 +384,17 @@ export default function GroupDashboard({
 
                       {/* Event info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
                           <Clock className="w-4 h-4 text-[#0084FF]" />
                           <span className="font-graffiti text-[#1A1A1A] text-base sm:text-lg">
                             {event.startTime} - {event.endTime}
                           </span>
+                          {event.isAttending && (
+                            <span className="badge-green text-[10px]">YOU&apos;RE IN</span>
+                          )}
+                          {!event.isAttending && event.onWaitlist && (
+                            <span className="badge-blue text-[10px]">ON THE BENCH</span>
+                          )}
                           {event.eventType && event.eventType !== 'regular' && (
                             <span className="tag-label-blue text-[10px] transform rotate-0 hidden sm:inline-block">
                               {event.eventType.toUpperCase()}
@@ -601,7 +641,7 @@ export default function GroupDashboard({
                   )}
                 </p>
                 <button
-                  onClick={handleDeleteCrew}
+                  onClick={() => setConfirmDeleteCrewOpen(true)}
                   disabled={deletingCrew}
                   className="sticker-btn flex items-center gap-2 disabled:opacity-50"
                 >
@@ -653,6 +693,16 @@ export default function GroupDashboard({
           onEventUpdated={fetchEvents}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteCrewOpen}
+        onOpenChange={setConfirmDeleteCrewOpen}
+        title="Burn It Down?"
+        message={`Delete the crew "${group.name}" for good? This wipes its games, waitlists, ledger and payments. No take-backs.`}
+        confirmLabel="BURN IT"
+        onConfirm={handleDeleteCrew}
+        loading={deletingCrew}
+      />
     </div>
   );
 }

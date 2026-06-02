@@ -91,6 +91,7 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
               onChange={(e) => setName(e.target.value)}
               placeholder="Thursday Ballers"
               className="sketch-input"
+              maxLength={40}
               required
             />
           </div>

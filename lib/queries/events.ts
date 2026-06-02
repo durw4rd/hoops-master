@@ -111,6 +111,36 @@ export async function getCountsForEvents(eventIds: string[]): Promise<Map<string
   return result;
 }
 
+/** Per-user attendance flags for a set of events (for list highlighting/filtering). */
+export async function getUserStatusForEvents(
+  userId: string,
+  eventIds: string[]
+): Promise<Map<string, { attending: boolean; onWaitlist: boolean }>> {
+  const result = new Map<string, { attending: boolean; onWaitlist: boolean }>();
+  if (eventIds.length === 0) return result;
+  for (const id of eventIds) result.set(id, { attending: false, onWaitlist: false });
+
+  const attRows = await db
+    .select({ eventId: eventAttendees.eventId })
+    .from(eventAttendees)
+    .where(and(inArray(eventAttendees.eventId, eventIds), eq(eventAttendees.userId, userId)));
+  for (const r of attRows) {
+    const s = result.get(r.eventId);
+    if (s) s.attending = true;
+  }
+
+  const wlRows = await db
+    .select({ eventId: eventWaitlist.eventId })
+    .from(eventWaitlist)
+    .where(and(inArray(eventWaitlist.eventId, eventIds), eq(eventWaitlist.userId, userId)));
+  for (const r of wlRows) {
+    const s = result.get(r.eventId);
+    if (s) s.onWaitlist = true;
+  }
+
+  return result;
+}
+
 export async function getEventAttendees(eventId: string): Promise<EventAttendee[]> {
   const holder = alias(users, 'holder');
   const original = alias(users, 'original');
@@ -635,6 +665,30 @@ export async function reassignSpot(params: {
       amount: Number(event.slotCost),
     });
     return attendee;
+  });
+}
+
+/**
+ * Manager action: remove a player from a game entirely (no replacement). This
+ * voids the spot — deleting the attendee row and the spot's whole transaction
+ * chain — which exactly reverses its credit footprint (the holder is refunded
+ * and any intermediate transfers are unwound), mirroring deleting the event but
+ * for a single spot.
+ */
+export async function adminUnassignSpot(params: {
+  eventId: string;
+  attendeeId: string;
+}): Promise<void> {
+  await serializableTx(async (tx) => {
+    const [attendee] = await tx
+      .select()
+      .from(eventAttendees)
+      .where(and(eq(eventAttendees.id, params.attendeeId), eq(eventAttendees.eventId, params.eventId)))
+      .limit(1);
+    if (!attendee) throw new SpotError('Spot not found for this event', 404);
+
+    await tx.delete(spotTransactions).where(eq(spotTransactions.attendeeId, params.attendeeId));
+    await tx.delete(eventAttendees).where(eq(eventAttendees.id, params.attendeeId));
   });
 }
 
