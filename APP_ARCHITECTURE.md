@@ -117,16 +117,19 @@ assign, waitlist promotion) run inside **serializable transactions** with
 - `player_signup` — players self-claim once `signup_opens_at` passes.
 - `round_robin` — sliding-window auto-assignment over the active rotation roster.
   For event _k_: `start = (startOffset + k*slide) mod N`, take `min(spots, N)`
-  players cyclically. Configured + generated from the **Rotation** tab.
+  players cyclically. Chosen as the assignment mode in the **Recurring** tab of the
+  create-game flow; the **Rotation** tab only manages the persistent lineup order +
+  who's active (the saved roster the slide runs over).
 
 **Weekly schedules** (`lib/schedule.ts`): a fixed weekly schedule is a set of slots
 (day-of-week + start/end time), each optionally split into fixed-length **blocks**
 (e.g. Mon 18:00–20:00 + Wed 17:00–19:00 with 60-min blocks → 4 one-hour games/week).
 `expandWeeklySchedule()` turns slots + block length + a date range into concrete
 event blocks sorted chronologically. The shared `WeeklyScheduleBuilder` component
-drives both the recurring creator (`POST /events/bulk` accepts an explicit `events`
-block array) and the Rotation tab (`POST /events/round-robin`, which slides players
-across all blocks in order).
+drives the recurring creator: with `player_signup`/`admin_assign` it posts the block
+array to `POST /events/bulk`; with `round_robin` it posts the same blocks to
+`POST /events/round-robin` (with a fairness preview gate before committing), which
+slides players across all blocks in order.
 
 ## API map
 

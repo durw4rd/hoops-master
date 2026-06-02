@@ -532,10 +532,6 @@ export default function GroupDashboard({
             groupId={group.groupId}
             group={group}
             members={members.map((m) => ({ userEmail: m.userEmail, displayName: m.displayName }))}
-            onEventsCreated={() => {
-              fetchEvents();
-              setActiveTab('events');
-            }}
           />
         )}
 
@@ -665,6 +661,8 @@ export default function GroupDashboard({
         groupId={group.groupId}
         defaultSpots={group.defaultEventSpots}
         defaultCost={group.defaultSlotCost}
+        members={members.map((m) => ({ userEmail: m.userEmail, displayName: m.displayName }))}
+        roundRobinSlide={group.roundRobinSlide}
         onEventCreated={() => {
           setCreateEventOpen(false);
           fetchEvents();

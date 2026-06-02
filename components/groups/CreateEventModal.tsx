@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,9 +11,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Repeat, Loader2 } from "lucide-react";
+import { Calendar, Repeat, Loader2, Shuffle, Eye } from "lucide-react";
 import WeeklyScheduleBuilder from "./WeeklyScheduleBuilder";
 import { expandWeeklySchedule, type ScheduleSlot } from "@/lib/schedule";
+
+type AssignmentMode = "player_signup" | "admin_assign" | "round_robin";
+
+interface RotationPreview {
+  rosterSize: number;
+  slide: number;
+  fairness: { userEmail: string; count: number }[];
+  events: { date: string; startTime: string; endTime: string; offset: number; assignedEmails: string[] }[];
+}
 
 interface CreateEventModalProps {
   open: boolean;
@@ -21,6 +30,9 @@ interface CreateEventModalProps {
   groupId: string;
   defaultSpots: number;
   defaultCost: number;
+  /** Used to show display names in the rotation preview. */
+  members?: { userEmail: string; displayName: string }[];
+  roundRobinSlide?: number;
   onEventCreated: () => void;
 }
 
@@ -57,6 +69,8 @@ export default function CreateEventModal({
   groupId,
   defaultSpots,
   defaultCost,
+  members = [],
+  roundRobinSlide = 1,
   onEventCreated,
 }: CreateEventModalProps) {
   const [date, setDate] = useState("");
@@ -65,12 +79,16 @@ export default function CreateEventModal({
   const [totalSpots, setTotalSpots] = useState(String(defaultSpots));
   const [slotCost, setSlotCost] = useState(String(defaultCost));
   const [location, setLocation] = useState("");
-  const [assignmentMode, setAssignmentMode] = useState<"player_signup" | "admin_assign">(
-    "player_signup"
-  );
+  const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>("player_signup");
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+
+  // Round-robin (Rotation) controls — only used when assignmentMode === 'round_robin'.
+  const [slide, setSlide] = useState(String(roundRobinSlide));
+  const [startOffset, setStartOffset] = useState("0");
+  const [rotationPreview, setRotationPreview] = useState<RotationPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
 
   // Recurring schedule: one or more weekly slots, optionally split into blocks.
   const [slots, setSlots] = useState<ScheduleSlot[]>([
@@ -139,6 +157,57 @@ export default function CreateEventModal({
     }
   };
 
+  // Block list shared by bulk + round-robin recurring creation.
+  const buildRotationEvents = () =>
+    expandWeeklySchedule(slots, blockMinutes, startDate, endDate).map((b) => ({
+      date: b.date,
+      startTime: b.startTime,
+      endTime: b.endTime,
+      totalSpots: parseInt(totalSpots) || defaultSpots,
+      slotCost: parseFloat(slotCost) || 0,
+      location: location || undefined,
+    }));
+
+  const nameFor = (email: string) =>
+    members.find((m) => m.userEmail === email)?.displayName || email.split("@")[0];
+
+  // Any change to the schedule/rotation knobs invalidates a prior preview.
+  useEffect(() => {
+    setRotationPreview(null);
+  }, [slots, blockMinutes, startDate, endDate, slide, startOffset, totalSpots, assignmentMode]);
+
+  const runRotationPreview = async () => {
+    setError(null);
+    const events = buildRotationEvents();
+    if (events.length === 0) {
+      setError("No games in that range — check your slots and dates.");
+      return;
+    }
+    setPreviewing(true);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/round-robin`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          events,
+          slide: parseInt(slide) || 1,
+          startOffset: parseInt(startOffset) || 0,
+          preview: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Couldn't preview the rotation");
+        return;
+      }
+      setRotationPreview(data.data);
+    } catch {
+      setError("Couldn't preview the rotation");
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const handleCreateRecurring = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -151,6 +220,27 @@ export default function CreateEventModal({
 
     setLoading(true);
     try {
+      if (assignmentMode === "round_robin") {
+        const res = await fetch(`/api/groups/${groupId}/events/round-robin`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            events: buildRotationEvents(),
+            slide: parseInt(slide) || 1,
+            startOffset: parseInt(startOffset) || 0,
+            preview: false,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.error || "Failed to create the rotation");
+          return;
+        }
+        resetForm();
+        onEventCreated();
+        return;
+      }
+
       const res = await fetch(`/api/groups/${groupId}/events/bulk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -192,6 +282,9 @@ export default function CreateEventModal({
     setSlots([{ dayOfWeek: 1, startTime: "18:00", endTime: "20:00" }]);
     setBlockMinutes(0);
     setAssignmentMode("player_signup");
+    setSlide(String(roundRobinSlide));
+    setStartOffset("0");
+    setRotationPreview(null);
     setSignupOpenType("immediate");
     setSignupDaysBefore(7);
     setSignupAbsoluteDate("");
@@ -199,25 +292,28 @@ export default function CreateEventModal({
     setError(null);
   };
 
-  const AssignmentModeSection = () => (
+  const renderAssignmentMode = (allowRoundRobin: boolean) => (
     <div className="space-y-2">
       <Label className="font-graffiti text-[#1A1A1A]">Assignment Mode</Label>
-      <Select value={assignmentMode} onValueChange={(v) => setAssignmentMode(v as any)}>
+      <Select value={assignmentMode} onValueChange={(v) => setAssignmentMode(v as AssignmentMode)}>
         <SelectTrigger className="sketch-input">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="player_signup">Players sign up</SelectItem>
           <SelectItem value="admin_assign">Admin assigns players</SelectItem>
+          {allowRoundRobin && <SelectItem value="round_robin">Rotation (sliding squads)</SelectItem>}
         </SelectContent>
       </Select>
-      <p className="text-xs text-[#1A1A1A]/40 font-body">
-        Round-robin (sliding squads) is set up from the Rotation tab.
-      </p>
+      {!allowRoundRobin && (
+        <p className="text-xs text-[#1A1A1A]/40 font-body">
+          Rotation (sliding squads) runs across a series — use the Recurring tab for that.
+        </p>
+      )}
     </div>
   );
 
-  const SignupTimingSection = () => (
+  const renderSignupTiming = () => (
     <div className="space-y-3 border-t-2 border-[#1A1A1A]/20 pt-3 mt-3">
       <Label className="font-graffiti text-[#1A1A1A]">Signup Opens</Label>
       <Select value={signupOpenType} onValueChange={(v) => setSignupOpenType(v as any)}>
@@ -281,7 +377,11 @@ export default function CreateEventModal({
         <div className="flex gap-2 bg-[#1A1A1A] p-1 mt-2">
           <button
             type="button"
-            onClick={() => setActiveTab('single')}
+            onClick={() => {
+              setActiveTab('single');
+              // Rotation only applies to a series; drop it when moving to a single game.
+              if (assignmentMode === 'round_robin') setAssignmentMode('player_signup');
+            }}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
               activeTab === 'single' 
                 ? 'bg-[#FF5A00] text-white' 
@@ -387,9 +487,9 @@ export default function CreateEventModal({
               />
             </div>
 
-            <AssignmentModeSection />
+            {renderAssignmentMode(false)}
 
-            {assignmentMode === "player_signup" && <SignupTimingSection />}
+            {assignmentMode === "player_signup" && renderSignupTiming()}
 
             {error && (
               <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
@@ -487,9 +587,92 @@ export default function CreateEventModal({
               />
             </div>
 
-            <AssignmentModeSection />
+            {renderAssignmentMode(true)}
 
-            {assignmentMode === "player_signup" && <SignupTimingSection />}
+            {assignmentMode === "player_signup" && renderSignupTiming()}
+
+            {/* Rotation (round-robin) controls + fairness preview */}
+            {assignmentMode === "round_robin" && (
+              <div className="space-y-3 border-t-2 border-[#1A1A1A]/20 pt-3 mt-3">
+                <p className="text-xs text-[#1A1A1A]/60 font-body">
+                  Squads slide down your saved Lineup so everyone gets fair reps. Set the lineup
+                  order and who&apos;s in from the <span className="font-graffiti">Rotation</span> tab.
+                  Assigned spots cost credit like any other.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="font-graffiti text-[#1A1A1A]">Slide</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={slide}
+                      onChange={(e) => setSlide(e.target.value)}
+                      className="sketch-input"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="font-graffiti text-[#1A1A1A]">Start at #</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={startOffset}
+                      onChange={(e) => setStartOffset(e.target.value)}
+                      className="sketch-input"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={runRotationPreview}
+                  disabled={previewing || !startDate || !endDate}
+                  className="sticker-btn-outline w-full flex items-center justify-center gap-2 text-sm py-2 disabled:opacity-50"
+                >
+                  {previewing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                  Preview the Split
+                </button>
+
+                {rotationPreview && (
+                  <div className="space-y-3 border-t-2 border-[#1A1A1A]/10 pt-3">
+                    <div>
+                      <h4 className="font-graffiti text-[#1A1A1A]">
+                        Fair Split ({rotationPreview.events.length} games · {rotationPreview.rosterSize} in rotation)
+                      </h4>
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {rotationPreview.fairness
+                          .slice()
+                          .sort((a, b) => b.count - a.count)
+                          .map((f) => (
+                            <span key={f.userEmail} className="badge-blue text-[10px]">
+                              {nameFor(f.userEmail)}: {f.count}
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {rotationPreview.events.map((ev, i) => (
+                        <div key={`${ev.date}-${ev.startTime}-${i}`} className="border-2 border-[#1A1A1A]/20 p-2">
+                          <p className="font-graffiti text-sm text-[#1A1A1A]">
+                            {new Date(`${ev.date}T00:00:00`).toLocaleDateString("en-US", {
+                              weekday: "short",
+                              month: "short",
+                              day: "numeric",
+                            })}
+                            <span className="text-[#1A1A1A]/50 ml-1.5">
+                              {ev.startTime}–{ev.endTime}
+                            </span>
+                          </p>
+                          <p className="text-xs text-[#1A1A1A]/60 font-body">
+                            {ev.assignedEmails.map((em) => nameFor(em)).join(", ")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {error && (
               <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
@@ -499,13 +682,30 @@ export default function CreateEventModal({
 
             <button
               type="submit"
-              disabled={loading || !startDate || !endDate}
-              className="sticker-btn-blue w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={
+                loading ||
+                !startDate ||
+                !endDate ||
+                (assignmentMode === "round_robin" && !rotationPreview)
+              }
+              title={
+                assignmentMode === "round_robin" && !rotationPreview
+                  ? "Preview the split first to check fairness"
+                  : undefined
+              }
+              className={`w-full disabled:opacity-50 disabled:cursor-not-allowed ${
+                assignmentMode === "round_robin" ? "sticker-btn" : "sticker-btn-blue"
+              }`}
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin inline" />
-                  Locking it in...
+                  {assignmentMode === "round_robin" ? "Dropping the rotation..." : "Locking it in..."}
+                </>
+              ) : assignmentMode === "round_robin" ? (
+                <>
+                  <Shuffle className="w-4 h-4 mr-2 inline" />
+                  Drop the Rotation
                 </>
               ) : (
                 "Lock the Season"
