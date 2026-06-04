@@ -90,10 +90,10 @@ export default function AddMemberModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-[8px_8px_0_#1A1A1A]">
+      <DialogContent className="graffiti-dialog max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-sticker-lg">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">Put &apos;Em On</DialogTitle>
-          <DialogDescription className="text-[#1A1A1A]/60 font-body">
+          <DialogTitle className="graffiti-dialog-title">Put &apos;Em On</DialogTitle>
+          <DialogDescription className="text-asphalt/60 font-body">
             Pull a name from the yard and put them down with the crew — they don&apos;t even
             have to be signed in yet.
           </DialogDescription>
@@ -101,7 +101,7 @@ export default function AddMemberModal({
 
         <div className="space-y-3 mt-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#1A1A1A]/40 pointer-events-none" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-asphalt/40 pointer-events-none" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -112,17 +112,17 @@ export default function AddMemberModal({
           </div>
 
           {error && (
-            <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-              <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+            <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+              <p className="text-sm text-terracotta font-body">{error}</p>
             </div>
           )}
 
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin text-[#1A1A1A]/40" />
+              <Loader2 className="w-6 h-6 animate-spin text-asphalt/40" />
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-center text-[#1A1A1A]/50 font-body py-8">
+            <p className="text-center text-asphalt/50 font-body py-8">
               {users.length === 0 ? "Everyone's already in the crew." : "No players match your search."}
             </p>
           ) : (
@@ -133,20 +133,20 @@ export default function AddMemberModal({
                   className="marker-card p-2.5 flex items-center justify-between bg-white"
                 >
                   <div className="min-w-0">
-                    <p className="font-marker text-[#1A1A1A] truncate">
+                    <p className="font-marker text-asphalt truncate">
                       {u.displayName}
                       {!u.onboarded && (
-                        <span className="ml-1 text-[10px] text-[#1A1A1A]/50 font-graffiti">
+                        <span className="ml-1 text-[10px] text-asphalt/50 font-graffiti">
                           not on yet
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-[#1A1A1A]/50 font-body truncate">{u.email}</p>
+                    <p className="text-xs text-asphalt/50 font-body truncate">{u.email}</p>
                   </div>
                   <button
                     onClick={() => addMember(u.email)}
                     disabled={adding === u.email}
-                    className="bg-[#7FFF00] text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti text-sm py-1.5 px-3 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50 flex items-center gap-1 flex-shrink-0"
+                    className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-3 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center gap-1 flex-shrink-0"
                   >
                     {adding === u.email ? (
                       <Loader2 className="w-4 h-4 animate-spin" />

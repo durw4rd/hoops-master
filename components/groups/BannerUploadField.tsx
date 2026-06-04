@@ -65,11 +65,11 @@ export default function BannerUploadField({
   };
 
   const frameClass = isPortrait
-    ? "relative h-56 w-40 mx-auto border-2 border-[#1A1A1A] overflow-hidden"
-    : "relative h-28 w-full border-2 border-[#1A1A1A] overflow-hidden";
+    ? "relative h-56 w-40 mx-auto border-2 border-asphalt overflow-hidden"
+    : "relative h-28 w-full border-2 border-asphalt overflow-hidden";
   const emptyClass = isPortrait
-    ? "flex flex-col items-center justify-center gap-2 h-56 w-40 mx-auto border-2 border-dashed border-[#1A1A1A]/50 bg-white hover:bg-[#F2EFE9] transition-colors disabled:opacity-50"
-    : "flex flex-col items-center justify-center gap-2 h-28 w-full border-2 border-dashed border-[#1A1A1A]/50 bg-white hover:bg-[#F2EFE9] transition-colors disabled:opacity-50";
+    ? "flex flex-col items-center justify-center gap-2 h-56 w-40 mx-auto border-2 border-dashed border-asphalt/50 bg-white hover:bg-sticker-white transition-colors disabled:opacity-50"
+    : "flex flex-col items-center justify-center gap-2 h-28 w-full border-2 border-dashed border-asphalt/50 bg-white hover:bg-sticker-white transition-colors disabled:opacity-50";
 
   return (
     <div className="space-y-2">
@@ -87,8 +87,8 @@ export default function BannerUploadField({
           <button
             type="button"
             onClick={() => onOrientationChange("landscape")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-[#1A1A1A] text-xs font-graffiti transition-colors ${
-              !isPortrait ? "bg-[#FF5A00] text-white" : "bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]"
+            className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-asphalt text-xs font-graffiti transition-colors ${
+              !isPortrait ? "bg-terracotta text-white" : "bg-white text-asphalt hover:bg-sticker-white"
             }`}
           >
             <RectangleHorizontal className="w-4 h-4" /> Landscape
@@ -96,8 +96,8 @@ export default function BannerUploadField({
           <button
             type="button"
             onClick={() => onOrientationChange("portrait")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-[#1A1A1A] text-xs font-graffiti transition-colors ${
-              isPortrait ? "bg-[#FF5A00] text-white" : "bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]"
+            className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-asphalt text-xs font-graffiti transition-colors ${
+              isPortrait ? "bg-terracotta text-white" : "bg-white text-asphalt hover:bg-sticker-white"
             }`}
           >
             <RectangleVertical className="w-4 h-4" /> Portrait
@@ -111,7 +111,7 @@ export default function BannerUploadField({
           <button
             type="button"
             onClick={() => onChange(undefined)}
-            className="absolute top-1 right-1 bg-[#1A1A1A] text-white p-1 hover:bg-[#FF5A00]"
+            className="absolute top-1 right-1 bg-asphalt text-white p-1 hover:bg-terracotta"
             aria-label="Remove banner"
           >
             <X className="w-4 h-4" />
@@ -120,7 +120,7 @@ export default function BannerUploadField({
             type="button"
             onClick={handlePick}
             disabled={uploading}
-            className="absolute bottom-1 right-1 bg-[#1A1A1A] text-white text-xs font-graffiti px-2 py-1 hover:bg-[#FF5A00] disabled:opacity-50"
+            className="absolute bottom-1 right-1 bg-asphalt text-white text-xs font-graffiti px-2 py-1 hover:bg-terracotta disabled:opacity-50"
           >
             {uploading ? "Uploading..." : "Replace"}
           </button>
@@ -128,17 +128,17 @@ export default function BannerUploadField({
       ) : (
         <button type="button" onClick={handlePick} disabled={uploading} className={emptyClass}>
           {uploading ? (
-            <Loader2 className="w-6 h-6 animate-spin text-[#FF5A00]" />
+            <Loader2 className="w-6 h-6 animate-spin text-terracotta" />
           ) : (
             <>
-              <ImagePlus className="w-6 h-6 text-[#1A1A1A]/60" />
-              <span className="font-body text-sm text-[#1A1A1A]/60">Upload a banner (optional)</span>
+              <ImagePlus className="w-6 h-6 text-asphalt/60" />
+              <span className="font-body text-sm text-asphalt/60">Upload a banner (optional)</span>
             </>
           )}
         </button>
       )}
 
-      {error && <p className="text-xs text-[#FF5A00] font-body">{error}</p>}
+      {error && <p className="text-xs text-terracotta font-body">{error}</p>}
     </div>
   );
 }

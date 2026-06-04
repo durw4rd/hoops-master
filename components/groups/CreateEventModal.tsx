@@ -295,7 +295,7 @@ export default function CreateEventModal({
 
   const renderAssignmentMode = (allowRoundRobin: boolean) => (
     <div className="space-y-2">
-      <Label className="font-graffiti text-[#1A1A1A]">Assignment Mode</Label>
+      <Label className="font-graffiti text-asphalt">Assignment Mode</Label>
       <Select value={assignmentMode} onValueChange={(v) => setAssignmentMode(v as AssignmentMode)}>
         <SelectTrigger className="sketch-input">
           <SelectValue />
@@ -307,7 +307,7 @@ export default function CreateEventModal({
         </SelectContent>
       </Select>
       {!allowRoundRobin && (
-        <p className="text-xs text-[#1A1A1A]/40 font-body">
+        <p className="text-xs text-asphalt/40 font-body">
           Rotation (sliding squads) runs across a series — use the Recurring tab for that.
         </p>
       )}
@@ -315,8 +315,8 @@ export default function CreateEventModal({
   );
 
   const renderSignupTiming = () => (
-    <div className="space-y-3 border-t-2 border-[#1A1A1A]/20 pt-3 mt-3">
-      <Label className="font-graffiti text-[#1A1A1A]">Signup Opens</Label>
+    <div className="space-y-3 border-t-2 border-asphalt/20 pt-3 mt-3">
+      <Label className="font-graffiti text-asphalt">Signup Opens</Label>
       <Select value={signupOpenType} onValueChange={(v) => setSignupOpenType(v as any)}>
         <SelectTrigger className="sketch-input">
           <SelectValue />
@@ -339,9 +339,9 @@ export default function CreateEventModal({
               onChange={(e) => setSignupDaysBefore(parseInt(e.target.value) || 1)}
               className="sketch-input w-20"
             />
-            <span className="text-sm text-[#1A1A1A]/60 font-body">days before event</span>
+            <span className="text-sm text-asphalt/60 font-body">days before event</span>
           </div>
-          <p className="text-xs text-[#1A1A1A]/40 font-body">Opens at event start time</p>
+          <p className="text-xs text-asphalt/40 font-body">Opens at event start time</p>
         </div>
       )}
 
@@ -366,16 +366,16 @@ export default function CreateEventModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-[8px_8px_0_#1A1A1A]">
+      <DialogContent className="graffiti-dialog max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-sticker-lg">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">Drop a Game</DialogTitle>
-          <DialogDescription className="text-[#1A1A1A]/60 font-body">
+          <DialogTitle className="graffiti-dialog-title">Drop a Game</DialogTitle>
+          <DialogDescription className="text-asphalt/60 font-body">
             Set up a one-off run or lock in a whole season
           </DialogDescription>
         </DialogHeader>
 
         {/* Tab Buttons */}
-        <div className="flex gap-2 bg-[#1A1A1A] p-1 mt-2">
+        <div className="flex gap-2 bg-asphalt p-1 mt-2">
           <button
             type="button"
             onClick={() => {
@@ -385,8 +385,8 @@ export default function CreateEventModal({
             }}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
               activeTab === 'single' 
-                ? 'bg-[#FF5A00] text-white' 
-                : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                ? 'bg-terracotta text-white' 
+                : 'text-sticker-white/60 hover:text-sticker-white'
             }`}
           >
             <Calendar className="w-4 h-4" />
@@ -397,8 +397,8 @@ export default function CreateEventModal({
             onClick={() => setActiveTab('recurring')}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
               activeTab === 'recurring' 
-                ? 'bg-[#0084FF] text-white' 
-                : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                ? 'bg-slate-blue text-white' 
+                : 'text-sticker-white/60 hover:text-sticker-white'
             }`}
           >
             <Repeat className="w-4 h-4" />
@@ -410,7 +410,7 @@ export default function CreateEventModal({
         {activeTab === 'single' && (
           <form onSubmit={handleCreateSingle} className="space-y-3 mt-4">
             <div className="space-y-2">
-              <Label htmlFor="date" className="font-graffiti text-[#1A1A1A]">Date</Label>
+              <Label htmlFor="date" className="font-graffiti text-asphalt">Date</Label>
               <Input
                 id="date"
                 type="date"
@@ -423,7 +423,7 @@ export default function CreateEventModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label className="font-graffiti text-[#1A1A1A]">Start</Label>
+                <Label className="font-graffiti text-asphalt">Start</Label>
                 <Select value={startTime} onValueChange={setStartTime}>
                   <SelectTrigger className="sketch-input">
                     <SelectValue />
@@ -436,7 +436,7 @@ export default function CreateEventModal({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="font-graffiti text-[#1A1A1A]">End</Label>
+                <Label className="font-graffiti text-asphalt">End</Label>
                 <Select value={endTime} onValueChange={setEndTime}>
                   <SelectTrigger className="sketch-input">
                     <SelectValue />
@@ -452,7 +452,7 @@ export default function CreateEventModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="spots" className="font-graffiti text-[#1A1A1A]">Spots</Label>
+                <Label htmlFor="spots" className="font-graffiti text-asphalt">Spots</Label>
                 <Input
                   id="spots"
                   type="number"
@@ -464,7 +464,7 @@ export default function CreateEventModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="cost" className="font-graffiti text-[#1A1A1A]">Cost (€)</Label>
+                <Label htmlFor="cost" className="font-graffiti text-asphalt">Cost (€)</Label>
                 <Input
                   id="cost"
                   type="number"
@@ -478,7 +478,7 @@ export default function CreateEventModal({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="location" className="font-graffiti text-[#1A1A1A]">Location</Label>
+              <Label htmlFor="location" className="font-graffiti text-asphalt">Location</Label>
               <Input
                 id="location"
                 value={location}
@@ -493,8 +493,8 @@ export default function CreateEventModal({
             {assignmentMode === "player_signup" && renderSignupTiming()}
 
             {error && (
-              <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-                <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+              <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+                <p className="text-sm text-terracotta font-body">{error}</p>
               </div>
             )}
 
@@ -520,7 +520,7 @@ export default function CreateEventModal({
           <form onSubmit={handleCreateRecurring} className="space-y-3 mt-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="startDate" className="font-graffiti text-[#1A1A1A]">From</Label>
+                <Label htmlFor="startDate" className="font-graffiti text-asphalt">From</Label>
                 <Input
                   id="startDate"
                   type="date"
@@ -531,7 +531,7 @@ export default function CreateEventModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="endDate" className="font-graffiti text-[#1A1A1A]">Until</Label>
+                <Label htmlFor="endDate" className="font-graffiti text-asphalt">Until</Label>
                 <Input
                   id="endDate"
                   type="date"
@@ -552,7 +552,7 @@ export default function CreateEventModal({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label htmlFor="rSpots" className="font-graffiti text-[#1A1A1A]">Spots</Label>
+                <Label htmlFor="rSpots" className="font-graffiti text-asphalt">Spots</Label>
                 <Input
                   id="rSpots"
                   type="number"
@@ -564,7 +564,7 @@ export default function CreateEventModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="rCost" className="font-graffiti text-[#1A1A1A]">Cost (€)</Label>
+                <Label htmlFor="rCost" className="font-graffiti text-asphalt">Cost (€)</Label>
                 <Input
                   id="rCost"
                   type="number"
@@ -578,7 +578,7 @@ export default function CreateEventModal({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rLocation" className="font-graffiti text-[#1A1A1A]">Location</Label>
+              <Label htmlFor="rLocation" className="font-graffiti text-asphalt">Location</Label>
               <Input
                 id="rLocation"
                 value={location}
@@ -594,14 +594,14 @@ export default function CreateEventModal({
 
             {/* Rotation (round-robin) controls + fairness preview */}
             {assignmentMode === "round_robin" && (
-              <div className="space-y-3 border-t-2 border-[#1A1A1A]/20 pt-3 mt-3">
-                <p className="text-xs text-[#1A1A1A]/60 font-body">
+              <div className="space-y-3 border-t-2 border-asphalt/20 pt-3 mt-3">
+                <p className="text-xs text-asphalt/60 font-body">
                   Squads slide down the lineup below so everyone gets fair reps. Reorder players and
                   uncheck anyone sitting out, then <span className="font-graffiti">Save Lineup</span>.
                   Assigned spots cost credit like any other.
                 </p>
 
-                <div className="border-2 border-[#1A1A1A]/20 p-3">
+                <div className="border-2 border-asphalt/20 p-3">
                   <LineupEditor
                     groupId={groupId}
                     members={members}
@@ -611,7 +611,7 @@ export default function CreateEventModal({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="font-graffiti text-[#1A1A1A]">Slide</Label>
+                    <Label className="font-graffiti text-asphalt">Slide</Label>
                     <Input
                       type="number"
                       min="1"
@@ -622,7 +622,7 @@ export default function CreateEventModal({
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label className="font-graffiti text-[#1A1A1A]">Start at #</Label>
+                    <Label className="font-graffiti text-asphalt">Start at #</Label>
                     <Input
                       type="number"
                       min="0"
@@ -644,9 +644,9 @@ export default function CreateEventModal({
                 </button>
 
                 {rotationPreview && (
-                  <div className="space-y-3 border-t-2 border-[#1A1A1A]/10 pt-3">
+                  <div className="space-y-3 border-t-2 border-asphalt/10 pt-3">
                     <div>
-                      <h4 className="font-graffiti text-[#1A1A1A]">
+                      <h4 className="font-graffiti text-asphalt">
                         Fair Split ({rotationPreview.events.length} games · {rotationPreview.rosterSize} in rotation)
                       </h4>
                       <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -662,18 +662,18 @@ export default function CreateEventModal({
                     </div>
                     <div className="space-y-1.5 max-h-48 overflow-y-auto">
                       {rotationPreview.events.map((ev, i) => (
-                        <div key={`${ev.date}-${ev.startTime}-${i}`} className="border-2 border-[#1A1A1A]/20 p-2">
-                          <p className="font-graffiti text-sm text-[#1A1A1A]">
+                        <div key={`${ev.date}-${ev.startTime}-${i}`} className="border-2 border-asphalt/20 p-2">
+                          <p className="font-graffiti text-sm text-asphalt">
                             {new Date(`${ev.date}T00:00:00`).toLocaleDateString("en-US", {
                               weekday: "short",
                               month: "short",
                               day: "numeric",
                             })}
-                            <span className="text-[#1A1A1A]/50 ml-1.5">
+                            <span className="text-asphalt/50 ml-1.5">
                               {ev.startTime}–{ev.endTime}
                             </span>
                           </p>
-                          <p className="text-xs text-[#1A1A1A]/60 font-body">
+                          <p className="text-xs text-asphalt/60 font-body">
                             {ev.assignedEmails.map((em) => nameFor(em)).join(", ")}
                           </p>
                         </div>
@@ -685,8 +685,8 @@ export default function CreateEventModal({
             )}
 
             {error && (
-              <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-                <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+              <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+                <p className="text-sm text-terracotta font-body">{error}</p>
               </div>
             )}
 

@@ -22,6 +22,8 @@ export async function GET() {
       defaultEventSpots: group.defaultEventSpots,
       createdAt: group.createdAt,
       status: group.status,
+      bannerUrl: group.bannerUrl,
+      bannerOrientation: group.bannerOrientation,
     }));
     return NextResponse.json({ success: true, data: publicGroups });
   } catch (error) {

@@ -4,18 +4,18 @@
   "description": "Hoops event management platform",
   "icons": [
     {
-      "src": "/android-chrome-192x192.png",
-      "sizes": "192x192",
+      "src": "/logo-new-200.png",
+      "sizes": "200x200",
       "type": "image/png"
     },
     {
-      "src": "/android-chrome-512x512.png",
-      "sizes": "512x512",
+      "src": "/logo-new-400.png",
+      "sizes": "400x400",
       "type": "image/png"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
+  "theme_color": "#E5E0D8",
+  "background_color": "#E5E0D8",
   "display": "standalone",
   "start_url": "/"
 }

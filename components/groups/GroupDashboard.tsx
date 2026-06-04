@@ -10,6 +10,7 @@ import {
   Clock,
   MapPin,
   ChevronRight,
+  ChevronLeft,
   Copy,
   Check,
   Lock,
@@ -27,6 +28,8 @@ import EventDetailModal from "./EventDetailModal";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
 import BannerUploadField from "./BannerUploadField";
+import CrewMuralHero from "./CrewMuralHero";
+import SettingsMenu from "@/components/SettingsMenu";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -40,6 +43,11 @@ interface GroupDashboardProps {
   group: Group;
   userEmail: string;
   userProfile: UserProfile | null;
+  session: any;
+  onSignIn: () => void;
+  onSignOut: () => void;
+  onOpenProfile?: () => void;
+  onBackToGroups?: () => void;
   onGroupUpdated: (group: Group) => void;
   onGroupDeleted?: (groupId: string) => void;
 }
@@ -65,6 +73,11 @@ export default function GroupDashboard({
   group, 
   userEmail, 
   userProfile,
+  session,
+  onSignIn,
+  onSignOut,
+  onOpenProfile,
+  onBackToGroups,
   onGroupUpdated,
   onGroupDeleted,
 }: GroupDashboardProps) {
@@ -145,6 +158,15 @@ export default function GroupDashboard({
     fetchEvents();
     fetchMembers();
   }, [fetchEvents, fetchMembers]);
+
+  useEffect(() => {
+    setEditDescription(group.description ?? "");
+    setEditSpots(String(group.defaultEventSpots ?? 10));
+    setEditCost(String(group.defaultSlotCost ?? 0));
+    setEditBannerUrl(group.bannerUrl);
+    setEditBannerOrientation(group.bannerOrientation === "portrait" ? "portrait" : "landscape");
+    setVisibility(group.visibility);
+  }, [group]);
 
   const copyInviteCode = async () => {
     if (group.inviteCode) {
@@ -243,48 +265,49 @@ export default function GroupDashboard({
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
-      {/* Group Info Card (collapsible, collapsed by default). When expanded and a
-          banner exists, the banner fills the box as a background with a scrim. */}
-      <Collapsible open={infoOpen} onOpenChange={setInfoOpen} className="marker-card mb-4 sm:mb-6 overflow-hidden">
-        <CollapsibleTrigger className="w-full flex items-center justify-between gap-3 p-4 text-left">
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
-            <span className="font-graffiti text-lg text-[#1A1A1A] truncate">{group.name}</span>
-            <span className="badge-purple flex items-center gap-1 text-[10px]">
-              <Users className="w-3 h-3" />
-              {members.length}
-            </span>
-            <span className="badge-blue flex items-center gap-1 text-[10px]">
-              <Calendar className="w-3 h-3" />
-              {events.length}
-            </span>
-          </div>
-          <ChevronDown
-            className={`w-5 h-5 text-[#1A1A1A] flex-shrink-0 transition-transform ${infoOpen ? 'rotate-180' : ''}`}
+      {onBackToGroups && (
+        <div className="sticky top-0 z-40 -mx-4 px-4 py-2 mb-3 flex items-center justify-between concrete-bg">
+          <button
+            type="button"
+            onClick={onBackToGroups}
+            className="flex items-center gap-1 text-asphalt hover:text-terracotta transition-colors font-graffiti text-base sm:text-lg"
+            aria-label="Back to crews"
+          >
+            <ChevronLeft className="w-6 h-6 shrink-0" />
+            Crews
+          </button>
+          <SettingsMenu
+            session={session}
+            userProfile={userProfile}
+            onSignIn={onSignIn}
+            onSignOut={onSignOut}
+            onOpenProfile={onOpenProfile}
           />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="border-t-2 border-[#1A1A1A] px-4 py-4 space-y-3">
-            {group.description && (
-              <p className="text-[#1A1A1A]/70 font-body">{group.description}</p>
-            )}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap gap-2">
-                <span className="badge-purple flex items-center gap-1">
-                  <Users className="w-3 h-3" />
-                  {members.length} MEMBERS
-                </span>
-                <span className="badge-blue flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {events.length} EVENTS
-                </span>
-              </div>
+        </div>
+      )}
+
+      <CrewMuralHero group={group} memberCount={members.length} eventCount={events.length} />
+
+      {(group.description || (isCapo && group.inviteCode)) && (
+        <Collapsible open={infoOpen} onOpenChange={setInfoOpen} className="marker-card mb-4 sm:mb-6 overflow-hidden">
+          <CollapsibleTrigger className="w-full flex items-center justify-between gap-3 p-4 text-left">
+            <span className="font-marker text-sm text-asphalt/70">Crew details</span>
+            <ChevronDown
+              className={`w-5 h-5 text-asphalt flex-shrink-0 transition-transform ${infoOpen ? "rotate-180" : ""}`}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="border-t-2 border-asphalt px-4 py-4 space-y-3">
+              {group.description && (
+                <p className="text-asphalt/70 font-body">{group.description}</p>
+              )}
               {isCapo && group.inviteCode && (
                 <button
                   onClick={copyInviteCode}
-                  className="flex items-center gap-2 bg-[#1A1A1A] text-[#F2EFE9] px-3 py-1.5 border-2 border-[#1A1A1A] font-mono text-sm hover:bg-[#FF5A00] transition-colors"
+                  className="flex items-center gap-2 bg-asphalt text-sticker-white px-3 py-1.5 border-2 border-asphalt font-mono text-sm hover:bg-terracotta transition-colors"
                 >
                   {inviteCopied ? (
-                    <Check className="w-4 h-4 text-[#96E600]" />
+                    <Check className="w-4 h-4 text-moss-green" />
                   ) : (
                     <Copy className="w-4 h-4" />
                   )}
@@ -292,59 +315,59 @@ export default function GroupDashboard({
                 </button>
               )}
             </div>
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
 
       {/* Tabs */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {/* Tab Buttons */}
-          <div className="flex gap-2 bg-[#1A1A1A] p-1 rounded">
+          <div className="flex gap-1 sm:gap-2 bg-asphalt p-1 border-2 border-asphalt shadow-sticker-sm overflow-x-auto">
             <button
               onClick={() => setActiveTab('events')}
-              className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 font-graffiti text-xs sm:text-sm transition-all shrink-0 ${
                 activeTab === 'events' 
-                  ? 'bg-[#FF6B1A] text-white' 
-                  : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                  ? 'bg-terracotta text-white' 
+                  : 'text-sticker-white hover:bg-asphalt/80'
               }`}
             >
-              <Calendar className="w-4 h-4" />
-              <span className="hidden sm:inline">Events</span>
+              <Calendar className="w-4 h-4 shrink-0" aria-hidden />
+              <span>Events</span>
             </button>
             <button
               onClick={() => setActiveTab('members')}
-              className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 font-graffiti text-xs sm:text-sm transition-all shrink-0 ${
                 activeTab === 'members' 
-                  ? 'bg-[#8B5CF6] text-white' 
-                  : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                  ? 'bg-purple-accent text-white' 
+                  : 'text-sticker-white hover:bg-asphalt/80'
               }`}
             >
-              <Users className="w-4 h-4" />
-              <span className="hidden sm:inline">Players</span>
+              <Users className="w-4 h-4 shrink-0" aria-hidden />
+              <span>Players</span>
             </button>
             <button
               onClick={() => setActiveTab('credits')}
-              className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 font-graffiti text-xs sm:text-sm transition-all shrink-0 ${
                 activeTab === 'credits'
-                  ? 'bg-[#FFD700] text-[#1A1A1A]'
-                  : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                  ? 'bg-dull-gold text-asphalt'
+                  : 'text-sticker-white hover:bg-asphalt/80'
               }`}
             >
-              <Wallet className="w-4 h-4" />
-              <span className="hidden sm:inline">Balances</span>
+              <Wallet className="w-4 h-4 shrink-0" aria-hidden />
+              <span>Balances</span>
             </button>
             {(canManage || isOwner) && (
               <button
                 onClick={() => setActiveTab('settings')}
-                className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
+                className={`flex items-center justify-center gap-1.5 px-3 py-2 font-graffiti text-xs sm:text-sm transition-all shrink-0 ${
                   activeTab === 'settings' 
-                    ? 'bg-[#7FFF00] text-[#1A1A1A]' 
-                    : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                    ? 'bg-moss-green text-asphalt' 
+                    : 'text-sticker-white hover:bg-asphalt/80'
                 }`}
               >
-                <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Settings</span>
+                <Settings className="w-4 h-4 shrink-0" aria-hidden />
+                <span>Settings</span>
               </button>
             )}
           </div>
@@ -373,20 +396,20 @@ export default function GroupDashboard({
                   <>
                     <button
                       onClick={() => setGameFilter('all')}
-                      className={`h-full flex items-center justify-center text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                      className={`h-full flex items-center justify-center text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-asphalt transition-all ${
                         gameFilter === 'all'
-                          ? 'bg-[#1A1A1A] text-[#F2EFE9]'
-                          : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
+                          ? 'bg-asphalt text-sticker-white'
+                          : 'bg-white text-asphalt hover:bg-sticker-white'
                       }`}
                     >
                       All Games ({events.length})
                     </button>
                     <button
                       onClick={() => setGameFilter('mine')}
-                      className={`h-full flex items-center justify-center text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                      className={`h-full flex items-center justify-center text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-asphalt transition-all ${
                         gameFilter === 'mine'
-                          ? 'bg-[#96E600] text-[#1A1A1A]'
-                          : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
+                          ? 'bg-moss-green text-asphalt'
+                          : 'bg-white text-asphalt hover:bg-sticker-white'
                       }`}
                     >
                       My Games ({myGameCount})
@@ -395,10 +418,10 @@ export default function GroupDashboard({
                 )}
                 <button
                   onClick={() => setShowPast((v) => !v)}
-                  className={`h-full flex items-center justify-center gap-1.5 text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                  className={`h-full flex items-center justify-center gap-1.5 text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-asphalt transition-all ${
                     showPast
-                      ? 'bg-[#FFD700] text-[#1A1A1A]'
-                      : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
+                      ? 'bg-dull-gold text-asphalt'
+                      : 'bg-white text-asphalt hover:bg-sticker-white'
                   }`}
                 >
                   <History className="w-3.5 h-3.5 shrink-0" />
@@ -411,26 +434,26 @@ export default function GroupDashboard({
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="marker-card p-4 animate-pulse">
                     <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 bg-[#1A1A1A]/10 rounded" />
+                      <div className="w-14 h-14 bg-asphalt/10 rounded" />
                       <div className="flex-1 space-y-2">
-                        <div className="h-4 w-32 bg-[#1A1A1A]/10 rounded" />
-                        <div className="h-3 w-48 bg-[#1A1A1A]/5 rounded" />
+                        <div className="h-4 w-32 bg-asphalt/10 rounded" />
+                        <div className="h-3 w-48 bg-asphalt/5 rounded" />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : visibleEvents.length === 0 ? (
-              <div className="marker-card p-8 border-dashed border-[#1A1A1A]/30">
+              <div className="marker-card p-8 border-dashed border-asphalt/30">
                 <div className="text-center space-y-4">
-                  <div className="w-20 h-20 mx-auto rounded-full bg-[#FF5A00]/20 border-3 border-[#1A1A1A] flex items-center justify-center">
-                    <Calendar className="w-10 h-10 text-[#FF5A00]" />
+                  <div className="w-20 h-20 mx-auto rounded-full bg-terracotta/20 border-3 border-asphalt flex items-center justify-center">
+                    <Calendar className="w-10 h-10 text-terracotta" />
                   </div>
                   <div>
-                    <h3 className="font-graffiti text-2xl text-[#1A1A1A]">
+                    <h3 className="font-graffiti text-2xl text-asphalt">
                       {gameFilter === 'mine' ? "You're Not In Any Games" : 'No Games Yet!'}
                     </h3>
-                    <p className="text-[#1A1A1A]/60 text-sm mt-2 font-body">
+                    <p className="text-asphalt/60 text-sm mt-2 font-body">
                       {gameFilter === 'mine'
                         ? 'Jump into a game and it’ll show up here'
                         : canManage
@@ -445,15 +468,15 @@ export default function GroupDashboard({
                 {visibleEvents.map((event, index) => (
                   <div 
                     key={event.eventId}
-                    className={`marker-card p-4 hover:shadow-[6px_6px_0_rgba(26,26,26,0.2)] transition-all cursor-pointer group ${
-                      event.isAttending ? 'border-l-[6px] border-l-[#96E600]' : event.onWaitlist ? 'border-l-[6px] border-l-[#0084FF]' : ''
+                    className={`marker-card p-4 hover:shadow-sticker-soft-lg transition-all cursor-pointer group ${
+                      event.isAttending ? 'border-l-[6px] border-l-moss-green' : event.onWaitlist ? 'border-l-[6px] border-l-slate-blue' : ''
                     }`}
                     style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                     onClick={() => setSelectedEventId(event.eventId)}
                   >
                     <div className="flex items-center gap-3 sm:gap-4">
                       {/* Date block */}
-                      <div className="w-14 h-14 sm:w-16 sm:h-16 bg-[#FF5A00] border-2 border-[#1A1A1A] flex flex-col items-center justify-center flex-shrink-0 shadow-[2px_2px_0_#1A1A1A]">
+                      <div className="w-14 h-14 sm:w-16 sm:h-16 bg-terracotta border-2 border-asphalt flex flex-col items-center justify-center flex-shrink-0 shadow-sticker-sm">
                         <span className="text-[9px] sm:text-[10px] text-white font-graffiti uppercase">
                           {new Date(event.date).toLocaleDateString('en-US', { weekday: 'short' })}
                         </span>
@@ -465,8 +488,8 @@ export default function GroupDashboard({
                       {/* Event info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
-                          <Clock className="w-4 h-4 text-[#0084FF]" />
-                          <span className="font-graffiti text-[#1A1A1A] text-base sm:text-lg">
+                          <Clock className="w-4 h-4 text-slate-blue" />
+                          <span className="font-graffiti text-asphalt text-base sm:text-lg">
                             {event.startTime} - {event.endTime}
                           </span>
                           {event.isAttending && (
@@ -482,14 +505,14 @@ export default function GroupDashboard({
                           )}
                         </div>
                         
-                        <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-[#1A1A1A]/60 font-body">
+                        <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-asphalt/60 font-body">
                           {event.location && (
                             <span className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-none">
                               <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
                               <span className="truncate">{event.location}</span>
                             </span>
                           )}
-                          <span className="flex items-center gap-1 font-graffiti text-[#1A1A1A]">
+                          <span className="flex items-center gap-1 font-graffiti text-asphalt">
                             <Users className="w-3.5 h-3.5" />
                             {event.availableSpots <= 0 ? 'FULL' : `${event.attendeeCount}/${event.totalSpots}`}
                           </span>
@@ -506,7 +529,7 @@ export default function GroupDashboard({
                         </div>
                       </div>
 
-                      <div className="w-10 h-10 rounded-full bg-[#0084FF] border-2 border-[#1A1A1A] flex items-center justify-center group-hover:bg-[#FF5A00] transition-colors flex-shrink-0 shadow-[2px_2px_0_#1A1A1A]">
+                      <div className="w-10 h-10 rounded-full bg-slate-blue border-2 border-asphalt flex items-center justify-center group-hover:bg-terracotta transition-colors flex-shrink-0 shadow-sticker-sm">
                         <ChevronRight className="w-5 h-5 text-white" />
                       </div>
                     </div>
@@ -534,10 +557,10 @@ export default function GroupDashboard({
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="marker-card p-3 animate-pulse">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-[#1A1A1A]/10" />
+                      <div className="w-10 h-10 rounded-full bg-asphalt/10" />
                       <div className="space-y-1.5 flex-1">
-                        <div className="h-4 w-32 bg-[#1A1A1A]/10 rounded" />
-                        <div className="h-3 w-48 bg-[#1A1A1A]/5 rounded" />
+                        <div className="h-4 w-32 bg-asphalt/10 rounded" />
+                        <div className="h-3 w-48 bg-asphalt/5 rounded" />
                       </div>
                     </div>
                   </div>
@@ -556,13 +579,13 @@ export default function GroupDashboard({
                         <PlayerAvatar
                           pieceUrl={member.pieceUrl}
                           name={member.displayName || member.userEmail}
-                          className="h-10 w-10 shadow-[2px_2px_0_#1A1A1A]"
+                          className="h-10 w-10 shadow-sticker-sm"
                         />
                         <div>
-                          <p className="font-marker text-[#1A1A1A]">
+                          <p className="font-marker text-asphalt">
                             {member.displayName}
                           </p>
-                          <p className="text-xs text-[#1A1A1A]/50 font-body">
+                          <p className="text-xs text-asphalt/50 font-body">
                             {crewRoleLabel(member.groupRole)}
                           </p>
                         </div>
@@ -585,18 +608,18 @@ export default function GroupDashboard({
                         {/* Capo-only role controls (cannot target other Capos) */}
                         {isCapo && member.groupRole !== 'admin' && (
                           roleUpdating === member.userEmail ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-[#1A1A1A]/60" />
+                            <Loader2 className="w-4 h-4 animate-spin text-asphalt/60" />
                           ) : member.groupRole === 'coleader' ? (
                             <button
                               onClick={() => changeMemberRole(member.userEmail, 'member')}
-                              className="text-xs font-graffiti border-2 border-[#1A1A1A] bg-white px-2 py-1 shadow-[2px_2px_0_#1A1A1A] hover:bg-[#F2EFE9] transition-colors"
+                              className="text-xs font-graffiti border-2 border-asphalt bg-white px-2 py-1 shadow-sticker-sm hover:bg-sticker-white transition-colors"
                             >
                               Demote
                             </button>
                           ) : (
                             <button
                               onClick={() => changeMemberRole(member.userEmail, 'coleader')}
-                              className="text-xs font-graffiti border-2 border-[#1A1A1A] bg-[#8B5CF6] text-white px-2 py-1 shadow-[2px_2px_0_#1A1A1A] hover:bg-[#7c4ddb] transition-colors flex items-center gap-1"
+                              className="text-xs font-graffiti border-2 border-asphalt bg-purple-accent text-white px-2 py-1 shadow-sticker-sm hover:bg-purple-accent/90 transition-colors flex items-center gap-1"
                             >
                               <Star className="w-3 h-3" /> Make King
                             </button>
@@ -625,37 +648,37 @@ export default function GroupDashboard({
         {activeTab === 'settings' && (canManage || isOwner) && (
           <div className="space-y-4">
             <div className="marker-card p-4">
-              <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-4">Visibility</h3>
+              <h3 className="font-graffiti text-xl text-asphalt mb-4">Visibility</h3>
               <div className="space-y-2">
                 <div 
                   onClick={() => !savingVisibility && handleVisibilityChange('private')}
-                  className={`flex items-center space-x-3 p-3 border-2 border-[#1A1A1A] cursor-pointer transition-all ${visibility === 'private' ? 'bg-[#1A1A1A] text-[#F2EFE9]' : 'bg-white hover:bg-[#F2EFE9]'} ${savingVisibility ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`flex items-center space-x-3 p-3 border-2 border-asphalt cursor-pointer transition-all ${visibility === 'private' ? 'bg-asphalt text-sticker-white' : 'bg-white hover:bg-sticker-white'} ${savingVisibility ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${visibility === 'private' ? 'border-[#F2EFE9]' : 'border-[#1A1A1A]'}`}>
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${visibility === 'private' ? 'border-sticker-white' : 'border-asphalt'}`}>
                     {visibility === 'private' && <div className="w-2 h-2 rounded-full bg-current" />}
                   </div>
                   <Lock className="w-4 h-4" />
                   <div className="flex-1">
                     <span className="font-graffiti">Private</span>
-                    <p className={`text-xs font-body ${visibility === 'private' ? 'text-[#F2EFE9]/60' : 'text-[#1A1A1A]/60'}`}>Members can only join via invite code</p>
+                    <p className={`text-xs font-body ${visibility === 'private' ? 'text-sticker-white/60' : 'text-asphalt/60'}`}>Members can only join via invite code</p>
                   </div>
                 </div>
                 <div 
                   onClick={() => !savingVisibility && handleVisibilityChange('public')}
-                  className={`flex items-center space-x-3 p-3 border-2 border-[#1A1A1A] cursor-pointer transition-all ${visibility === 'public' ? 'bg-[#7FFF00]' : 'bg-white hover:bg-[#F2EFE9]'} ${savingVisibility ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`flex items-center space-x-3 p-3 border-2 border-asphalt cursor-pointer transition-all ${visibility === 'public' ? 'bg-moss-green' : 'bg-white hover:bg-sticker-white'} ${savingVisibility ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center border-[#1A1A1A]`}>
-                    {visibility === 'public' && <div className="w-2 h-2 rounded-full bg-[#1A1A1A]" />}
+                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center border-asphalt`}>
+                    {visibility === 'public' && <div className="w-2 h-2 rounded-full bg-asphalt" />}
                   </div>
                   <Globe className="w-4 h-4" />
                   <div className="flex-1">
                     <span className="font-graffiti">Public</span>
-                    <p className={`text-xs font-body ${visibility === 'public' ? 'text-[#1A1A1A]/70' : 'text-[#1A1A1A]/60'}`}>Anyone can find and join this group</p>
+                    <p className={`text-xs font-body ${visibility === 'public' ? 'text-asphalt/70' : 'text-asphalt/60'}`}>Anyone can find and join this group</p>
                   </div>
                 </div>
               </div>
               {savingVisibility && (
-                <div className="flex items-center gap-2 mt-3 text-sm text-[#1A1A1A]/60 font-body">
+                <div className="flex items-center gap-2 mt-3 text-sm text-asphalt/60 font-body">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Saving...
                 </div>
@@ -663,10 +686,10 @@ export default function GroupDashboard({
             </div>
 
             <div className="marker-card p-4">
-              <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-4">Invite Code</h3>
+              <h3 className="font-graffiti text-xl text-asphalt mb-4">Invite Code</h3>
               <div className="flex items-center gap-2">
-                <div className="flex-1 bg-[#1A1A1A] px-4 py-3 border-2 border-[#1A1A1A]">
-                  <p className="text-[#FF5A00] font-graffiti text-2xl sm:text-3xl tracking-widest text-center">
+                <div className="flex-1 bg-asphalt px-4 py-3 border-2 border-asphalt">
+                  <p className="text-terracotta font-graffiti text-2xl sm:text-3xl tracking-widest text-center">
                     {group.inviteCode}
                   </p>
                 </div>
@@ -677,14 +700,14 @@ export default function GroupDashboard({
                   {inviteCopied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
                 </button>
               </div>
-              <p className="text-xs text-[#1A1A1A]/50 mt-2 font-body">Share this code to invite members</p>
+              <p className="text-xs text-asphalt/50 mt-2 font-body">Share this code to invite members</p>
             </div>
 
             <form onSubmit={handleSaveSettings} className="marker-card p-4 space-y-4">
-              <h3 className="font-graffiti text-xl text-[#1A1A1A]">Crew Details</h3>
+              <h3 className="font-graffiti text-xl text-asphalt">Crew Details</h3>
 
               <div className="space-y-2">
-                <Label className="font-graffiti text-[#1A1A1A]">Crew Banner</Label>
+                <Label className="font-graffiti text-asphalt">Crew Banner</Label>
                 <BannerUploadField
                   value={editBannerUrl}
                   onChange={setEditBannerUrl}
@@ -692,10 +715,13 @@ export default function GroupDashboard({
                   onOrientationChange={setEditBannerOrientation}
                   groupId={group.groupId}
                 />
+                <p className="text-xs text-asphalt/50 font-body">
+                  Portrait banners display as a cropped mural on the crew page. List cards use the side column layout.
+                </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="crew-description" className="font-graffiti text-[#1A1A1A]">
+                <Label htmlFor="crew-description" className="font-graffiti text-asphalt">
                   Description
                 </Label>
                 <Textarea
@@ -710,7 +736,7 @@ export default function GroupDashboard({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label htmlFor="crew-spots" className="font-graffiti text-[#1A1A1A]">
+                  <Label htmlFor="crew-spots" className="font-graffiti text-asphalt">
                     Default Spots
                   </Label>
                   <Input
@@ -724,7 +750,7 @@ export default function GroupDashboard({
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="crew-cost" className="font-graffiti text-[#1A1A1A]">
+                  <Label htmlFor="crew-cost" className="font-graffiti text-asphalt">
                     Default Cost
                   </Label>
                   <Input
@@ -741,18 +767,18 @@ export default function GroupDashboard({
 
               <div className="grid grid-cols-2 gap-3 text-sm font-body pt-1">
                 <div>
-                  <label className="text-xs text-[#1A1A1A]/50">Timezone</label>
-                  <p className="font-graffiti text-[#1A1A1A]">{group.timezone}</p>
+                  <label className="text-xs text-asphalt/50">Timezone</label>
+                  <p className="font-graffiti text-asphalt">{group.timezone}</p>
                 </div>
                 <div>
-                  <label className="text-xs text-[#1A1A1A]/50">Round-Robin Slide</label>
-                  <p className="font-graffiti text-[#1A1A1A]">{group.roundRobinSlide}</p>
+                  <label className="text-xs text-asphalt/50">Round-Robin Slide</label>
+                  <p className="font-graffiti text-asphalt">{group.roundRobinSlide}</p>
                 </div>
               </div>
 
               {settingsError && (
-                <div className="p-3 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-                  <p className="text-sm text-[#FF5A00] font-body">{settingsError}</p>
+                <div className="p-3 bg-terracotta/10 border-2 border-terracotta">
+                  <p className="text-sm text-terracotta font-body">{settingsError}</p>
                 </div>
               )}
 
@@ -775,13 +801,13 @@ export default function GroupDashboard({
             </form>
 
             {canDeleteCrew && (
-              <div className="marker-card p-4 border-[#FF5A00]">
-                <h3 className="font-graffiti text-xl text-[#FF5A00] mb-2">Burn It Down</h3>
-                <p className="text-sm text-[#1A1A1A]/70 font-body mb-3">
+              <div className="marker-card p-4 border-terracotta">
+                <h3 className="font-graffiti text-xl text-terracotta mb-2">Burn It Down</h3>
+                <p className="text-sm text-asphalt/70 font-body mb-3">
                   Delete this crew for good — games, waitlists, ledger and payments all go with it.
                   No take-backs.
                   {isOwner && !isCapo && (
-                    <span className="block mt-1 text-[#1A1A1A]/50">You can do this as the Owner.</span>
+                    <span className="block mt-1 text-asphalt/50">You can do this as the Owner.</span>
                   )}
                 </p>
                 <button

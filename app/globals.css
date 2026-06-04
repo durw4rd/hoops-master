@@ -6,50 +6,65 @@
 
 /* ============================================
    SUBWAY COURT KINGS - Graffiti UI Theme
+   Spray Nation palette (dimmed logo-aligned)
    ============================================ */
 
 :root {
-  /* Core Graffiti Palette - Matching Logo */
-  --concrete-canvas: #E8E4DE;
+  /* Core palette — sampled from updated logo */
+  --concrete-canvas: #E5E0D8;
   --asphalt-black: #1A1A1A;
-  --subway-orange: #FF6B1A;
-  --electric-blue: #3B9EFF;
-  --slime-green: #7FFF00;
-  --sunflare-yellow: #FFD700;
-  --purple-accent: #8B5CF6;
-  
+  --terracotta: #C85A28;
+  --slate-blue: #5B7FA8;
+  --moss-green: #6B8F4E;
+  --dull-gold: #B8953A;
+  --purple-accent: #7A6AAF;
+  --sticker-white: #FAFAF8;
+  --success-green: #0a8f3c;
+
+  /* RGB channels for Tailwind opacity modifiers (e.g. text-asphalt/70) */
+  --concrete-canvas-rgb: 229 224 216;
+  --asphalt-black-rgb: 26 26 26;
+  --terracotta-rgb: 200 90 40;
+  --slate-blue-rgb: 91 127 168;
+  --moss-green-rgb: 107 143 78;
+  --dull-gold-rgb: 184 149 58;
+  --purple-accent-rgb: 122 106 175;
+  --sticker-white-rgb: 250 250 248;
+  --success-green-rgb: 10 143 60;
+
+  /* Legacy aliases (backward compat) */
+  --subway-orange: var(--terracotta);
+  --electric-blue: var(--slate-blue);
+  --slime-green: var(--moss-green);
+  --sunflare-yellow: var(--dull-gold);
+
   /* Semantic mappings */
-  --background: 45 25% 94%; /* concrete canvas */
-  --foreground: 0 0% 10%; /* asphalt black */
-  --card: 45 25% 96%;
+  --background: 38 22% 88%;
+  --foreground: 0 0% 10%;
+  --card: 40 20% 98%;
   --card-foreground: 0 0% 10%;
-  --popover: 45 25% 96%;
+  --popover: 40 20% 98%;
   --popover-foreground: 0 0% 10%;
-  --primary: 22 100% 50%; /* subway orange */
+  --primary: 20 66% 47%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 100% 50%; /* electric blue */
+  --secondary: 212 29% 51%;
   --secondary-foreground: 0 0% 100%;
-  --muted: 45 15% 88%;
+  --muted: 38 15% 84%;
   --muted-foreground: 0 0% 35%;
-  --accent: 79 100% 45%; /* slime green */
+  --accent: 92 30% 43%;
   --accent-foreground: 0 0% 10%;
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 98%;
   --border: 0 0% 75%;
-  --input: 45 20% 90%;
-  --ring: 22 100% 50%;
+  --input: 38 18% 86%;
+  --ring: 20 66% 47%;
   --radius: 0.25rem;
-  
-  /* Success color */
-  --success: 79 100% 45%;
+  --success: 92 30% 43%;
   --success-foreground: 0 0% 10%;
-  
-  /* Warning color */
-  --warning: 51 100% 50%;
+  --warning: 42 52% 47%;
   --warning-foreground: 0 0% 10%;
 }
 
-/* Typography Classes */
 .font-graffiti {
   font-family: 'Bangers', cursive;
   letter-spacing: 0.05em;
@@ -72,26 +87,48 @@ body {
 /* Concrete texture overlay */
 .concrete-bg {
   background-color: var(--concrete-canvas);
-  background-image: 
-    url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.06'/%3E%3C/svg%3E"),
-    linear-gradient(180deg, rgba(139, 92, 246, 0.03) 0%, rgba(255, 107, 26, 0.03) 100%);
+  background-image:
+    url("/textures/concrete-tile.png"),
+    linear-gradient(180deg, rgba(200, 90, 40, 0.03) 0%, rgba(91, 127, 168, 0.02) 100%);
+  background-size: 512px auto, 100% 100%;
+  background-repeat: repeat, no-repeat;
 }
 
-/* Purple accent badge */
-.badge-purple {
-  background: var(--purple-accent);
-  color: white;
-  border: 2px solid var(--asphalt-black);
-  font-family: 'Bangers', cursive;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+/* Red brick panel for hero zones */
+.brick-panel {
+  background-color: #c4a89a;
+  background-image: url("/textures/brick-tile.png");
+  background-size: 512px auto;
+  background-repeat: repeat;
 }
 
-/* Graffiti Title Styles */
+/* Photocopy grain overlay for hero zones */
+.grain-overlay {
+  position: relative;
+}
+
+.grain-overlay::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.12;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.5'/%3E%3C/svg%3E");
+}
+
+/* Crew list cards — same sticker look as marker-card, no tape overlays */
+.poster-frame {
+  background: var(--sticker-white);
+  border: 3px solid var(--asphalt-black);
+  border-radius: 3px;
+  box-shadow: 4px 4px 0 rgba(26, 26, 26, 0.2);
+  position: relative;
+}
+
 .graffiti-title {
   font-family: 'Bangers', cursive;
-  color: var(--subway-orange);
-  text-shadow: 
+  color: var(--terracotta);
+  text-shadow:
     3px 3px 0 var(--asphalt-black),
     -1px -1px 0 var(--asphalt-black),
     1px -1px 0 var(--asphalt-black),
@@ -102,7 +139,7 @@ body {
 
 .graffiti-title-blue {
   font-family: 'Bangers', cursive;
-  background: linear-gradient(180deg, var(--subway-orange) 0%, var(--electric-blue) 100%);
+  background: linear-gradient(180deg, var(--terracotta) 0%, var(--slate-blue) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -112,8 +149,8 @@ body {
 
 .graffiti-title-green {
   font-family: 'Bangers', cursive;
-  color: var(--slime-green);
-  text-shadow: 
+  color: var(--moss-green);
+  text-shadow:
     2px 2px 0 var(--asphalt-black),
     -1px -1px 0 var(--asphalt-black),
     1px -1px 0 var(--asphalt-black),
@@ -121,14 +158,13 @@ body {
   letter-spacing: 0.05em;
 }
 
-/* Sticker-style buttons */
 .sticker-btn,
 .sticker-btn-blue,
 .sticker-btn-green,
 .sticker-btn-purple,
 .sticker-btn-outline {
   position: relative;
-  background: var(--subway-orange);
+  background: var(--terracotta);
   color: white;
   border: 3px solid var(--asphalt-black);
   border-radius: 4px;
@@ -160,11 +196,11 @@ body {
 }
 
 .sticker-btn-blue {
-  background: var(--electric-blue);
+  background: var(--slate-blue);
 }
 
 .sticker-btn-green {
-  background: var(--slime-green);
+  background: var(--moss-green);
   color: var(--asphalt-black);
 }
 
@@ -178,9 +214,8 @@ body {
   color: var(--asphalt-black);
 }
 
-/* Marker-drawn card style */
 .marker-card {
-  background: white;
+  background: var(--sticker-white);
   border: 3px solid var(--asphalt-black);
   border-radius: 3px;
   box-shadow: 4px 4px 0 rgba(26, 26, 26, 0.2);
@@ -199,19 +234,17 @@ body {
   pointer-events: none;
 }
 
-/* Card with gradient accent */
 .marker-card-gradient {
-  background: linear-gradient(135deg, white 0%, rgba(139, 92, 246, 0.05) 100%);
+  background: linear-gradient(135deg, var(--sticker-white) 0%, rgba(122, 106, 175, 0.05) 100%);
   border: 3px solid var(--asphalt-black);
   border-radius: 3px;
   box-shadow: 4px 4px 0 rgba(26, 26, 26, 0.2);
 }
 
-/* Tag-style labels */
 .tag-label {
   display: inline-block;
   font-family: 'Permanent Marker', cursive;
-  background: var(--sunflare-yellow);
+  background: var(--dull-gold);
   color: var(--asphalt-black);
   padding: 0.25rem 0.75rem;
   border: 2px solid var(--asphalt-black);
@@ -220,16 +253,16 @@ body {
 }
 
 .tag-label-green {
-  background: var(--slime-green);
+  background: var(--moss-green);
 }
 
 .tag-label-blue {
-  background: var(--electric-blue);
+  background: var(--slate-blue);
   color: white;
 }
 
 .tag-label-orange {
-  background: var(--subway-orange);
+  background: var(--terracotta);
   color: white;
 }
 
@@ -238,27 +271,8 @@ body {
   color: white;
 }
 
-/* Spray paint drip effect for headers */
-.drip-border {
-  position: relative;
-}
-
-.drip-border::after {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  left: 0;
-  right: 0;
-  height: 8px;
-  background: linear-gradient(to bottom, var(--subway-orange) 0%, transparent 100%);
-  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 100 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0,0 Q5,8 10,0 Q15,8 20,0 Q25,8 30,0 Q35,8 40,0 Q45,8 50,0 Q55,8 60,0 Q65,8 70,0 Q75,8 80,0 Q85,8 90,0 Q95,8 100,0 L100,8 L0,8 Z' fill='black'/%3E%3C/svg%3E");
-  mask-size: 100px 8px;
-  mask-repeat: repeat-x;
-}
-
-/* Hand-drawn input style */
 .sketch-input {
-  background: white;
+  background: var(--sticker-white);
   border: 2px solid var(--asphalt-black);
   border-radius: 2px;
   padding: 0.75rem 1rem;
@@ -268,13 +282,12 @@ body {
 
 .sketch-input:focus {
   outline: none;
-  border-color: var(--electric-blue);
-  box-shadow: 3px 3px 0 var(--electric-blue);
+  border-color: var(--slate-blue);
+  box-shadow: 3px 3px 0 var(--slate-blue);
 }
 
-/* Badge styles */
 .badge-orange {
-  background: var(--subway-orange);
+  background: var(--terracotta);
   color: white;
   border: 2px solid var(--asphalt-black);
   font-family: 'Bangers', cursive;
@@ -283,7 +296,7 @@ body {
 }
 
 .badge-green {
-  background: var(--slime-green);
+  background: var(--moss-green);
   color: var(--asphalt-black);
   border: 2px solid var(--asphalt-black);
   font-family: 'Bangers', cursive;
@@ -292,7 +305,7 @@ body {
 }
 
 .badge-blue {
-  background: var(--electric-blue);
+  background: var(--slate-blue);
   color: white;
   border: 2px solid var(--asphalt-black);
   font-family: 'Bangers', cursive;
@@ -309,16 +322,40 @@ body {
   font-size: 0.75rem;
 }
 
-/* Court lines pattern */
 .court-pattern {
-  background-image: 
-    linear-gradient(90deg, transparent 49.5%, var(--subway-orange) 49.5%, var(--subway-orange) 50.5%, transparent 50.5%),
-    linear-gradient(0deg, transparent 49.5%, var(--subway-orange) 49.5%, var(--subway-orange) 50.5%, transparent 50.5%);
-  background-size: 40px 40px;
-  opacity: 0.1;
+  background-image: url("/textures/court-lines.png");
+  background-size: min(90vw, 640px) auto;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.12;
 }
 
-/* Success state animation */
+/* Graffiti dialog shell */
+.graffiti-dialog {
+  background: var(--sticker-white);
+  border: 4px solid var(--asphalt-black);
+  border-radius: 0;
+  box-shadow: 8px 8px 0 var(--asphalt-black);
+}
+
+.graffiti-dialog-title {
+  font-family: 'Bangers', cursive;
+  font-size: 1.5rem;
+  color: var(--terracotta);
+  letter-spacing: 0.05em;
+}
+
+.graffiti-error-box {
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in srgb, var(--terracotta) 10%, transparent);
+  border: 2px solid var(--terracotta);
+}
+
+.graffiti-error-text {
+  font-size: 0.875rem;
+  color: var(--terracotta);
+}
+
 @keyframes tag-bounce {
   0%, 100% { transform: rotate(-2deg) scale(1); }
   50% { transform: rotate(2deg) scale(1.05); }
@@ -328,7 +365,6 @@ body {
   animation: tag-bounce 0.3s ease;
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 12px;
 }
@@ -344,7 +380,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--subway-orange);
+  background: var(--terracotta);
 }
 
 @layer base {

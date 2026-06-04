@@ -22,11 +22,14 @@ subway-graffiti skin.
 - **Player pieces** — upload your profile picture ("Your Piece", stored in Vercel
   Blob); shown as your settings avatar and beside your name in player lists.
 - **Crew banners** — upload a banner per crew (stored in Vercel Blob) with a
-  landscape/portrait toggle; the crew card splits vertically for portrait banners,
-  and the banner headlines the crew dashboard's info box.
-- **Quality-of-life UI** — settings menu in the header, collapsible crew info,
-  a "Show past games" toggle (hidden by default), "My Games" filter, and subtle
-  crown/star markers for Capos and Kings in player lists.
+  landscape/portrait toggle; portrait banners split crew cards vertically, and
+  the banner fills a mural hero at the top of the crew dashboard.
+- **Graffiti UI** — 80s NYC subway / Martha Cooper palette (concrete texture,
+  sticker shadows, Bangers + Permanent Marker type), shared shell with logo
+  banner, crew mural hero, and poster-style crew cards.
+- **Quality-of-life UI** — settings menu, collapsible crew info, "Show past games"
+  toggle (hidden by default), "My Games" filter, crown/star markers for Capos
+  and Kings in player lists.
 
 ## Tech stack
 
@@ -73,7 +76,7 @@ EDGE_CONFIG=...
 pnpm install
 pnpm db:push                      # create tables from the Drizzle schema
 pnpm tsx scripts/seedPlayers.ts   # seed the invite allowlist (idempotent)
-pnpm dev                          # http://localhost:3000
+pnpm dev                          # http://localhost:3000 (port pinned in package.json)
 ```
 
 To make yourself the Owner:
@@ -86,7 +89,7 @@ EMAIL=you@example.com ROLE=owner pnpm tsx scripts/setRole.ts
 
 | Command | Purpose |
 |---|---|
-| `pnpm dev` / `pnpm build` / `pnpm start` | Next.js dev / build / serve |
+| `pnpm dev` / `pnpm build` / `pnpm start` | Next.js dev / build / serve (dev & start bind to port **3000**) |
 | `pnpm db:generate` | Generate a migration from schema changes |
 | `pnpm db:push` | Push schema directly to the DB (dev) |
 | `pnpm db:migrate` | Apply migrations |
@@ -96,9 +99,11 @@ EMAIL=you@example.com ROLE=owner pnpm tsx scripts/setRole.ts
 
 ## Deployment
 
-Deploys to Vercel. Set the same env vars in the Vercel project (connect a Neon
-store for `DATABASE_URL`, and a Blob store for `BLOB_READ_WRITE_TOKEN`), then push
-to `main`. Run migrations/seed against the production `DATABASE_URL` as needed.
+Deploys to Vercel on push to `main` (Git integration). Set the same env vars in
+the Vercel project (connect a Neon store for `DATABASE_URL`, and a Blob store for
+`BLOB_READ_WRITE_TOKEN`). Ensure `NEXTAUTH_URL` matches your production domain
+(no trailing slash). Run migrations/seed against the production `DATABASE_URL` as
+needed.
 
 ---
 

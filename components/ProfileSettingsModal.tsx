@@ -103,20 +103,20 @@ export default function ProfileSettingsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md mx-2 sm:mx-auto rounded-none shadow-[8px_8px_0_#1A1A1A]">
+      <DialogContent className="graffiti-dialog max-w-md mx-2 sm:mx-auto rounded-none shadow-sticker-lg">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00] flex items-center gap-2">
+          <DialogTitle className="graffiti-dialog-title flex items-center gap-2">
             <SprayCan className="w-6 h-6" />
             Your Tag
           </DialogTitle>
-          <DialogDescription className="text-[#1A1A1A]/60 font-body">
+          <DialogDescription className="text-asphalt/60 font-body">
             Rep your style — set the handle and piece the crew sees on the court.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           <div className="space-y-2">
-            <Label className="font-graffiti text-[#1A1A1A]">Your Piece</Label>
+            <Label className="font-graffiti text-asphalt">Your Piece</Label>
             <input
               ref={fileRef}
               type="file"
@@ -131,7 +131,7 @@ export default function ProfileSettingsModal({
                   type="button"
                   onClick={() => fileRef.current?.click()}
                   disabled={uploading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-[#1A1A1A] bg-white text-[#1A1A1A] text-xs font-graffiti hover:bg-[#F2EFE9] transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-asphalt bg-white text-asphalt text-xs font-graffiti hover:bg-sticker-white transition-colors disabled:opacity-50"
                 >
                   {uploading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -144,18 +144,18 @@ export default function ProfileSettingsModal({
                   <button
                     type="button"
                     onClick={() => setPieceUrl(undefined)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-body text-[#1A1A1A]/60 hover:text-[#FF5A00] transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-body text-asphalt/60 hover:text-terracotta transition-colors"
                   >
                     <X className="w-3.5 h-3.5" /> Buff it
                   </button>
                 )}
               </div>
             </div>
-            <p className="text-xs text-[#1A1A1A]/40 font-body">Your mugshot on the court. JPEG, PNG, WebP or GIF, up to 5MB.</p>
+            <p className="text-xs text-asphalt/40 font-body">Your mugshot on the court. JPEG, PNG, WebP or GIF, up to 5MB.</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="tag" className="font-graffiti text-[#1A1A1A]">
+            <Label htmlFor="tag" className="font-graffiti text-asphalt">
               Handle
             </Label>
             <Input
@@ -169,12 +169,12 @@ export default function ProfileSettingsModal({
               required
               autoFocus
             />
-            <p className="text-xs text-[#1A1A1A]/40 font-body">2-30 characters</p>
+            <p className="text-xs text-asphalt/40 font-body">2-30 characters</p>
           </div>
 
           {error && (
-            <div className="p-3 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-              <p className="text-sm text-[#FF5A00] whitespace-pre-line font-body">{error}</p>
+            <div className="p-3 bg-terracotta/10 border-2 border-terracotta">
+              <p className="text-sm text-terracotta whitespace-pre-line font-body">{error}</p>
             </div>
           )}
 

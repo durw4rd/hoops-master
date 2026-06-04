@@ -94,7 +94,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
     switch (filter.type) {
       case 'toggle':
         return (
-          <div key={filter.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-gray-100 transition-colors">
+          <div key={filter.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-concrete transition-colors">
             <Switch 
               id={filter.id} 
               checked={filter.value} 
@@ -104,8 +104,8 @@ const FilterBar: React.FC<FilterBarProps> = ({
             <label 
               htmlFor={filter.id} 
               className={cn(
-                "text-sm text-gray-700 select-none cursor-pointer flex-1",
-                filter.disabled && "text-gray-400"
+                "text-sm text-asphalt/80 select-none cursor-pointer flex-1 font-body",
+                filter.disabled && "text-asphalt/40"
               )}
             >
               {filter.label}
@@ -118,7 +118,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
           <div key={filter.id} className="relative" ref={(el) => { dropdownRefs.current[filter.id] = el; }}>
             <button
               onClick={() => setDropdownOpen(dropdownOpen === filter.id ? null : filter.id)}
-              className="flex items-center justify-between w-full px-4 py-3 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 touch-manipulation"
+              className="flex items-center justify-between w-full px-4 py-3 text-sm border-2 border-asphalt bg-sticker-white hover:bg-concrete focus:outline-none focus:ring-2 focus:ring-terracotta disabled:opacity-50 touch-manipulation font-body"
               disabled={filter.disabled}
             >
               <span className="truncate">
@@ -130,18 +130,18 @@ const FilterBar: React.FC<FilterBarProps> = ({
             </button>
             
             {dropdownOpen === filter.id && filter.options && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+              <div className="absolute z-50 w-full mt-1 bg-sticker-white border-2 border-asphalt shadow-sticker-md max-h-60 overflow-auto">
                 {filter.options.map(option => (
                   <div 
                     key={option.value}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer touch-manipulation"
+                    className="flex items-center justify-between px-4 py-3 hover:bg-concrete cursor-pointer touch-manipulation font-body"
                     onClick={() => {
                       handleFilterChange(filter.id, option.value);
                       setDropdownOpen(null);
                     }}
                   >
                     <span>{option.label}</span>
-                    {filter.value === option.value && <span className="text-blue-600">✓</span>}
+                    {filter.value === option.value && <span className="text-terracotta">✓</span>}
                   </div>
                 ))}
               </div>
@@ -154,7 +154,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
           <div key={filter.id} className="relative" ref={(el) => { dropdownRefs.current[filter.id] = el; }}>
             <button
               onClick={() => setDropdownOpen(dropdownOpen === filter.id ? null : filter.id)}
-              className="flex items-center justify-between w-full px-4 py-3 text-sm border border-gray-300 rounded-md bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 touch-manipulation"
+              className="flex items-center justify-between w-full px-4 py-3 text-sm border-2 border-asphalt bg-sticker-white hover:bg-concrete focus:outline-none focus:ring-2 focus:ring-terracotta disabled:opacity-50 touch-manipulation font-body"
               disabled={filter.disabled}
             >
               <span className="truncate">
@@ -171,11 +171,11 @@ const FilterBar: React.FC<FilterBarProps> = ({
             </button>
             
             {dropdownOpen === filter.id && filter.options && (
-              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+              <div className="absolute z-50 w-full mt-1 bg-sticker-white border-2 border-asphalt shadow-sticker-md max-h-60 overflow-auto">
                 {filter.options.map(option => (
                   <div 
                     key={option.value}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer touch-manipulation"
+                    className="flex items-center justify-between px-4 py-3 hover:bg-concrete cursor-pointer touch-manipulation font-body"
                     onClick={() => {
                       // Ensure we have a valid Set to work with
                       const currentValue = filter.value instanceof Set ? new Set(filter.value) : new Set(['all']);
@@ -204,7 +204,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                     }}
                   >
                     <span>{option.label}</span>
-                    {filter.value && filter.value instanceof Set && filter.value.has(option.value) && <span className="text-blue-600">✓</span>}
+                    {filter.value && filter.value instanceof Set && filter.value.has(option.value) && <span className="text-terracotta">✓</span>}
                   </div>
                 ))}
               </div>
@@ -215,7 +215,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
       case 'toggle-buttons':
         return (
           <div key={filter.id} className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">{filter.label}</label>
+            <label className="text-sm font-graffiti text-asphalt">{filter.label}</label>
             <div className="flex flex-wrap gap-2">
               {filter.options?.map(option => (
                 <button
@@ -242,10 +242,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
                     }
                   }}
                   className={cn(
-                    "px-3 py-1.5 text-xs rounded-md border transition-colors",
+                    "px-3 py-1.5 text-xs border-2 transition-colors font-graffiti",
                     filter.value instanceof Set && filter.value.has(option.value)
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                      ? "bg-terracotta text-white border-asphalt shadow-sticker-sm"
+                      : "bg-sticker-white text-asphalt border-asphalt hover:bg-concrete"
                   )}
                 >
                   {option.label}
@@ -261,22 +261,22 @@ const FilterBar: React.FC<FilterBarProps> = ({
     };
 
   return (
-    <div className={cn("bg-gray-50 border border-gray-200 rounded-lg p-3", className)}>
+    <div className={cn("marker-card border-2 border-asphalt bg-sticker-white p-3", className)}>
       {/* Header - Always visible */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-gray-600" />
-          <span className="text-sm font-medium text-gray-700">{title}</span>
+          <Filter className="w-4 h-4 text-asphalt/70" />
+          <span className="text-sm font-graffiti text-asphalt">{title}</span>
         </div>
         <button
           onClick={handleToggle}
-          className="p-2 hover:bg-gray-200 rounded transition-colors touch-manipulation"
+          className="p-2 hover:bg-concrete rounded transition-colors touch-manipulation border border-asphalt/20"
           aria-label={isOpen ? "Collapse filters" : "Expand filters"}
         >
           {isOpen ? (
-            <ChevronUp className="w-4 h-4 text-gray-600" />
+            <ChevronUp className="w-4 h-4 text-asphalt/70" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-gray-600" />
+            <ChevronDown className="w-4 h-4 text-asphalt/70" />
           )}
         </button>
       </div>

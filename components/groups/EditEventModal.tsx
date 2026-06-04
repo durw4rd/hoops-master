@@ -99,17 +99,17 @@ export default function EditEventModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-[8px_8px_0_#1A1A1A]">
+      <DialogContent className="graffiti-dialog max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-sticker-lg">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">Edit Game</DialogTitle>
-          <DialogDescription className="text-[#1A1A1A]/60 font-body">
+          <DialogTitle className="graffiti-dialog-title">Edit Game</DialogTitle>
+          <DialogDescription className="text-asphalt/60 font-body">
             Update the game&apos;s details
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSave} className="space-y-3 mt-4">
           <div className="space-y-2">
-            <Label htmlFor="edit-date" className="font-graffiti text-[#1A1A1A]">Date</Label>
+            <Label htmlFor="edit-date" className="font-graffiti text-asphalt">Date</Label>
             <Input
               id="edit-date"
               type="date"
@@ -122,7 +122,7 @@ export default function EditEventModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label className="font-graffiti text-[#1A1A1A]">Start</Label>
+              <Label className="font-graffiti text-asphalt">Start</Label>
               <Select value={startTime} onValueChange={setStartTime}>
                 <SelectTrigger className="sketch-input">
                   <SelectValue />
@@ -135,7 +135,7 @@ export default function EditEventModal({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label className="font-graffiti text-[#1A1A1A]">End</Label>
+              <Label className="font-graffiti text-asphalt">End</Label>
               <Select value={endTime} onValueChange={setEndTime}>
                 <SelectTrigger className="sketch-input">
                   <SelectValue />
@@ -151,7 +151,7 @@ export default function EditEventModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="edit-spots" className="font-graffiti text-[#1A1A1A]">Spots</Label>
+              <Label htmlFor="edit-spots" className="font-graffiti text-asphalt">Spots</Label>
               <Input
                 id="edit-spots"
                 type="number"
@@ -163,7 +163,7 @@ export default function EditEventModal({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-cost" className="font-graffiti text-[#1A1A1A]">Cost (€)</Label>
+              <Label htmlFor="edit-cost" className="font-graffiti text-asphalt">Cost (€)</Label>
               <Input
                 id="edit-cost"
                 type="number"
@@ -177,7 +177,7 @@ export default function EditEventModal({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-location" className="font-graffiti text-[#1A1A1A]">Location</Label>
+            <Label htmlFor="edit-location" className="font-graffiti text-asphalt">Location</Label>
             <Input
               id="edit-location"
               value={location}
@@ -188,8 +188,8 @@ export default function EditEventModal({
           </div>
 
           {error && (
-            <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-              <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+            <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+              <p className="text-sm text-terracotta font-body">{error}</p>
             </div>
           )}
 

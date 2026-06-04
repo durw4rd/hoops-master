@@ -335,10 +335,10 @@ export default function EventDetailModal({
     const role = roleByEmail.get(email);
     if (!role) return null;
     if (isCapoRole(role)) {
-      return <Crown className="w-3.5 h-3.5 text-[#FFD700] flex-shrink-0" aria-label="Crew Capo" />;
+      return <Crown className="w-3.5 h-3.5 text-dull-gold flex-shrink-0" aria-label="Crew Capo" />;
     }
     if (isCrewManager(role)) {
-      return <Star className="w-3.5 h-3.5 text-[#FF6B1A] flex-shrink-0" aria-label="King" />;
+      return <Star className="w-3.5 h-3.5 text-terracotta flex-shrink-0" aria-label="King" />;
     }
     return null;
   };
@@ -401,9 +401,9 @@ export default function EventDetailModal({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-lg max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto rounded-none shadow-[8px_8px_0_#1A1A1A]">
+      <DialogContent className="graffiti-dialog max-w-lg max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto rounded-none shadow-sticker-lg">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">
+          <DialogTitle className="graffiti-dialog-title">
             {loading ? 'Loading...' : event ? formatDate(event.date) : 'Game Details'}
           </DialogTitle>
           <DialogDescription className="sr-only">
@@ -414,11 +414,11 @@ export default function EventDetailModal({
         {loading ? (
           <div className="space-y-4 py-4">
             <div className="animate-pulse space-y-3">
-              <div className="h-8 w-48 bg-[#1A1A1A]/10 rounded" />
-              <div className="h-6 w-32 bg-[#1A1A1A]/10 rounded" />
+              <div className="h-8 w-48 bg-asphalt/10 rounded" />
+              <div className="h-6 w-32 bg-asphalt/10 rounded" />
               <div className="grid grid-cols-2 gap-2 mt-4">
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-12 bg-[#1A1A1A]/10 rounded" />
+                  <div key={i} className="h-12 bg-asphalt/10 rounded" />
                 ))}
               </div>
             </div>
@@ -444,7 +444,7 @@ export default function EventDetailModal({
                   {confirmedAttendees.length}/{event.totalSpots}
                 </span>
                 {event.slotCost > 0 && (
-                  <span className="bg-[#FFD700] text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti px-2 py-0.5 text-xs flex items-center gap-1">
+                  <span className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti px-2 py-0.5 text-xs flex items-center gap-1">
                     <Euro className="w-3 h-3" />
                     {event.slotCost.toFixed(2)}
                   </span>
@@ -453,10 +453,10 @@ export default function EventDetailModal({
 
               {/* Signup Status */}
               {!isSignupOpen && signupOpensAt && formatSignupTime(signupOpensAt) && (
-                <div className="bg-[#FFD700] border-2 border-[#1A1A1A] p-3 text-center">
+                <div className="bg-dull-gold border-2 border-asphalt p-3 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <Lock className="w-4 h-4 text-[#1A1A1A]" />
-                    <p className="font-graffiti text-[#1A1A1A]">
+                    <Lock className="w-4 h-4 text-asphalt" />
+                    <p className="font-graffiti text-asphalt">
                       Signup opens {formatSignupTime(signupOpensAt)}
                     </p>
                   </div>
@@ -469,7 +469,7 @@ export default function EventDetailModal({
                   <button
                     onClick={() => handleClaim()}
                     disabled={actionLoading === 'claim'}
-                    className="w-full relative bg-[#7FFF00] text-[#1A1A1A] border-4 border-[#1A1A1A] font-graffiti text-xl py-4 px-6 shadow-[6px_6px_0_#1A1A1A] hover:shadow-[8px_8px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                    className="w-full relative bg-moss-green text-asphalt border-4 border-asphalt font-graffiti text-xl py-4 px-6 shadow-[6px_6px_0_var(--asphalt-black)] hover:shadow-sticker-lg hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                   >
                     {actionLoading === 'claim' ? (
                       <Loader2 className="w-6 h-6 animate-spin" />
@@ -488,7 +488,7 @@ export default function EventDetailModal({
                   <button
                     onClick={handleJoinWaitlist}
                     disabled={actionLoading === 'waitlist'}
-                    className="w-full bg-[#0084FF] text-white border-3 border-[#1A1A1A] font-graffiti text-lg py-3 px-5 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full bg-slate-blue text-white border-3 border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {actionLoading === 'waitlist' ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -504,13 +504,13 @@ export default function EventDetailModal({
                 {/* On the waitlist */}
                 {event.myWaitlistPosition !== null && (
                   <div className="space-y-2">
-                    <div className="bg-[#0084FF]/10 border-2 border-[#0084FF] p-3 text-center font-graffiti text-[#0084FF]">
+                    <div className="bg-slate-blue/10 border-2 border-slate-blue p-3 text-center font-graffiti text-slate-blue">
                       You&apos;re #{event.myWaitlistPosition} on the bench
                     </div>
                     <button
                       onClick={handleLeaveWaitlist}
                       disabled={actionLoading === 'waitlist'}
-                      className="w-full bg-white text-[#1A1A1A] border-3 border-[#1A1A1A] font-graffiti text-base py-2.5 px-5 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[5px_5px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="w-full bg-white text-asphalt border-3 border-asphalt font-graffiti text-base py-2.5 px-5 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-[5px_5px_0_#1A1A1A] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {actionLoading === 'waitlist' ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
@@ -530,7 +530,7 @@ export default function EventDetailModal({
                       <button
                         onClick={handleOffer}
                         disabled={actionLoading === 'offer'}
-                        className="bg-[#FF6B1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="bg-terracotta text-white border-3 border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {actionLoading === 'offer' ? (
                           <Loader2 className="w-5 h-5 animate-spin" />
@@ -544,7 +544,7 @@ export default function EventDetailModal({
                       <button
                         onClick={handleRelease}
                         disabled={actionLoading === 'release' || waitlist.length === 0}
-                        className="bg-[#1A1A1A] text-white border-3 border-[#1A1A1A] font-graffiti text-base py-3 px-3 shadow-[4px_4px_0_#1A1A1A] enabled:hover:shadow-[6px_6px_0_#1A1A1A] enabled:hover:translate-y-[-2px] enabled:active:shadow-[2px_2px_0_#1A1A1A] enabled:active:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="bg-asphalt text-white border-3 border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md enabled:hover:shadow-[6px_6px_0_var(--asphalt-black)] enabled:hover:translate-y-[-2px] enabled:active:shadow-sticker-sm enabled:active:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         title={
                           waitlist.length > 0
                             ? 'Releasing passes your spot to the next head on the bench'
@@ -562,7 +562,7 @@ export default function EventDetailModal({
                       </button>
                     </div>
                     {waitlist.length === 0 && (
-                      <p className="text-xs text-[#1A1A1A]/60 font-body text-center">
+                      <p className="text-xs text-asphalt/60 font-body text-center">
                         Release opens up once someone&apos;s on the bench. To give up your
                         spot now, use <span className="font-semibold">Offer</span>.
                       </p>
@@ -574,7 +574,7 @@ export default function EventDetailModal({
                   <button
                     onClick={handleRetract}
                     disabled={actionLoading === 'retract'}
-                    className="w-full bg-white text-[#1A1A1A] border-3 border-[#1A1A1A] font-graffiti text-lg py-3 px-5 shadow-[4px_4px_0_#1A1A1A] hover:shadow-[6px_6px_0_#1A1A1A] hover:translate-y-[-2px] active:shadow-[2px_2px_0_#1A1A1A] active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full bg-white text-asphalt border-3 border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {actionLoading === 'retract' ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -589,8 +589,8 @@ export default function EventDetailModal({
               </div>
 
               {error && (
-                <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-                  <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+                <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+                  <p className="text-sm text-terracotta font-body">{error}</p>
                 </div>
               )}
 
@@ -599,7 +599,7 @@ export default function EventDetailModal({
                 <div className="flex gap-2">
                   <button
                     onClick={() => setEditOpen(true)}
-                    className="flex-1 bg-white text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti text-sm py-2 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all flex items-center justify-center gap-2"
+                    className="flex-1 bg-white text-asphalt border-2 border-asphalt font-graffiti text-sm py-2 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all flex items-center justify-center gap-2"
                   >
                     <Pencil className="w-4 h-4" />
                     EDIT GAME
@@ -607,7 +607,7 @@ export default function EventDetailModal({
                   <button
                     onClick={() => setConfirmDeleteOpen(true)}
                     disabled={actionLoading === 'delete'}
-                    className="flex-1 bg-[#FF5A00] text-white border-2 border-[#1A1A1A] font-graffiti text-sm py-2 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="flex-1 bg-terracotta text-white border-2 border-asphalt font-graffiti text-sm py-2 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {actionLoading === 'delete' ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -623,14 +623,14 @@ export default function EventDetailModal({
 
               {/* Manager: assign a player to an open spot */}
               {canManage && availableSpots > 0 && (
-                <div className="border-2 border-dashed border-[#1A1A1A]/40 p-3 space-y-2">
-                  <h3 className="font-graffiti text-sm text-[#1A1A1A]">Assign a player</h3>
+                <div className="border-2 border-dashed border-asphalt/40 p-3 space-y-2">
+                  <h3 className="font-graffiti text-sm text-asphalt">Assign a player</h3>
                   <div className="flex gap-2">
                     <Select value={assignEmail} onValueChange={setAssignEmail}>
-                      <SelectTrigger className="flex-1 bg-white border-2 border-[#1A1A1A] rounded-none font-body text-sm focus:ring-0 focus:ring-offset-0 shadow-[2px_2px_0_#1A1A1A]">
+                      <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-sm focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
                         <SelectValue placeholder="Select a player…" />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#F2EFE9] border-2 border-[#1A1A1A] rounded-none">
+                      <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
                         {members
                           .filter(
                             (m) =>
@@ -647,7 +647,7 @@ export default function EventDetailModal({
                     <button
                       onClick={handleAssign}
                       disabled={!assignEmail || actionLoading === 'assign'}
-                      className="bg-[#7FFF00] text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50"
+                      className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                     >
                       {actionLoading === 'assign' ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -661,8 +661,8 @@ export default function EventDetailModal({
 
               {/* Manager: reassign or remove players already in the game */}
               {canManage && confirmedAttendees.length > 0 && (
-                <div className="border-2 border-dashed border-[#1A1A1A]/40 p-3 space-y-2">
-                  <h3 className="font-graffiti text-sm text-[#1A1A1A]">Manage Squad</h3>
+                <div className="border-2 border-dashed border-asphalt/40 p-3 space-y-2">
+                  <h3 className="font-graffiti text-sm text-asphalt">Manage Squad</h3>
                   <div className="space-y-2">
                     {confirmedAttendees.map((attendee) => {
                       const busy =
@@ -671,9 +671,9 @@ export default function EventDetailModal({
                       return (
                         <div
                           key={attendee.attendeeId}
-                          className="bg-white border-2 border-[#1A1A1A] p-2 space-y-2"
+                          className="bg-white border-2 border-asphalt p-2 space-y-2"
                         >
-                          <span className="font-marker text-sm text-[#1A1A1A] block truncate">
+                          <span className="font-marker text-sm text-asphalt block truncate">
                             {attendee.userName}
                           </span>
                           <div className="flex gap-2">
@@ -683,10 +683,10 @@ export default function EventDetailModal({
                                 setReassignTarget((prev) => ({ ...prev, [attendee.attendeeId]: v }))
                               }
                             >
-                              <SelectTrigger className="flex-1 bg-white border-2 border-[#1A1A1A] rounded-none font-body text-xs h-8 focus:ring-0 focus:ring-offset-0 shadow-[2px_2px_0_#1A1A1A]">
+                              <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-8 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
                                 <SelectValue placeholder="Swap with…" />
                               </SelectTrigger>
-                              <SelectContent className="bg-[#F2EFE9] border-2 border-[#1A1A1A] rounded-none">
+                              <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
                                 {members
                                   .filter(
                                     (m) =>
@@ -703,7 +703,7 @@ export default function EventDetailModal({
                             <button
                               onClick={() => handleReassign(attendee.attendeeId)}
                               disabled={busy || !reassignTarget[attendee.attendeeId]}
-                              className="bg-[#0084FF] text-white border-2 border-[#1A1A1A] font-graffiti text-xs py-1 px-3 shadow-[2px_2px_0_#1A1A1A] hover:shadow-[3px_3px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50"
+                              className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                             >
                               {actionLoading === `reassign-${attendee.attendeeId}` ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -715,7 +715,7 @@ export default function EventDetailModal({
                               onClick={() => handleUnassign(attendee.attendeeId)}
                               disabled={busy}
                               title="Remove from game"
-                              className="bg-[#FF5A00] text-white border-2 border-[#1A1A1A] py-1 px-2.5 shadow-[2px_2px_0_#1A1A1A] hover:shadow-[3px_3px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50"
+                              className="bg-terracotta text-white border-2 border-asphalt py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                             >
                               {actionLoading === `unassign-${attendee.attendeeId}` ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -734,17 +734,17 @@ export default function EventDetailModal({
               {/* Offered Spots */}
               {offeredSpots.length > 0 && (
                 <div className="space-y-2">
-                  <h3 className="font-graffiti text-lg text-[#FF5A00]">
+                  <h3 className="font-graffiti text-lg text-terracotta">
                     Available Spots ({offeredSpots.length})
                   </h3>
                   <div className="space-y-2">
                     {offeredSpots.map((attendee, index) => (
                       <div 
                         key={attendee.attendeeId} 
-                        className="marker-card bg-[#FF5A00]/10 p-3 flex items-center justify-between"
+                        className="marker-card bg-terracotta/10 p-3 flex items-center justify-between"
                         style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                       >
-                        <span className="font-marker text-[#FF5A00] flex items-center gap-1">
+                        <span className="font-marker text-terracotta flex items-center gap-1">
                           {renderRoleIcon(attendee.userEmail)}
                           {attendee.userName}&apos;s spot
                         </span>
@@ -752,7 +752,7 @@ export default function EventDetailModal({
                           <button
                             onClick={() => handleClaim(attendee.attendeeId)}
                             disabled={actionLoading === 'claim'}
-                            className="bg-[#7FFF00] text-[#1A1A1A] border-2 border-[#1A1A1A] font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_#1A1A1A] hover:shadow-[4px_4px_0_#1A1A1A] active:shadow-[1px_1px_0_#1A1A1A] transition-all disabled:opacity-50"
+                            className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                           >
                             {actionLoading === 'claim' ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
@@ -769,7 +769,7 @@ export default function EventDetailModal({
 
               {/* Confirmed Attendees */}
               <div className="space-y-2">
-                <h3 className="font-graffiti text-lg text-[#0084FF]">
+                <h3 className="font-graffiti text-lg text-slate-blue">
                   Playing ({confirmedAttendees.length}/{event.totalSpots})
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
@@ -778,12 +778,12 @@ export default function EventDetailModal({
                       key={attendee.attendeeId} 
                       className={`marker-card p-2 ${
                         attendee.userEmail === userEmail 
-                          ? 'bg-[#96E600] border-[#1A1A1A]' 
+                          ? 'bg-moss-green border-asphalt' 
                           : 'bg-white'
                       }`}
                       style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
                     >
-                      <span className="font-marker text-sm text-[#1A1A1A] truncate flex items-center gap-1.5">
+                      <span className="font-marker text-sm text-asphalt truncate flex items-center gap-1.5">
                         <PlayerAvatar
                           pieceUrl={pieceByEmail.get(attendee.userEmail)}
                           name={attendee.userName}
@@ -792,7 +792,7 @@ export default function EventDetailModal({
                         {renderRoleIcon(attendee.userEmail)}
                         <span className="truncate">{attendee.userName}</span>
                         {attendee.userEmail === userEmail && (
-                          <span className="text-[#1A1A1A]/60">(you)</span>
+                          <span className="text-asphalt/60">(you)</span>
                         )}
                       </span>
                     </div>
@@ -802,10 +802,10 @@ export default function EventDetailModal({
                   {Array.from({ length: availableSpots }).map((_, i) => (
                     <div 
                       key={`empty-${i}`} 
-                      className="marker-card p-2 border-dashed border-[#1A1A1A]/30 bg-white/50"
+                      className="marker-card p-2 border-dashed border-asphalt/30 bg-white/50"
                       style={{ transform: `rotate(${i % 2 === 0 ? -0.3 : 0.3}deg)` }}
                     >
-                      <span className="text-sm text-[#1A1A1A]/30 font-body">Open</span>
+                      <span className="text-sm text-asphalt/30 font-body">Open</span>
                     </div>
                   ))}
                 </div>
@@ -814,7 +814,7 @@ export default function EventDetailModal({
               {/* Waitlist */}
               {waitlist.length > 0 && (
                 <div className="space-y-2">
-                  <h3 className="font-graffiti text-lg text-[#0084FF]">
+                  <h3 className="font-graffiti text-lg text-slate-blue">
                     The Bench ({waitlist.length})
                   </h3>
                   <div className="space-y-2">
@@ -822,21 +822,21 @@ export default function EventDetailModal({
                       <div
                         key={entry.userEmail}
                         className={`marker-card p-2 flex items-center gap-2 ${
-                          entry.userEmail === userEmail ? 'bg-[#0084FF]/15' : 'bg-white'
+                          entry.userEmail === userEmail ? 'bg-slate-blue/15' : 'bg-white'
                         }`}
                         style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                       >
-                        <span className="font-graffiti text-[#0084FF] w-6">#{entry.position}</span>
+                        <span className="font-graffiti text-slate-blue w-6">#{entry.position}</span>
                         <PlayerAvatar
                           pieceUrl={pieceByEmail.get(entry.userEmail)}
                           name={entry.displayName}
                           className="h-6 w-6 shrink-0"
                         />
                         {renderRoleIcon(entry.userEmail)}
-                        <span className="font-marker text-sm text-[#1A1A1A] truncate">
+                        <span className="font-marker text-sm text-asphalt truncate">
                           {entry.displayName}
                           {entry.userEmail === userEmail && (
-                            <span className="text-[#1A1A1A]/60 ml-1">(you)</span>
+                            <span className="text-asphalt/60 ml-1">(you)</span>
                           )}
                         </span>
                       </div>
@@ -848,7 +848,7 @@ export default function EventDetailModal({
           </>
         ) : (
           <div className="py-8 text-center">
-            <p className="font-graffiti text-[#1A1A1A]/50">Failed to load game details</p>
+            <p className="font-graffiti text-asphalt/50">Failed to load game details</p>
           </div>
         )}
       </DialogContent>

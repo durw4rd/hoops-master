@@ -2,16 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { Group } from "@/lib/types";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Globe, Key, Loader2, Users, Check } from "lucide-react";
+import Image from "next/image";
+import { GraffitiDialog, GraffitiErrorBox } from "@/components/ui/GraffitiDialog";
 
 interface JoinGroupModalProps {
   open: boolean;
@@ -111,23 +106,23 @@ export default function JoinGroupModal({
   const availableGroups = publicGroups.filter(g => !existingGroupIds.includes(g.groupId));
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md mx-2 sm:mx-auto rounded-none max-h-[85vh] overflow-y-auto shadow-[8px_8px_0_#1A1A1A]">
-        <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#0084FF]">Join a Crew</DialogTitle>
-          <DialogDescription className="text-[#1A1A1A]/60 font-body">
-            Join using an invite code or browse public crews
-          </DialogDescription>
-        </DialogHeader>
+    <GraffitiDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Join a Crew"
+      description="Join using an invite code or browse public crews"
+      titleClassName="text-slate-blue"
+      className="max-w-md"
+    >
 
         {/* Tab Buttons */}
-        <div className="flex gap-2 bg-[#1A1A1A] p-1 mt-2">
+        <div className="flex gap-2 bg-asphalt p-1 mt-2">
           <button
             onClick={() => setActiveTab('code')}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
               activeTab === 'code' 
-                ? 'bg-[#FF5A00] text-white' 
-                : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                ? 'bg-terracotta text-white' 
+                : 'text-sticker-white/60 hover:text-sticker-white'
             }`}
           >
             <Key className="w-4 h-4" />
@@ -137,8 +132,8 @@ export default function JoinGroupModal({
             onClick={() => setActiveTab('public')}
             className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
               activeTab === 'public' 
-                ? 'bg-[#96E600] text-[#1A1A1A]' 
-                : 'text-[#F2EFE9]/60 hover:text-[#F2EFE9]'
+                ? 'bg-moss-green text-asphalt' 
+                : 'text-sticker-white/60 hover:text-sticker-white'
             }`}
           >
             <Globe className="w-4 h-4" />
@@ -150,7 +145,7 @@ export default function JoinGroupModal({
         {activeTab === 'code' && (
           <form onSubmit={handleJoinWithCode} className="space-y-4 mt-4">
             <div className="space-y-2">
-              <Label htmlFor="code" className="font-graffiti text-[#1A1A1A]">Invite Code</Label>
+              <Label htmlFor="code" className="font-graffiti text-asphalt">Invite Code</Label>
               <Input
                 id="code"
                 value={inviteCode}
@@ -160,16 +155,12 @@ export default function JoinGroupModal({
                 maxLength={8}
                 required
               />
-              <p className="text-xs text-[#1A1A1A]/40 font-body">
+              <p className="text-xs text-asphalt/40 font-body">
                 Get the invite code from a crew admin
               </p>
             </div>
 
-            {error && joiningGroupId === 'code' && (
-              <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-                <p className="text-sm text-[#FF5A00] font-body">{error}</p>
-              </div>
-            )}
+            {error && joiningGroupId === "code" && <GraffitiErrorBox>{error}</GraffitiErrorBox>}
 
             <button
               type="submit"
@@ -193,33 +184,34 @@ export default function JoinGroupModal({
           <div className="mt-4">
             {loadingPublic ? (
               <div className="py-8 text-center">
-                <Loader2 className="w-8 h-8 mx-auto text-[#0084FF] animate-spin" />
+                <Loader2 className="w-8 h-8 mx-auto text-slate-blue animate-spin" />
               </div>
             ) : availableGroups.length === 0 ? (
               <div className="py-8 text-center marker-card">
-                <div className="w-16 h-16 mx-auto rounded-full bg-[#0084FF]/20 border-2 border-[#1A1A1A] flex items-center justify-center mb-3">
-                  <Users className="w-8 h-8 text-[#0084FF]" />
+                <div className="w-16 h-16 mx-auto rounded-full bg-slate-blue/20 border-2 border-asphalt flex items-center justify-center mb-3">
+                  <Users className="w-8 h-8 text-slate-blue" />
                 </div>
-                <p className="font-graffiti text-[#1A1A1A]">No Public Crews</p>
-                <p className="text-[#1A1A1A]/50 text-sm font-body mt-1">Check back later</p>
+                <p className="font-graffiti text-asphalt">No Public Crews</p>
+                <p className="text-asphalt/50 text-sm font-body mt-1">Check back later</p>
               </div>
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {availableGroups.map((group, index) => (
-                  <div 
+                  <div
                     key={group.groupId}
-                    className="marker-card p-3"
+                    className="poster-frame p-0 overflow-hidden"
                     style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                   >
-                    <div className="flex items-center justify-between gap-3">
+                    {group.bannerUrl && (
+                      <div className="relative h-16 border-b-2 border-asphalt grain-overlay">
+                        <Image src={group.bannerUrl} alt={group.name} fill className="object-cover" />
+                      </div>
+                    )}
+                    <div className="p-3 flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-graffiti text-[#1A1A1A] truncate">
-                          {group.name}
-                        </h4>
+                        <h4 className="font-graffiti text-asphalt truncate">{group.name}</h4>
                         {group.description && (
-                          <p className="text-xs text-[#1A1A1A]/50 truncate font-body">
-                            {group.description}
-                          </p>
+                          <p className="text-xs text-asphalt/50 truncate font-body">{group.description}</p>
                         )}
                       </div>
                       <button
@@ -242,14 +234,13 @@ export default function JoinGroupModal({
               </div>
             )}
             
-            {error && joiningGroupId !== 'code' && (
-              <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00] mt-3">
-                <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+            {error && joiningGroupId !== "code" && (
+              <div className="mt-3">
+                <GraffitiErrorBox>{error}</GraffitiErrorBox>
               </div>
             )}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+    </GraffitiDialog>
   );
 }

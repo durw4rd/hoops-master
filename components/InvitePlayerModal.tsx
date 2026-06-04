@@ -110,10 +110,10 @@ export default function InvitePlayerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-[#F2EFE9] border-4 border-[#1A1A1A] max-w-md max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto rounded-none shadow-[8px_8px_0_#1A1A1A]">
+      <DialogContent className="graffiti-dialog max-w-md max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto rounded-none shadow-sticker-lg">
         <DialogHeader>
-          <DialogTitle className="font-graffiti text-2xl text-[#FF5A00]">The Black Book</DialogTitle>
-          <DialogDescription className="font-body text-[#1A1A1A]/70">
+          <DialogTitle className="graffiti-dialog-title">The Black Book</DialogTitle>
+          <DialogDescription className="font-body text-asphalt/70">
             Every writer in the book. Only names you put down here can get on. Drop an email to
             put someone on the list — they tag their own handle the first time they sign in.
           </DialogDescription>
@@ -121,7 +121,7 @@ export default function InvitePlayerModal({
 
         <form onSubmit={handleInvite} className="space-y-3">
           <div className="space-y-2">
-            <Label htmlFor="invite-email" className="font-graffiti text-[#1A1A1A]">
+            <Label htmlFor="invite-email" className="font-graffiti text-asphalt">
               Email
             </Label>
             <div className="flex gap-2">
@@ -145,48 +145,48 @@ export default function InvitePlayerModal({
           </div>
 
           {error && (
-            <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-              <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+            <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+              <p className="text-sm text-terracotta font-body">{error}</p>
             </div>
           )}
           {success && (
-            <div className="p-2 bg-[#7FFF00]/20 border-2 border-[#1A1A1A]">
-              <p className="text-sm text-[#1A1A1A] font-body">{success}</p>
+            <div className="p-2 bg-moss-green/20 border-2 border-asphalt">
+              <p className="text-sm text-asphalt font-body">{success}</p>
             </div>
           )}
         </form>
 
         <div className="space-y-2">
-          <h3 className="font-graffiti text-lg text-[#1A1A1A]">On The Wall ({users.length})</h3>
+          <h3 className="font-graffiti text-lg text-asphalt">On The Wall ({users.length})</h3>
           <div className="space-y-1.5 max-h-64 overflow-y-auto">
             {users.map((u) => (
               <div
                 key={u.email}
-                className="flex items-center justify-between gap-2 bg-white border-2 border-[#1A1A1A] px-3 py-2"
+                className="flex items-center justify-between gap-2 bg-white border-2 border-asphalt px-3 py-2"
               >
                 <div className="min-w-0">
-                  <p className="font-marker text-sm text-[#1A1A1A] truncate flex items-center gap-1">
+                  <p className="font-marker text-sm text-asphalt truncate flex items-center gap-1">
                     {u.onboarded ? u.displayName : u.email.split("@")[0]}
                     {u.globalRole === "owner" && (
-                      <span className="text-[10px] text-[#FF5A00] font-graffiti flex items-center gap-0.5">
+                      <span className="text-[10px] text-terracotta font-graffiti flex items-center gap-0.5">
                         <Crown className="w-3 h-3" /> OWNER
                       </span>
                     )}
                     {u.globalRole === "admin" && (
-                      <span className="text-[10px] text-[#FF5A00] font-graffiti flex items-center gap-0.5">
+                      <span className="text-[10px] text-terracotta font-graffiti flex items-center gap-0.5">
                         <ShieldCheck className="w-3 h-3" /> ADMIN
                       </span>
                     )}
                   </p>
-                  <p className="text-xs text-[#1A1A1A]/50 font-body truncate">{u.email}</p>
+                  <p className="text-xs text-asphalt/50 font-body truncate">{u.email}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {u.onboarded ? (
-                    <span className="hidden sm:flex items-center gap-1 text-[#0a8f3c] font-graffiti text-xs whitespace-nowrap">
+                    <span className="hidden sm:flex items-center gap-1 text-success font-graffiti text-xs whitespace-nowrap">
                       <Check className="w-3.5 h-3.5" /> active
                     </span>
                   ) : (
-                    <span className="hidden sm:flex items-center gap-1 text-[#1A1A1A]/50 font-graffiti text-xs whitespace-nowrap">
+                    <span className="hidden sm:flex items-center gap-1 text-asphalt/50 font-graffiti text-xs whitespace-nowrap">
                       <Clock className="w-3.5 h-3.5" /> invited
                     </span>
                   )}
@@ -194,12 +194,12 @@ export default function InvitePlayerModal({
                   {u.globalRole !== "owner" &&
                     u.email.toLowerCase() !== (currentUserEmail ?? "").toLowerCase() &&
                     (roleUpdating === u.email ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-[#1A1A1A]/60" />
+                      <Loader2 className="w-4 h-4 animate-spin text-asphalt/60" />
                     ) : u.globalRole === "admin" ? (
                       <button
                         onClick={() => changeRole(u.email, "user")}
                         title="Demote to Player"
-                        className="text-[11px] font-graffiti border-2 border-[#1A1A1A] bg-white px-2 py-0.5 shadow-[2px_2px_0_#1A1A1A] hover:bg-[#F2EFE9] transition-colors flex items-center gap-0.5"
+                        className="text-[11px] font-graffiti border-2 border-asphalt bg-white px-2 py-0.5 shadow-sticker-sm hover:bg-sticker-white transition-colors flex items-center gap-0.5"
                       >
                         <ChevronDown className="w-3 h-3" /> Demote
                       </button>
@@ -207,7 +207,7 @@ export default function InvitePlayerModal({
                       <button
                         onClick={() => changeRole(u.email, "admin")}
                         title="Promote to Admin"
-                        className="text-[11px] font-graffiti border-2 border-[#1A1A1A] bg-[#FF5A00] text-white px-2 py-0.5 shadow-[2px_2px_0_#1A1A1A] hover:bg-[#e65200] transition-colors flex items-center gap-0.5"
+                        className="text-[11px] font-graffiti border-2 border-asphalt bg-terracotta text-white px-2 py-0.5 shadow-sticker-sm hover:bg-[#e65200] transition-colors flex items-center gap-0.5"
                       >
                         <ChevronUp className="w-3 h-3" /> Admin
                       </button>

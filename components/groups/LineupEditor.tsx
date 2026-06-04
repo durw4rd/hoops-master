@@ -108,7 +108,7 @@ export default function LineupEditor({ groupId, members, onLineupSaved }: Lineup
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="font-graffiti text-xl text-[#1A1A1A]">Lineup Order</h3>
+        <h3 className="font-graffiti text-xl text-asphalt">Lineup Order</h3>
         <button
           type="button"
           onClick={saveRoster}
@@ -121,17 +121,17 @@ export default function LineupEditor({ groupId, members, onLineupSaved }: Lineup
       </div>
 
       {error && (
-        <div className="p-2 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
-          <p className="text-sm text-[#FF5A00] font-body">{error}</p>
+        <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+          <p className="text-sm text-terracotta font-body">{error}</p>
         </div>
       )}
 
       {loading ? (
-        <div className="flex items-center gap-2 text-[#1A1A1A]/60 font-body py-6 justify-center">
+        <div className="flex items-center gap-2 text-asphalt/60 font-body py-6 justify-center">
           <Loader2 className="w-5 h-5 animate-spin" /> Loading lineup…
         </div>
       ) : roster.length === 0 ? (
-        <p className="text-center text-[#1A1A1A]/50 font-body py-6">
+        <p className="text-center text-asphalt/50 font-body py-6">
           No crew members yet — put some players on first.
         </p>
       ) : (
@@ -139,26 +139,26 @@ export default function LineupEditor({ groupId, members, onLineupSaved }: Lineup
           {roster.map((r, i) => (
             <div
               key={r.userEmail}
-              className={`flex items-center gap-2 border-2 border-[#1A1A1A] px-2.5 py-2 ${
-                r.isActive ? "bg-white" : "bg-[#1A1A1A]/5 opacity-60"
+              className={`flex items-center gap-2 border-2 border-asphalt px-2.5 py-2 ${
+                r.isActive ? "bg-white" : "bg-asphalt/5 opacity-60"
               }`}
             >
-              <span className="font-graffiti text-[#1A1A1A]/40 w-6 text-center">{i + 1}</span>
+              <span className="font-graffiti text-asphalt/40 w-6 text-center">{i + 1}</span>
               <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={r.isActive}
                   onChange={() => toggleActive(r.userEmail)}
-                  className="w-4 h-4 accent-[#FF5A00]"
+                  className="w-4 h-4 accent-terracotta"
                 />
-                <span className="font-marker text-[#1A1A1A] truncate">{r.displayName}</span>
+                <span className="font-marker text-asphalt truncate">{r.displayName}</span>
               </label>
               <div className="flex gap-1">
                 <button
                   type="button"
                   onClick={() => move(i, -1)}
                   disabled={i === 0}
-                  className="border-2 border-[#1A1A1A] bg-white p-1 disabled:opacity-30 hover:bg-[#F2EFE9]"
+                  className="border-2 border-asphalt bg-white p-1 disabled:opacity-30 hover:bg-sticker-white"
                 >
                   <ArrowUp className="w-3.5 h-3.5" />
                 </button>
@@ -166,14 +166,14 @@ export default function LineupEditor({ groupId, members, onLineupSaved }: Lineup
                   type="button"
                   onClick={() => move(i, 1)}
                   disabled={i === roster.length - 1}
-                  className="border-2 border-[#1A1A1A] bg-white p-1 disabled:opacity-30 hover:bg-[#F2EFE9]"
+                  className="border-2 border-asphalt bg-white p-1 disabled:opacity-30 hover:bg-sticker-white"
                 >
                   <ArrowDown className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
           ))}
-          <p className="text-xs text-[#1A1A1A]/50 font-body pt-1">
+          <p className="text-xs text-asphalt/50 font-body pt-1">
             {activeCount} player{activeCount === 1 ? "" : "s"} in the rotation. Unchecked players
             sit out.
           </p>

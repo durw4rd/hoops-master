@@ -19,25 +19,39 @@ tracked as credit scoped to the crew. The UI is a 1980s NYC subway-graffiti them
 - **DB driver**: `@neondatabase/serverless` WebSocket `Pool` (supports transactions)
 - **Feature flags**: LaunchDarkly (Vercel server SDK + Edge Config server-side; React client SDK with session/user multi-context) — additive only
 - **Image storage**: Vercel Blob (`@vercel/blob`) for crew banners and player "pieces" (avatars)
-- **Styling**: Tailwind CSS + shadcn/ui (Radix primitives)
-- **Hosting**: Vercel (free tier). Package manager: `pnpm`.
+- **Styling**: Tailwind CSS + shadcn/ui (Radix primitives). Graffiti theme tokens
+  in `app/globals.css` and `lib/design-tokens.ts`; texture assets in
+  `public/textures/` (see `public/textures/README.md`).
+- **Hosting**: Vercel (free tier). Package manager: `pnpm`. Local dev uses port
+  **3000** (`pnpm dev`); set `NEXTAUTH_URL=http://localhost:3000` in `.env.local`.
 
-## Layout
+## Layout & UI shell
 
 ```
 app/
-  page.tsx                 # Home: crew list, create/join/Black Book, onboarding gate
+  page.tsx                 # Home: sign-in, crew list, create/join/Black Book, onboarding
+  globals.css              # Theme tokens, concrete texture, marker-card / graffiti-dialog utilities
   api/                     # Route handlers (see API map below)
 components/
-  groups/                  # GroupDashboard, modals, LineupEditor, CreditDashboard, BannerUploadField, etc.
-  Header.tsx               # Always-on centered Hoops Master logo + settings menu (Your Tag / Bounce); shows your piece
-  PlayerAvatar.tsx         # Circular "piece" avatar with initials fallback (used in header + player lists)
-  ProfileSettingsModal.tsx # Edit your handle/tag (display_name) and upload your piece (avatar)
+  AppShell.tsx             # Concrete background + page content + Footer
+  LogoBanner.tsx           # Full-width logo strip (authenticated views)
+  SettingsMenu.tsx         # Your Tag / Bounce / Black Book (when app-admin)
+  Footer.tsx               # Asphalt bar; Hoops Master + © year
+  groups/
+    CrewMuralHero.tsx      # Crew banner hero (or default wall placeholder)
+    GroupDashboard.tsx     # Crew tabs, mural, games, settings (sticky back + settings row)
+    GroupList.tsx          # Poster-frame crew cards
+    ...                    # Modals, LineupEditor, CreditDashboard, BannerUploadField, etc.
+  ui/GraffitiDialog.tsx    # Shared modal chrome for graffiti-styled dialogs
+  Header.tsx               # Legacy header (superseded by LogoBanner + in-dashboard nav)
+  PlayerAvatar.tsx         # Circular "piece" avatar with initials fallback
+  ProfileSettingsModal.tsx # Edit handle/tag and upload your piece
   InvitePlayerModal.tsx    # "Black Book" — app-admin player + role management
   OnboardingScreen.tsx     # First-login username picker
   LaunchDarklyProvider.tsx # Client LD init (session context) + mounts LDIdentify
   LDIdentify.tsx           # Syncs LD context with auth (session-only → session+user)
 lib/
+  design-tokens.ts         # JS mirror of CSS palette (for non-Tailwind use)
   db/schema.ts             # Drizzle schema (source of truth for tables)
   db/index.ts              # Neon Pool + drizzle client
   queries/                 # All DB access (events, groups, users, waitlist, credits, ...)
@@ -207,7 +221,7 @@ EDGE_CONFIG=              # Vercel Edge Config connection (server-side LD eval)
 
 ```bash
 pnpm install
-pnpm dev                       # local dev (reads .env.local)
+pnpm dev                       # local dev on port 3000 (reads .env.local)
 pnpm db:generate               # generate migration from schema changes
 pnpm db:push                   # push schema to DB (dev)
 pnpm db:migrate                # apply migrations
@@ -224,3 +238,6 @@ npx tsc --noEmit && pnpm build # verify before commit
 - Currency is always **€**. Display players by `display_name`, never raw email.
 - Keep authorization fail-closed; LD is additive, never required.
 - Match the app's voice — read [`VOCABULARY.md`](./VOCABULARY.md) before writing copy.
+- **Theme colors**: Tailwind classes (`text-asphalt`, `bg-terracotta`, etc.) use
+  `*-rgb` channel variables so opacity modifiers (`/70`, `/80`) work. Raw hex vars
+  (`var(--asphalt-black)`) remain in CSS utilities; prefer Tailwind tokens in JSX.

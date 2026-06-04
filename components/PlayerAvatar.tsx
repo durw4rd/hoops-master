@@ -24,9 +24,9 @@ function initials(name?: string): string {
  */
 export default function PlayerAvatar({ pieceUrl, name, className }: PlayerAvatarProps) {
   return (
-    <Avatar className={cn("border-2 border-[#1A1A1A] bg-[#0084FF]", className)}>
+    <Avatar className={cn("border-2 border-asphalt bg-slate-blue", className)}>
       {pieceUrl && <AvatarImage src={pieceUrl} alt={name ?? "Piece"} className="object-cover" />}
-      <AvatarFallback className="bg-[#0084FF] text-white font-graffiti text-xs">
+      <AvatarFallback className="bg-slate-blue text-white font-graffiti text-xs">
         {initials(name)}
       </AvatarFallback>
     </Avatar>

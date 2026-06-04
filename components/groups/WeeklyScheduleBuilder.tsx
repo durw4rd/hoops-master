@@ -54,11 +54,11 @@ export default function WeeklyScheduleBuilder({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <Label className="font-graffiti text-[#1A1A1A]">Weekly Slots</Label>
+        <Label className="font-graffiti text-asphalt">Weekly Slots</Label>
         <button
           type="button"
           onClick={addSlot}
-          className="flex items-center gap-1 text-xs font-graffiti text-[#0084FF] hover:text-[#FF5A00] transition-colors"
+          className="flex items-center gap-1 text-xs font-graffiti text-slate-blue hover:text-terracotta transition-colors"
         >
           <Plus className="w-3.5 h-3.5" />
           Add slot
@@ -67,7 +67,7 @@ export default function WeeklyScheduleBuilder({
 
       <div className="space-y-2">
         {slots.map((slot, i) => (
-          <div key={i} className="flex items-center gap-1.5 border-2 border-[#1A1A1A] bg-white p-1.5">
+          <div key={i} className="flex items-center gap-1.5 border-2 border-asphalt bg-white p-1.5">
             <Select
               value={String(slot.dayOfWeek)}
               onValueChange={(v) => updateSlot(i, { dayOfWeek: parseInt(v) })}
@@ -91,7 +91,7 @@ export default function WeeklyScheduleBuilder({
                 ))}
               </SelectContent>
             </Select>
-            <span className="text-[#1A1A1A]/40 text-xs">–</span>
+            <span className="text-asphalt/40 text-xs">–</span>
             <Select value={slot.endTime} onValueChange={(v) => updateSlot(i, { endTime: v })}>
               <SelectTrigger className="sketch-input h-9 px-2 w-[72px] flex-shrink-0">
                 <SelectValue />
@@ -106,7 +106,7 @@ export default function WeeklyScheduleBuilder({
               type="button"
               onClick={() => removeSlot(i)}
               disabled={slots.length === 1}
-              className="border-2 border-[#1A1A1A] bg-white p-1.5 disabled:opacity-30 hover:bg-[#F2EFE9] flex-shrink-0"
+              className="border-2 border-asphalt bg-white p-1.5 disabled:opacity-30 hover:bg-sticker-white flex-shrink-0"
               title="Remove slot"
             >
               <X className="w-3.5 h-3.5" />
@@ -116,7 +116,7 @@ export default function WeeklyScheduleBuilder({
       </div>
 
       <div className="space-y-1">
-        <Label className="font-graffiti text-[#1A1A1A]">Split each slot into</Label>
+        <Label className="font-graffiti text-asphalt">Split each slot into</Label>
         <Select value={String(blockMinutes)} onValueChange={(v) => onBlockMinutesChange(parseInt(v))}>
           <SelectTrigger className="sketch-input">
             <SelectValue />
@@ -129,9 +129,9 @@ export default function WeeklyScheduleBuilder({
         </Select>
       </div>
 
-      <p className="text-xs text-[#1A1A1A]/50 font-body">
+      <p className="text-xs text-asphalt/50 font-body">
         ={" "}
-        <span className="font-graffiti text-[#1A1A1A]">{gamesPerWeek}</span> game
+        <span className="font-graffiti text-asphalt">{gamesPerWeek}</span> game
         {gamesPerWeek === 1 ? "" : "s"} per week
         {slots.length > 0 && (
           <>
