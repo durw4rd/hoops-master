@@ -4,13 +4,13 @@
   "description": "Hoops event management platform",
   "icons": [
     {
-      "src": "/logo-new-200.png",
-      "sizes": "200x200",
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/logo-new-400.png",
-      "sizes": "400x400",
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
       "type": "image/png"
     }
   ],
