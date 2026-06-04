@@ -187,10 +187,10 @@ export default function HoopsMaster() {
           <div className="text-center space-y-6">
             {/* Logo */}
             <Image
-              src="/logo-clean-400.png"
+              src="/logo-new-400.png"
               alt="Hoops Master"
-              width={360}
-              height={200}
+              width={400}
+              height={223}
               className="mx-auto drop-shadow-[4px_4px_0_rgba(0,0,0,0.3)]"
               priority
             />
@@ -316,12 +316,6 @@ export default function HoopsMaster() {
               <h2 className="font-graffiti text-3xl sm:text-4xl text-[#1A1A1A] tracking-wide">
                 Your Crews
               </h2>
-              <p className="text-[#1A1A1A]/60 text-sm mt-1 font-body">
-                {groups.length === 0 
-                  ? "Join or create a crew to get started"
-                  : `${groups.length} crew${groups.length !== 1 ? 's' : ''}`
-                }
-              </p>
             </div>
             <div className="flex gap-3">
               <button
