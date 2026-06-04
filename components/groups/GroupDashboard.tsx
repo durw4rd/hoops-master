@@ -26,6 +26,7 @@ import CreateEventModal from "./CreateEventModal";
 import EventDetailModal from "./EventDetailModal";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
+import Image from "next/image";
 import BannerUploadField from "./BannerUploadField";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
@@ -244,7 +245,29 @@ export default function GroupDashboard({
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
       {/* Group Info Card (collapsible, collapsed by default) */}
-      <Collapsible open={infoOpen} onOpenChange={setInfoOpen} className="marker-card mb-4 sm:mb-6">
+      <Collapsible open={infoOpen} onOpenChange={setInfoOpen} className="marker-card mb-4 sm:mb-6 overflow-hidden">
+        {group.bannerUrl && (
+          <div
+            className={`relative w-full border-b-2 border-[#1A1A1A] ${
+              group.bannerOrientation === 'portrait' ? 'h-60 sm:h-72 bg-[#1A1A1A]' : 'h-36 sm:h-48'
+            }`}
+          >
+            <Image
+              src={group.bannerUrl}
+              alt={group.name}
+              fill
+              priority
+              className={group.bannerOrientation === 'portrait' ? 'object-contain' : 'object-cover'}
+            />
+            {group.bannerOrientation !== 'portrait' && (
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent flex items-end p-4">
+                <h2 className="font-graffiti text-2xl sm:text-3xl text-white tracking-wide drop-shadow-[2px_2px_0_rgba(0,0,0,0.8)] line-clamp-2">
+                  {group.name}
+                </h2>
+              </div>
+            )}
+          </div>
+        )}
         <CollapsibleTrigger className="w-full flex items-center justify-between gap-3 p-4 text-left">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="font-graffiti text-lg text-[#1A1A1A] truncate">{group.name}</span>

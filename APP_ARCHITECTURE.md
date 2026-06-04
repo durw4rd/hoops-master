@@ -30,7 +30,7 @@ app/
   api/                     # Route handlers (see API map below)
 components/
   groups/                  # GroupDashboard, modals, LineupEditor, CreditDashboard, BannerUploadField, etc.
-  Header.tsx               # Logo/crew-banner header + settings menu (Your Tag / Bounce); shows your piece
+  Header.tsx               # Always-on centered Hoops Master logo + settings menu (Your Tag / Bounce); shows your piece
   PlayerAvatar.tsx         # Circular "piece" avatar with initials fallback (used in header + player lists)
   ProfileSettingsModal.tsx # Edit your handle/tag (display_name) and upload your piece (avatar)
   InvitePlayerModal.tsx    # "Black Book" — app-admin player + role management
@@ -181,7 +181,7 @@ PUT    /api/groups/[id]/roster                      # set/reorder roster (Capo/K
 
 GET    /api/groups/[id]/credits                     # balances (view)
 GET    /api/groups/[id]/credits/[userId]/transactions
-POST   /api/groups/[id]/payments                    # record payment (Capo)
+POST   /api/groups/[id]/payments                    # record payment (Capo); accepts userEmail or userEmails[] for batch
 GET    /api/groups/[id]/export                      # CSV export
 
 GET    /api/admin/invite  POST /api/admin/invite    # Black Book invites (app-admin)

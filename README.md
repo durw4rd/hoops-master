@@ -15,14 +15,15 @@ subway-graffiti skin.
 - **Spot trading** — claim, offer, release, reassign; every move recorded.
 - **The Bench (waitlist)** — FIFO; releasing a spot auto-promotes the next player.
 - **Credit ledger** — per-crew balances (`paid − spent + earned`), admin-recorded
-  payments, and CSV export.
+  payments (single or batch — record the same amount for many players at once,
+  e.g. a season buy-in), and CSV export.
 - **Invite-only auth** — Google sign-in restricted to pre-invited/seeded emails,
   with a first-login username picker and an editable handle ("Your Tag").
 - **Player pieces** — upload your profile picture ("Your Piece", stored in Vercel
   Blob); shown as your settings avatar and beside your name in player lists.
 - **Crew banners** — upload a banner per crew (stored in Vercel Blob) with a
   landscape/portrait toggle; the crew card splits vertically for portrait banners,
-  and the banner doubles as the crew-page header.
+  and the banner headlines the crew dashboard's info box.
 - **Quality-of-life UI** — settings menu in the header, collapsible crew info,
   a "Show past games" toggle (hidden by default), "My Games" filter, and subtle
   crown/star markers for Capos and Kings in player lists.

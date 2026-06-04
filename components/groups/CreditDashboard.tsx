@@ -21,13 +21,21 @@ export default function CreditDashboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Admin payment form
-  const [payEmail, setPayEmail] = useState("");
+  // Admin payment form (supports recording one payment for many players at once)
+  const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [payAmount, setPayAmount] = useState("");
   const [payDescription, setPayDescription] = useState("");
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [recording, setRecording] = useState(false);
   const [showPayForm, setShowPayForm] = useState(false);
+
+  const allSelected = members.length > 0 && selectedEmails.length === members.length;
+  const toggleEmail = (email: string) =>
+    setSelectedEmails((prev) =>
+      prev.includes(email) ? prev.filter((e) => e !== email) : [...prev, email]
+    );
+  const toggleAll = () =>
+    setSelectedEmails(allSelected ? [] : members.map((m) => m.userEmail));
 
   const fetchBalances = useCallback(async () => {
     setLoading(true);
@@ -50,7 +58,7 @@ export default function CreditDashboard({
 
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!payEmail || payAmount === "") return;
+    if (selectedEmails.length === 0 || payAmount === "") return;
     setRecording(true);
     setError(null);
     try {
@@ -58,7 +66,7 @@ export default function CreditDashboard({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userEmail: payEmail,
+          userEmails: selectedEmails,
           amount: parseFloat(payAmount),
           description: payDescription || undefined,
           paymentDate: payDate || undefined,
@@ -69,7 +77,7 @@ export default function CreditDashboard({
         setError(data.error || "Failed to record payment");
         return;
       }
-      setPayEmail("");
+      setSelectedEmails([]);
       setPayAmount("");
       setPayDescription("");
       fetchBalances();
@@ -128,58 +136,88 @@ export default function CreditDashboard({
           </div>
 
           {showPayForm && (
-          <form onSubmit={handleRecordPayment} className="grid sm:grid-cols-2 gap-3">
+          <form onSubmit={handleRecordPayment} className="space-y-3">
             <div className="space-y-1">
-              <label className="text-xs font-graffiti text-[#1A1A1A]">Player</label>
-              <select
-                value={payEmail}
-                onChange={(e) => setPayEmail(e.target.value)}
-                className="sketch-input w-full text-sm"
-                required
-              >
-                <option value="">Select a member…</option>
-                {members.map((m) => (
-                  <option key={m.userEmail} value={m.userEmail}>
-                    {m.displayName || m.userEmail.split("@")[0]}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-graffiti text-[#1A1A1A]">
+                  Players {selectedEmails.length > 0 && `(${selectedEmails.length} selected)`}
+                </label>
+                {members.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    className="text-xs font-graffiti text-[#FF5A00] hover:underline"
+                  >
+                    {allSelected ? "Clear all" : "Select all"}
+                  </button>
+                )}
+              </div>
+              <div className="max-h-44 overflow-y-auto border-2 border-[#1A1A1A] bg-white divide-y divide-[#1A1A1A]/10">
+                {members.length === 0 ? (
+                  <p className="text-sm text-[#1A1A1A]/50 font-body p-3">No players yet</p>
+                ) : (
+                  members.map((m) => {
+                    const checked = selectedEmails.includes(m.userEmail);
+                    return (
+                      <label
+                        key={m.userEmail}
+                        className={`flex items-center gap-2 px-3 py-2 cursor-pointer text-sm font-body ${
+                          checked ? "bg-[#96E600]/30" : "hover:bg-[#F2EFE9]"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleEmail(m.userEmail)}
+                          className="w-4 h-4 accent-[#FF5A00]"
+                        />
+                        {m.displayName || m.userEmail.split("@")[0]}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-graffiti text-[#1A1A1A]">Amount (€)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value)}
-                className="sketch-input w-full text-sm"
-                placeholder="0.00"
-                required
-              />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-graffiti text-[#1A1A1A]">Amount (€)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={payAmount}
+                  onChange={(e) => setPayAmount(e.target.value)}
+                  className="sketch-input w-full text-sm"
+                  placeholder="0.00"
+                  required
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-graffiti text-[#1A1A1A]">Date</label>
+                <input
+                  type="date"
+                  value={payDate}
+                  onChange={(e) => setPayDate(e.target.value)}
+                  className="sketch-input w-full text-sm"
+                />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-xs font-graffiti text-[#1A1A1A]">Note (optional)</label>
+                <input
+                  type="text"
+                  value={payDescription}
+                  onChange={(e) => setPayDescription(e.target.value)}
+                  className="sketch-input w-full text-sm"
+                  placeholder="e.g., season buy-in"
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs font-graffiti text-[#1A1A1A]">Date</label>
-              <input
-                type="date"
-                value={payDate}
-                onChange={(e) => setPayDate(e.target.value)}
-                className="sketch-input w-full text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-graffiti text-[#1A1A1A]">Note (optional)</label>
-              <input
-                type="text"
-                value={payDescription}
-                onChange={(e) => setPayDescription(e.target.value)}
-                className="sketch-input w-full text-sm"
-                placeholder="e.g., gym booking fee"
-              />
-            </div>
-            <div className="sm:col-span-2">
+            <p className="text-xs text-[#1A1A1A]/50 font-body">
+              The same amount is recorded for every selected player — handy for a season buy-in.
+            </p>
+            <div>
               <button
                 type="submit"
-                disabled={recording || !payEmail || payAmount === ""}
+                disabled={recording || selectedEmails.length === 0 || payAmount === ""}
                 className="sticker-btn flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {recording ? (
@@ -187,7 +225,9 @@ export default function CreditDashboard({
                 ) : (
                   <Euro className="w-4 h-4" />
                 )}
-                Record Payment
+                {selectedEmails.length > 1
+                  ? `Record for ${selectedEmails.length} players`
+                  : "Record Payment"}
               </button>
             </div>
           </form>
