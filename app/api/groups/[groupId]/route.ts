@@ -7,7 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireGroupAdmin } from '@/lib/apiGuards';
+import { requireCrewManager } from '@/lib/apiGuards';
 import { getSessionUser } from '@/lib/session';
 import {
   getGroupRowById,
@@ -46,6 +46,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       groupId: group.groupId,
       name: group.name,
       description: group.description,
+      bannerUrl: group.bannerUrl,
       visibility: group.visibility,
       timezone: group.timezone,
       defaultEventSpots: group.defaultEventSpots,
@@ -79,12 +80,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { groupId } = await params;
-  const ctx = await requireGroupAdmin(groupId);
+  const ctx = await requireCrewManager(groupId);
   if (ctx instanceof NextResponse) return ctx;
 
   try {
     const body = await request.json();
-    const { visibility, description, defaultEventSpots, defaultSlotCost, timezone, roundRobinSlide, name } =
+    const { visibility, description, bannerUrl, defaultEventSpots, defaultSlotCost, timezone, roundRobinSlide, name } =
       body;
 
     if (visibility && !['public', 'private'].includes(visibility)) {
@@ -94,6 +95,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updated = await updateGroup(groupId, {
       visibility: visibility as GroupVisibility | undefined,
       description,
+      bannerUrl,
       defaultEventSpots,
       defaultSlotCost,
       timezone,

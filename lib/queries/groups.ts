@@ -31,6 +31,7 @@ export function toGroupDTO(row: GroupRow): Group {
     groupId: row.id,
     name: row.name,
     description: row.description ?? '',
+    bannerUrl: row.bannerUrl ?? undefined,
     visibility: row.visibility as GroupVisibility,
     timezone: row.timezone,
     defaultEventSpots: row.defaultEventSpots,
@@ -73,6 +74,7 @@ export async function getPublicGroups(): Promise<Group[]> {
 export interface CreateGroupInput {
   name: string;
   description?: string;
+  bannerUrl?: string;
   visibility?: GroupVisibility;
   defaultEventSpots?: number;
   defaultSlotCost?: number;
@@ -90,6 +92,7 @@ export async function createGroup(input: CreateGroupInput, creatorId: string): P
       .values({
         name: input.name,
         description: input.description ?? '',
+        bannerUrl: input.bannerUrl ?? null,
         visibility: input.visibility ?? 'private',
         defaultEventSpots: input.defaultEventSpots ?? 10,
         defaultSlotCost: String(input.defaultSlotCost ?? 0),
@@ -116,6 +119,7 @@ export async function updateGroup(
   updates: Partial<{
     visibility: GroupVisibility;
     description: string;
+    bannerUrl: string | null;
     defaultEventSpots: number;
     defaultSlotCost: number;
     timezone: string;
@@ -126,6 +130,7 @@ export async function updateGroup(
   const patch: Record<string, unknown> = {};
   if (updates.visibility !== undefined) patch.visibility = updates.visibility;
   if (updates.description !== undefined) patch.description = updates.description;
+  if (updates.bannerUrl !== undefined) patch.bannerUrl = updates.bannerUrl;
   if (updates.defaultEventSpots !== undefined) patch.defaultEventSpots = updates.defaultEventSpots;
   if (updates.defaultSlotCost !== undefined) patch.defaultSlotCost = String(updates.defaultSlotCost);
   if (updates.timezone !== undefined) patch.timezone = updates.timezone;

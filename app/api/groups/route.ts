@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     const {
       name,
       description,
+      bannerUrl,
       visibility,
       defaultEventSpots,
       defaultSlotCost,
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
       {
         name: name.trim(),
         description: description || '',
+        bannerUrl: bannerUrl || undefined,
         visibility: visibility || 'private',
         defaultEventSpots: defaultEventSpots || 10,
         defaultSlotCost: defaultSlotCost ?? 0,

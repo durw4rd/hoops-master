@@ -11,6 +11,7 @@ import JoinGroupModal from "@/components/groups/JoinGroupModal";
 import GroupDashboard from "@/components/groups/GroupDashboard";
 import OnboardingScreen from "@/components/OnboardingScreen";
 import InvitePlayerModal from "@/components/InvitePlayerModal";
+import ProfileSettingsModal from "@/components/ProfileSettingsModal";
 import { Group, UserProfile } from "@/lib/types";
 import { Plus, Users, BookText } from "lucide-react";
 import Image from "next/image";
@@ -38,6 +39,7 @@ export default function HoopsMaster() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // Sign-in error (e.g. invite-only access denied), read from the URL.
   const [authError, setAuthError] = useState<string | null>(null);
@@ -181,12 +183,6 @@ export default function HoopsMaster() {
   if (!session) {
     return (
       <div className="min-h-screen concrete-bg flex flex-col">
-        <Header 
-          session={session} 
-          onSignIn={() => signIn("google")} 
-          onSignOut={signOut}
-          userProfile={null}
-        />
         <div className="flex-1 flex items-center justify-center px-4">
           <div className="text-center space-y-6">
             {/* Logo */}
@@ -214,10 +210,10 @@ export default function HoopsMaster() {
             {/* Tagline */}
             <div className="space-y-2">
               <p className="font-marker text-xl sm:text-2xl text-[#0084FF] transform -rotate-1">
-                Get in the game!
+                Lace 'em up.
               </p>
               <p className="text-[#1A1A1A]/70 max-w-md mx-auto font-body">
-                Organize sports events, manage your crew, and never miss a game.
+                Run the court. Rep your crew. Never miss a run.
               </p>
             </div>
             
@@ -226,7 +222,7 @@ export default function HoopsMaster() {
               onClick={() => signIn("google")}
               className="sticker-btn text-xl py-4 px-8"
             >
-              🏀 Sign in with Google
+              Get On The Court
             </button>
           </div>
         </div>
@@ -265,6 +261,7 @@ export default function HoopsMaster() {
           session={session} 
           onSignIn={() => signIn("google")} 
           onSignOut={signOut}
+          onOpenProfile={() => setProfileModalOpen(true)}
           userProfile={userProfile}
           currentGroup={selectedGroup}
           onBackToGroups={handleBackToGroups}
@@ -288,6 +285,12 @@ export default function HoopsMaster() {
             }}
           />
         </div>
+        <ProfileSettingsModal
+          open={profileModalOpen}
+          onOpenChange={setProfileModalOpen}
+          currentDisplayName={userProfile?.displayName || session?.user?.name || ""}
+          onSaved={() => fetchUserProfile()}
+        />
         <Footer />
       </div>
     );
@@ -300,6 +303,7 @@ export default function HoopsMaster() {
         session={session} 
         onSignIn={() => signIn("google")} 
         onSignOut={signOut}
+        onOpenProfile={() => setProfileModalOpen(true)}
         userProfile={userProfile}
       />
       
@@ -376,6 +380,13 @@ export default function HoopsMaster() {
         open={inviteModalOpen}
         onOpenChange={setInviteModalOpen}
         currentUserEmail={session?.user?.email ?? undefined}
+      />
+
+      <ProfileSettingsModal
+        open={profileModalOpen}
+        onOpenChange={setProfileModalOpen}
+        currentDisplayName={userProfile?.displayName || session?.user?.name || ""}
+        onSaved={() => fetchUserProfile()}
       />
 
       <Footer />

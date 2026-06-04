@@ -78,6 +78,30 @@ export function detectBrowser() {
   };
 }
 
+// Best-effort browser name for analytics/targeting (not security-sensitive).
+export function getBrowserName(): string {
+  if (typeof window === 'undefined') return 'unknown';
+  const ua = navigator.userAgent;
+  const { isBrave, isChrome, isFirefox, isSafari } = detectBrowser();
+  if (isBrave) return 'brave';
+  if (ua.includes('Edg')) return 'edge';
+  if (isFirefox) return 'firefox';
+  if (isChrome) return 'chrome';
+  if (isSafari) return 'safari';
+  return 'other';
+}
+
+// Stable per-browser session id, persisted in localStorage. Shared by the LD
+// provider init and the identify-on-auth component so both use the same key.
+export function getOrCreateSessionId(): string {
+  if (typeof window === 'undefined') return 'ssr';
+  const existing = localStorage.getItem('ld_session_id');
+  if (existing) return existing;
+  const id = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  localStorage.setItem('ld_session_id', id);
+  return id;
+}
+
 // Performance optimization helper
 export function shouldOptimizeForPerformance(): boolean {
   const { isBrave } = detectBrowser();

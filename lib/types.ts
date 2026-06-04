@@ -33,6 +33,7 @@ export interface Group {
   groupId: string;           // UUID primary key
   name: string;              // Group name
   description: string;       // Group description
+  bannerUrl?: string;        // Optional crew banner image URL
   visibility: GroupVisibility;
   spreadsheetId?: string;    // Legacy (Google Sheets) — optional, no longer used
   timezone: string;          // IANA timezone for event date/time logic

@@ -15,6 +15,13 @@
       "when": 1780101108343,
       "tag": "0001_powerful_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780567553205,
+      "tag": "0002_stiff_spirit",
+      "breakpoints": true
     }
   ]
 }

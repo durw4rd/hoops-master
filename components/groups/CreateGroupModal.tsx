@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Lock, Globe, Loader2 } from "lucide-react";
+import BannerUploadField from "./BannerUploadField";
 
 interface CreateGroupModalProps {
   open: boolean;
@@ -23,6 +24,7 @@ interface CreateGroupModalProps {
 export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }: CreateGroupModalProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [bannerUrl, setBannerUrl] = useState<string | undefined>(undefined);
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [defaultSpots, setDefaultSpots] = useState("10");
   const [defaultCost, setDefaultCost] = useState("0");
@@ -44,6 +46,7 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
         body: JSON.stringify({
           name,
           description,
+          bannerUrl,
           visibility,
           defaultEventSpots: parseInt(defaultSpots) || 10,
           defaultSlotCost: parseFloat(defaultCost) || 0,
@@ -60,6 +63,7 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
 
       setName("");
       setDescription("");
+      setBannerUrl(undefined);
       setVisibility("private");
       setDefaultSpots("10");
       setDefaultCost("0");
@@ -106,6 +110,11 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
               className="sketch-input resize-none"
               rows={2}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="font-graffiti text-[#1A1A1A]">Crew Banner</Label>
+            <BannerUploadField value={bannerUrl} onChange={setBannerUrl} />
           </div>
 
           <div className="space-y-2">

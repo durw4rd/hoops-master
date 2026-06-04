@@ -2,6 +2,7 @@
 
 import { Group } from "@/lib/types";
 import { Users, Calendar, Lock, Globe, ChevronRight } from "lucide-react";
+import Image from "next/image";
 
 interface GroupListProps {
   groups: Group[];
@@ -56,6 +57,16 @@ export default function GroupList({ groups, loading, onSelectGroup, userEmail }:
           style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
           onClick={() => onSelectGroup(group)}
         >
+          {group.bannerUrl && (
+            <div className="relative -mx-4 -mt-4 mb-3 h-24 overflow-hidden border-b-2 border-[#1A1A1A]">
+              <Image
+                src={group.bannerUrl}
+                alt={group.name}
+                fill
+                className="object-cover"
+              />
+            </div>
+          )}
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-start gap-2 min-w-0">

@@ -17,7 +17,8 @@ tracked as credit scoped to the crew. The UI is a 1980s NYC subway-graffiti them
 - **DB**: Neon Postgres (serverless, free tier)
 - **ORM**: Drizzle ORM + drizzle-kit (migrations)
 - **DB driver**: `@neondatabase/serverless` WebSocket `Pool` (supports transactions)
-- **Feature flags**: LaunchDarkly (Vercel server SDK + Edge Config) — additive only
+- **Feature flags**: LaunchDarkly (Vercel server SDK + Edge Config server-side; React client SDK with session/user multi-context) — additive only
+- **Image storage**: Vercel Blob (`@vercel/blob`) for crew banners
 - **Styling**: Tailwind CSS + shadcn/ui (Radix primitives)
 - **Hosting**: Vercel (free tier). Package manager: `pnpm`.
 
@@ -28,9 +29,13 @@ app/
   page.tsx                 # Home: crew list, create/join/Black Book, onboarding gate
   api/                     # Route handlers (see API map below)
 components/
-  groups/                  # GroupDashboard, modals, LineupEditor, CreditDashboard, etc.
+  groups/                  # GroupDashboard, modals, LineupEditor, CreditDashboard, BannerUploadField, etc.
+  Header.tsx               # Logo/crew-banner header + settings menu (Your Tag / Bounce)
+  ProfileSettingsModal.tsx # Edit your handle/tag (display_name)
   InvitePlayerModal.tsx    # "Black Book" — app-admin player + role management
   OnboardingScreen.tsx     # First-login username picker
+  LaunchDarklyProvider.tsx # Client LD init (session context) + mounts LDIdentify
+  LDIdentify.tsx           # Syncs LD context with auth (session-only → session+user)
 lib/
   db/schema.ts             # Drizzle schema (source of truth for tables)
   db/index.ts              # Neon Pool + drizzle client
@@ -51,7 +56,7 @@ scripts/
 | Table | Purpose | Key columns / notes |
 |---|---|---|
 | `users` | App users / invite allowlist | `email` unique, `display_name`, `global_role` (`owner`/`admin`/`user`), `onboarded` |
-| `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide` |
+| `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide`, `banner_url` (optional Vercel Blob image) |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
 | `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
 | `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`); unique `(event,user)` |
@@ -92,6 +97,12 @@ API guards (`lib/apiGuards.ts`): `requireAuth`, `requireMember`,
 only via the `app-admins` flag (list of emails). The DB is authoritative and the
 system **fails closed**: if LD/Edge Config is unreachable, only the DB role grants
 access. Never make authorization depend on a flag being reachable.
+
+**LD client context** (`components/LaunchDarklyProvider.tsx` + `LDIdentify.tsx`):
+pre-login the app evaluates a single `session` context (key = persisted session id,
+plus `deviceType`/`browser`). On login, `LDIdentify` re-identifies to a `multi`
+context adding a `user` kind (key = email, with `email`/`name`/`deviceType`/`browser`).
+This is for targeting/analytics only — it does not grant authorization.
 
 ## Auth flow (invite-only)
 
@@ -136,14 +147,16 @@ slides players across all blocks in order.
 ```
 POST   /api/setup                                   # one-time bootstrap
 GET    /api/user/profile                            # current user + memberships
+PATCH  /api/user/profile                            # update handle/tag (display_name)
 POST   /api/user/onboard                            # set username (first login)
 
 GET    /api/groups                                  # my crews (+ member/event counts)
-POST   /api/groups                                  # create crew (app-admin)
+POST   /api/groups                                  # create crew (app-admin; accepts bannerUrl)
+POST   /api/groups/banner                           # upload crew banner to Blob (app-admin create / Capo+King edit)
 GET    /api/groups/public                           # public crews
 POST   /api/groups/join                             # join by invite code
 GET    /api/groups/[id]                             # crew detail
-PATCH  /api/groups/[id]                             # update settings (Capo)
+PATCH  /api/groups/[id]                             # update settings incl. banner (Capo/King)
 DELETE /api/groups/[id]                             # hard delete (Owner any / Capo own)
 
 GET    /api/groups/[id]/members                     # list members
@@ -181,7 +194,8 @@ NEXTAUTH_SECRET=          # random secret
 NEXTAUTH_URL=             # no trailing slash
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-SEED_ADMIN_EMAIL=         # email promoted to admin on seed/setup (optional)
+SEED_ADMIN_EMAILS=        # comma-separated emails promoted to admin on seed (optional)
+BLOB_READ_WRITE_TOKEN=    # Vercel Blob store token (crew banner uploads); auto-set when the Blob store is linked to the project
 # LaunchDarkly (optional; app-admin override + observability/session replay)
 NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=
 EDGE_CONFIG=              # Vercel Edge Config connection (server-side LD eval)

@@ -47,6 +47,7 @@ export const groups = pgTable('groups', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   description: text('description').default(''),
+  bannerUrl: text('banner_url'), // optional crew banner image (Vercel Blob URL)
   visibility: text('visibility').notNull().default('private'), // 'public' | 'private'
   status: text('status').notNull().default('active'), // 'active' | 'archived'
   inviteCode: text('invite_code').notNull().unique(),

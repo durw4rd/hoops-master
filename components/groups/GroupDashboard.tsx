@@ -19,12 +19,19 @@ import {
   Crown,
   Star,
   UserPlus,
+  ChevronDown,
+  History,
 } from "lucide-react";
 import CreateEventModal from "./CreateEventModal";
 import EventDetailModal from "./EventDetailModal";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
+import BannerUploadField from "./BannerUploadField";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { crewRoleLabel, isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
 import { Trash2 } from "lucide-react";
 
@@ -74,6 +81,17 @@ export default function GroupDashboard({
   const [deletingCrew, setDeletingCrew] = useState(false);
   const [confirmDeleteCrewOpen, setConfirmDeleteCrewOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState<'all' | 'mine'>('all');
+  const [showPast, setShowPast] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+
+  // Editable crew-details form (Settings tab).
+  const [editDescription, setEditDescription] = useState(group.description ?? '');
+  const [editSpots, setEditSpots] = useState(String(group.defaultEventSpots ?? 10));
+  const [editCost, setEditCost] = useState(String(group.defaultSlotCost ?? 0));
+  const [editBannerUrl, setEditBannerUrl] = useState<string | undefined>(group.bannerUrl);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   // Crew roles: Capo (leader) has full control; Capo+King can manage events.
   const membership = userProfile?.groups.find(m => m.groupId === group.groupId);
@@ -89,7 +107,8 @@ export default function GroupDashboard({
   const fetchEvents = useCallback(async () => {
     setEventsLoading(true);
     try {
-      const res = await fetch(`/api/groups/${group.groupId}/events`);
+      const url = `/api/groups/${group.groupId}/events${showPast ? '?includePast=true' : ''}`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setEvents(data.data || []);
@@ -99,7 +118,7 @@ export default function GroupDashboard({
     } finally {
       setEventsLoading(false);
     }
-  }, [group.groupId]);
+  }, [group.groupId, showPast]);
 
   // Fetch members
   const fetchMembers = useCallback(async () => {
@@ -169,6 +188,37 @@ export default function GroupDashboard({
     }
   };
 
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingsError(null);
+    setSettingsSaved(false);
+    setSavingSettings(true);
+    try {
+      const res = await fetch(`/api/groups/${group.groupId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: editDescription,
+          defaultEventSpots: parseInt(editSpots) || group.defaultEventSpots,
+          defaultSlotCost: parseFloat(editCost) || 0,
+          bannerUrl: editBannerUrl ?? null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSettingsError(data.error || 'Failed to save crew details');
+        return;
+      }
+      onGroupUpdated(data.data);
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 2500);
+    } catch {
+      setSettingsError('An unexpected error occurred');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const changeMemberRole = async (userEmail: string, groupRole: 'coleader' | 'member') => {
     setRoleUpdating(userEmail);
     try {
@@ -187,40 +237,58 @@ export default function GroupDashboard({
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
-      {/* Group Info Card */}
-      <div className="marker-card p-4 mb-4 sm:mb-6">
-        <div className="space-y-3">
-          {group.description && (
-            <p className="text-[#1A1A1A]/70 font-body">{group.description}</p>
-          )}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap gap-2">
-              <span className="badge-purple flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                {members.length} MEMBERS
-              </span>
-              <span className="badge-blue flex items-center gap-1">
-                <Calendar className="w-3 h-3" />
-                {events.length} EVENTS
-              </span>
-            </div>
-            
-            {isCapo && group.inviteCode && (
-              <button
-                onClick={copyInviteCode}
-                className="flex items-center gap-2 bg-[#1A1A1A] text-[#F2EFE9] px-3 py-1.5 border-2 border-[#1A1A1A] font-mono text-sm hover:bg-[#FF5A00] transition-colors"
-              >
-                {inviteCopied ? (
-                  <Check className="w-4 h-4 text-[#96E600]" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
-                {group.inviteCode}
-              </button>
-            )}
+      {/* Group Info Card (collapsible, collapsed by default) */}
+      <Collapsible open={infoOpen} onOpenChange={setInfoOpen} className="marker-card mb-4 sm:mb-6">
+        <CollapsibleTrigger className="w-full flex items-center justify-between gap-3 p-4 text-left">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="font-graffiti text-lg text-[#1A1A1A] truncate">{group.name}</span>
+            <span className="badge-purple flex items-center gap-1 text-[10px]">
+              <Users className="w-3 h-3" />
+              {members.length}
+            </span>
+            <span className="badge-blue flex items-center gap-1 text-[10px]">
+              <Calendar className="w-3 h-3" />
+              {events.length}
+            </span>
           </div>
-        </div>
-      </div>
+          <ChevronDown
+            className={`w-5 h-5 text-[#1A1A1A] flex-shrink-0 transition-transform ${infoOpen ? 'rotate-180' : ''}`}
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="px-4 pb-4 space-y-3">
+            {group.description && (
+              <p className="text-[#1A1A1A]/70 font-body">{group.description}</p>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap gap-2">
+                <span className="badge-purple flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {members.length} MEMBERS
+                </span>
+                <span className="badge-blue flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  {events.length} EVENTS
+                </span>
+              </div>
+
+              {isCapo && group.inviteCode && (
+                <button
+                  onClick={copyInviteCode}
+                  className="flex items-center gap-2 bg-[#1A1A1A] text-[#F2EFE9] px-3 py-1.5 border-2 border-[#1A1A1A] font-mono text-sm hover:bg-[#FF5A00] transition-colors"
+                >
+                  {inviteCopied ? (
+                    <Check className="w-4 h-4 text-[#96E600]" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                  {group.inviteCode}
+                </button>
+              )}
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Tabs */}
       <div className="space-y-4">
@@ -260,7 +328,7 @@ export default function GroupDashboard({
               <Wallet className="w-4 h-4" />
               <span className="hidden sm:inline">Balances</span>
             </button>
-            {(isCapo || isOwner) && (
+            {(canManage || isOwner) && (
               <button
                 onClick={() => setActiveTab('settings')}
                 className={`flex items-center gap-2 px-4 py-2 font-graffiti text-sm transition-all ${
@@ -289,27 +357,42 @@ export default function GroupDashboard({
         {/* Events Tab */}
         {activeTab === 'events' && (
           <div className="space-y-3">
-            {!eventsLoading && events.length > 0 && (
-              <div className="flex gap-2">
+            {!eventsLoading && (
+              <div className="flex flex-wrap items-center gap-2">
+                {events.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => setGameFilter('all')}
+                      className={`flex-1 sm:flex-none px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                        gameFilter === 'all'
+                          ? 'bg-[#1A1A1A] text-[#F2EFE9]'
+                          : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
+                      }`}
+                    >
+                      All Games ({events.length})
+                    </button>
+                    <button
+                      onClick={() => setGameFilter('mine')}
+                      className={`flex-1 sm:flex-none px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                        gameFilter === 'mine'
+                          ? 'bg-[#96E600] text-[#1A1A1A]'
+                          : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
+                      }`}
+                    >
+                      My Games ({myGameCount})
+                    </button>
+                  </>
+                )}
                 <button
-                  onClick={() => setGameFilter('all')}
-                  className={`flex-1 sm:flex-none px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
-                    gameFilter === 'all'
-                      ? 'bg-[#1A1A1A] text-[#F2EFE9]'
+                  onClick={() => setShowPast((v) => !v)}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all sm:ml-auto ${
+                    showPast
+                      ? 'bg-[#FFD700] text-[#1A1A1A]'
                       : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
                   }`}
                 >
-                  All Games ({events.length})
-                </button>
-                <button
-                  onClick={() => setGameFilter('mine')}
-                  className={`flex-1 sm:flex-none px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
-                    gameFilter === 'mine'
-                      ? 'bg-[#96E600] text-[#1A1A1A]'
-                      : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
-                  }`}
-                >
-                  My Games ({myGameCount})
+                  <History className="w-3.5 h-3.5" />
+                  {showPast ? 'Hide Past Games' : 'Show Past Games'}
                 </button>
               </div>
             )}
@@ -528,8 +611,8 @@ export default function GroupDashboard({
           />
         )}
 
-        {/* Settings Tab (Capo or Owner) */}
-        {activeTab === 'settings' && (isCapo || isOwner) && (
+        {/* Settings Tab (Capo/King or Owner) */}
+        {activeTab === 'settings' && (canManage || isOwner) && (
           <div className="space-y-4">
             <div className="marker-card p-4">
               <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-4">Visibility</h3>
@@ -587,27 +670,97 @@ export default function GroupDashboard({
               <p className="text-xs text-[#1A1A1A]/50 mt-2 font-body">Share this code to invite members</p>
             </div>
 
-            <div className="marker-card p-4">
-              <h3 className="font-graffiti text-xl text-[#1A1A1A] mb-4">Configuration</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm font-body">
+            <form onSubmit={handleSaveSettings} className="marker-card p-4 space-y-4">
+              <h3 className="font-graffiti text-xl text-[#1A1A1A]">Crew Details</h3>
+
+              <div className="space-y-2">
+                <Label className="font-graffiti text-[#1A1A1A]">Crew Banner</Label>
+                <BannerUploadField
+                  value={editBannerUrl}
+                  onChange={setEditBannerUrl}
+                  groupId={group.groupId}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="crew-description" className="font-graffiti text-[#1A1A1A]">
+                  Description
+                </Label>
+                <Textarea
+                  id="crew-description"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="What's this crew about?"
+                  className="sketch-input resize-none"
+                  rows={2}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="crew-spots" className="font-graffiti text-[#1A1A1A]">
+                    Default Spots
+                  </Label>
+                  <Input
+                    id="crew-spots"
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={editSpots}
+                    onChange={(e) => setEditSpots(e.target.value)}
+                    className="sketch-input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="crew-cost" className="font-graffiti text-[#1A1A1A]">
+                    Default Cost
+                  </Label>
+                  <Input
+                    id="crew-cost"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editCost}
+                    onChange={(e) => setEditCost(e.target.value)}
+                    className="sketch-input"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm font-body pt-1">
                 <div>
                   <label className="text-xs text-[#1A1A1A]/50">Timezone</label>
                   <p className="font-graffiti text-[#1A1A1A]">{group.timezone}</p>
-                </div>
-                <div>
-                  <label className="text-xs text-[#1A1A1A]/50">Default Spots</label>
-                  <p className="font-graffiti text-[#1A1A1A]">{group.defaultEventSpots}</p>
-                </div>
-                <div>
-                  <label className="text-xs text-[#1A1A1A]/50">Default Cost</label>
-                  <p className="font-graffiti text-[#1A1A1A]">€{group.defaultSlotCost?.toFixed(2)}</p>
                 </div>
                 <div>
                   <label className="text-xs text-[#1A1A1A]/50">Round-Robin Slide</label>
                   <p className="font-graffiti text-[#1A1A1A]">{group.roundRobinSlide}</p>
                 </div>
               </div>
-            </div>
+
+              {settingsError && (
+                <div className="p-3 bg-[#FF5A00]/10 border-2 border-[#FF5A00]">
+                  <p className="text-sm text-[#FF5A00] font-body">{settingsError}</p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={savingSettings}
+                  className="sticker-btn flex items-center gap-2 disabled:opacity-50"
+                >
+                  {savingSettings ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                  Save Details
+                </button>
+                {settingsSaved && (
+                  <span className="font-graffiti text-sm text-[#1A9A3A] flex items-center gap-1">
+                    <Check className="w-4 h-4" />
+                    Saved!
+                  </span>
+                )}
+              </div>
+            </form>
 
             {canDeleteCrew && (
               <div className="marker-card p-4 border-[#FF5A00]">

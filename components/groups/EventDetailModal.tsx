@@ -32,7 +32,10 @@ import {
   ListPlus,
   Pencil,
   Trash2,
+  Crown,
+  Star,
 } from "lucide-react";
+import { isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
 
 interface EventDetailModalProps {
   open: boolean;
@@ -78,7 +81,7 @@ export default function EventDetailModal({
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [members, setMembers] = useState<{ userEmail: string; displayName: string }[]>([]);
+  const [members, setMembers] = useState<{ userEmail: string; displayName: string; groupRole: string }[]>([]);
   const [assignEmail, setAssignEmail] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -105,9 +108,10 @@ export default function EventDetailModal({
       if (res.ok) {
         const data = await res.json();
         const list = (data.data?.members || []).map(
-          (m: { userEmail: string; displayName: string }) => ({
+          (m: { userEmail: string; displayName: string; groupRole?: string }) => ({
             userEmail: m.userEmail,
             displayName: m.displayName,
+            groupRole: m.groupRole ?? 'member',
           })
         );
         setMembers(list);
@@ -120,9 +124,9 @@ export default function EventDetailModal({
   useEffect(() => {
     if (open) {
       fetchEvent();
-      if (canManage) fetchMembers();
+      fetchMembers();
     }
-  }, [open, fetchEvent, canManage, fetchMembers]);
+  }, [open, fetchEvent, fetchMembers]);
 
   const handleDelete = async () => {
     setActionLoading('delete');
@@ -319,6 +323,20 @@ export default function EventDetailModal({
     } finally {
       setActionLoading(null);
     }
+  };
+
+  // Crew-role lookup so we can flag Capos (crown) and Kings (star) in player lists.
+  const roleByEmail = new Map(members.map((m) => [m.userEmail, m.groupRole]));
+  const renderRoleIcon = (email: string) => {
+    const role = roleByEmail.get(email);
+    if (!role) return null;
+    if (isCapoRole(role)) {
+      return <Crown className="w-3.5 h-3.5 text-[#FFD700] flex-shrink-0" aria-label="Crew Capo" />;
+    }
+    if (isCrewManager(role)) {
+      return <Star className="w-3.5 h-3.5 text-[#FF6B1A] flex-shrink-0" aria-label="King" />;
+    }
+    return null;
   };
 
   const confirmedAttendees = event?.attendees.filter(a => a.status === 'confirmed') || [];
@@ -722,7 +740,8 @@ export default function EventDetailModal({
                         className="marker-card bg-[#FF5A00]/10 p-3 flex items-center justify-between"
                         style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                       >
-                        <span className="font-marker text-[#FF5A00]">
+                        <span className="font-marker text-[#FF5A00] flex items-center gap-1">
+                          {renderRoleIcon(attendee.userEmail)}
                           {attendee.userName}&apos;s spot
                         </span>
                         {!event.isAttending && isSignupOpen && (
@@ -760,10 +779,11 @@ export default function EventDetailModal({
                       }`}
                       style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
                     >
-                      <span className="font-marker text-sm text-[#1A1A1A] truncate block">
-                        {attendee.userName}
+                      <span className="font-marker text-sm text-[#1A1A1A] truncate flex items-center gap-1">
+                        {renderRoleIcon(attendee.userEmail)}
+                        <span className="truncate">{attendee.userName}</span>
                         {attendee.userEmail === userEmail && (
-                          <span className="text-[#1A1A1A]/60 ml-1">(you)</span>
+                          <span className="text-[#1A1A1A]/60">(you)</span>
                         )}
                       </span>
                     </div>
@@ -798,6 +818,7 @@ export default function EventDetailModal({
                         style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                       >
                         <span className="font-graffiti text-[#0084FF] w-6">#{entry.position}</span>
+                        {renderRoleIcon(entry.userEmail)}
                         <span className="font-marker text-sm text-[#1A1A1A] truncate">
                           {entry.displayName}
                           {entry.userEmail === userEmail && (

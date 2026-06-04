@@ -74,6 +74,16 @@ export async function completeOnboarding(userId: string, username: string): Prom
   return row;
 }
 
+/** Update an already-onboarded user's display name (handle/tag). */
+export async function updateDisplayName(userId: string, name: string): Promise<UserRow | null> {
+  const [row] = await db
+    .update(users)
+    .set({ displayName: name.trim() })
+    .where(eq(users.id, userId))
+    .returning();
+  return row ?? null;
+}
+
 /** All users (app-admin view: invite management). Ordered by created date. */
 export async function listUsers(): Promise<UserRow[]> {
   return db.select().from(users).orderBy(users.createdAt);

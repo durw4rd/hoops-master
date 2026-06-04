@@ -4,22 +4,9 @@ import { asyncWithLDProvider } from 'launchdarkly-react-client-sdk';
 import Observability from '@launchdarkly/observability';
 import SessionReplay from '@launchdarkly/session-replay';
 import { ReactNode, useEffect, useState } from 'react';
-import { getDeviceType, detectBrowser, shouldOptimizeForPerformance } from '@/lib/utils';
+import { getDeviceType, getBrowserName, getOrCreateSessionId, detectBrowser, shouldOptimizeForPerformance } from '@/lib/utils';
+import LDIdentify from './LDIdentify';
 import packageJson from '../package.json';
-
-// Generate a unique session ID for this browser session
-const generateSessionId = () => {
-  // Use localStorage to persist session ID across page reloads
-  const storedSessionId = localStorage.getItem('ld_session_id');
-  if (storedSessionId) {
-    return storedSessionId;
-  }
-  
-  // Generate new session ID if none exists
-  const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  localStorage.setItem('ld_session_id', sessionId);
-  return sessionId;
-};
 
 interface LaunchDarklyProviderProps {
   children: ReactNode;
@@ -32,7 +19,7 @@ function LaunchDarklyProviderContent({ children }: LaunchDarklyProviderProps) {
   useEffect(() => {
     const initializeLD = async () => {
       try {
-        const sessionId = generateSessionId();
+        const sessionId = getOrCreateSessionId();
         const { isBrave } = detectBrowser();
         const shouldOptimize = shouldOptimizeForPerformance();
         
@@ -44,20 +31,16 @@ function LaunchDarklyProviderContent({ children }: LaunchDarklyProviderProps) {
           console.log('LaunchDarkly: Detected performance optimization needed');
         }
         
-        // Initialize with basic context - the hook will update it dynamically
+        // Pre-login: a single `session` context kind only. Once the user signs
+        // in, <LDIdentify> swaps in a multi-context that adds the `user` kind.
         const context = {
-          kind: "multi",
-          session: {
-            key: sessionId,
-          },
-          user: {
-            key: 'anonymous',
-            name: 'Anonymous User',
-            deviceType: getDeviceType(),
-          }
+          kind: "session",
+          key: sessionId,
+          deviceType: getDeviceType(),
+          browser: getBrowserName(),
         };
 
-        console.log('Initializing LaunchDarkly with basic context');
+        console.log('Initializing LaunchDarkly with session context');
 
         const provider = await asyncWithLDProvider({
           clientSideID: process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID!,
@@ -103,7 +86,12 @@ function LaunchDarklyProviderContent({ children }: LaunchDarklyProviderProps) {
     return <div>Loading...</div>;
   }
 
-  return <LDProvider>{children}</LDProvider>;
+  return (
+    <LDProvider>
+      <LDIdentify />
+      {children}
+    </LDProvider>
+  );
 }
 
 export default function LaunchDarklyProvider({ children }: LaunchDarklyProviderProps) {

@@ -17,13 +17,19 @@ subway-graffiti skin.
 - **Credit ledger** — per-crew balances (`paid − spent + earned`), admin-recorded
   payments, and CSV export.
 - **Invite-only auth** — Google sign-in restricted to pre-invited/seeded emails,
-  with a first-login username picker.
+  with a first-login username picker and an editable handle ("Your Tag").
+- **Crew banners** — upload a banner per crew (stored in Vercel Blob); shown on
+  the crew card and as the crew-page header.
+- **Quality-of-life UI** — settings menu in the header, collapsible crew info,
+  a "Show past games" toggle (hidden by default), "My Games" filter, and subtle
+  crown/star markers for Capos and Kings in player lists.
 
 ## Tech stack
 
 - Next.js 15 (App Router) · React 19 · TypeScript
 - Neon Postgres · Drizzle ORM (`@neondatabase/serverless` Pool driver)
-- NextAuth v4 (Google OAuth) · LaunchDarkly (additive app-admin override)
+- NextAuth v4 (Google OAuth) · LaunchDarkly (additive app-admin override + session/user multi-context)
+- Vercel Blob (crew banner images)
 - Tailwind CSS · shadcn/ui · Vercel · pnpm
 
 See **[`APP_ARCHITECTURE.md`](./APP_ARCHITECTURE.md)** for the full architecture and
@@ -46,7 +52,11 @@ NEXTAUTH_SECRET=your-random-secret
 NEXTAUTH_URL=http://localhost:3000    # no trailing slash
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-SEED_ADMIN_EMAIL=you@example.com      # optional: promoted to admin on seed
+SEED_ADMIN_EMAILS=you@example.com     # optional: comma-separated emails promoted to admin on seed
+
+# Crew banner uploads (Vercel Blob). Auto-added to .env.local when you link a
+# Blob store: `vercel blob create-store <name> --access public --yes`
+BLOB_READ_WRITE_TOKEN=...
 
 # Optional — LaunchDarkly app-admin override + observability
 NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=...
@@ -83,8 +93,8 @@ EMAIL=you@example.com ROLE=owner pnpm tsx scripts/setRole.ts
 ## Deployment
 
 Deploys to Vercel. Set the same env vars in the Vercel project (connect a Neon
-store for `DATABASE_URL`), then push to `main`. Run migrations/seed against the
-production `DATABASE_URL` as needed.
+store for `DATABASE_URL`, and a Blob store for `BLOB_READ_WRITE_TOKEN`), then push
+to `main`. Run migrations/seed against the production `DATABASE_URL` as needed.
 
 ---
 
