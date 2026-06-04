@@ -38,6 +38,9 @@ synonyms for the same concept.**
 | Credits / balances tab | **Balances** | |
 | Record a payment (toggle) | **Square Up** | Collapsible form. |
 | Member/game counts (crew card) | **HEADS** / **GAMES** | Graffiti tag-style badges. |
+| Display name / handle | **Tag** / **Your Tag** | Edit in the settings menu. |
+| Profile picture / avatar | **Piece** / **Your Piece** | A writer's signature artwork → a player's avatar. Stored in Vercel Blob. |
+| Logout (settings menu) | **Bounce** | |
 | Empty crew list | **No Crews Yet!** | |
 | Empty games list | **No Games Yet!** | |
 | Danger zone (delete crew) | **Burn It Down** | "buffed" = erased; deletion is permanent. |
@@ -57,7 +60,7 @@ Pull from here when adding new copy so the voice stays consistent. Adopt selecti
 - **The Outline** — a draft/not-yet-open game.
 - **Roll Call** — an open-signup game.
 - **Getting Up** — putting your name up; joining a game.
-- **The Piece** — a fully-rostered, locked game (an outline becomes a piece).
+- **On Lock** — a fully-rostered, locked game (an outline becomes locked). _("Piece" is now the player avatar — see the canonical map.)_
 - **Buffed** — cancelled/erased (MTA "buffed" graffiti off trains).
 - **The Yard / The Spot** — the court / location; the player pool.
 - **A Burner** — a standout special event or tournament.

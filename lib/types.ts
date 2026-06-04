@@ -16,6 +16,7 @@
 export interface AppUser {
   email: string;           // Primary key (Google login email)
   displayName: string;     // User's display name
+  pieceUrl?: string;       // Optional profile picture ("piece") URL
   globalRole: GlobalRole;  // Global role: 'admin' | 'user'
   onboarded: boolean;      // Has the user chosen their username on first sign-in
   createdAt: string;       // ISO timestamp
@@ -34,6 +35,7 @@ export interface Group {
   name: string;              // Group name
   description: string;       // Group description
   bannerUrl?: string;        // Optional crew banner image URL
+  bannerOrientation?: BannerOrientation; // Layout hint for the banner image
   visibility: GroupVisibility;
   spreadsheetId?: string;    // Legacy (Google Sheets) — optional, no longer used
   timezone: string;          // IANA timezone for event date/time logic
@@ -50,6 +52,7 @@ export interface Group {
 
 export type GroupVisibility = 'public' | 'private';
 export type GroupStatus = 'active' | 'archived';
+export type BannerOrientation = 'landscape' | 'portrait';
 
 /**
  * GroupMembers Sheet - User-Group relationships
@@ -59,6 +62,7 @@ export interface GroupMember {
   groupId: string;           // FK to Groups.groupId
   userEmail: string;         // FK to AppUsers.email
   displayName: string;       // User's chosen username
+  pieceUrl?: string;         // Optional profile picture ("piece") URL
   groupRole: GroupRole;      // 'admin' (capo) | 'coleader' (king) | 'member'
   joinedAt: string;          // ISO timestamp
   invitedBy: string | null;  // Email of inviter (optional)
@@ -215,6 +219,7 @@ export interface CreditTransaction {
 export interface UserProfile {
   email: string;
   displayName: string;
+  pieceUrl?: string;
   globalRole: GlobalRole;
   onboarded: boolean;
   createdAt: string;

@@ -47,6 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       name: group.name,
       description: group.description,
       bannerUrl: group.bannerUrl,
+      bannerOrientation: group.bannerOrientation,
       visibility: group.visibility,
       timezone: group.timezone,
       defaultEventSpots: group.defaultEventSpots,
@@ -85,7 +86,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   try {
     const body = await request.json();
-    const { visibility, description, bannerUrl, defaultEventSpots, defaultSlotCost, timezone, roundRobinSlide, name } =
+    const { visibility, description, bannerUrl, bannerOrientation, defaultEventSpots, defaultSlotCost, timezone, roundRobinSlide, name } =
       body;
 
     if (visibility && !['public', 'private'].includes(visibility)) {
@@ -96,6 +97,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       visibility: visibility as GroupVisibility | undefined,
       description,
       bannerUrl,
+      bannerOrientation,
       defaultEventSpots,
       defaultSlotCost,
       timezone,

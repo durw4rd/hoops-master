@@ -50,23 +50,10 @@ export default function GroupList({ groups, loading, onSelectGroup, userEmail }:
 
   return (
     <div className="grid gap-4">
-      {groups.map((group, index) => (
-        <div 
-          key={group.groupId}
-          className="marker-card p-4 hover:shadow-[6px_6px_0_rgba(26,26,26,0.2)] transition-all cursor-pointer group"
-          style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
-          onClick={() => onSelectGroup(group)}
-        >
-          {group.bannerUrl && (
-            <div className="relative -mx-4 -mt-4 mb-3 h-24 overflow-hidden border-b-2 border-[#1A1A1A]">
-              <Image
-                src={group.bannerUrl}
-                alt={group.name}
-                fill
-                className="object-cover"
-              />
-            </div>
-          )}
+      {groups.map((group, index) => {
+        const isPortrait = !!group.bannerUrl && group.bannerOrientation === 'portrait';
+
+        const details = (
           <div className="flex items-center justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-start gap-2 min-w-0">
@@ -110,8 +97,42 @@ export default function GroupList({ groups, loading, onSelectGroup, userEmail }:
               <ChevronRight className="w-5 h-5 text-white" />
             </div>
           </div>
-        </div>
-      ))}
+        );
+
+        // Portrait banners split the card vertically (banner column + details column).
+        if (isPortrait) {
+          return (
+            <div
+              key={group.groupId}
+              className="marker-card p-0 overflow-hidden flex hover:shadow-[6px_6px_0_rgba(26,26,26,0.2)] transition-all cursor-pointer group"
+              style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
+              onClick={() => onSelectGroup(group)}
+            >
+              <div className="relative w-28 sm:w-36 shrink-0 self-stretch border-r-2 border-[#1A1A1A] overflow-hidden">
+                <Image src={group.bannerUrl!} alt={group.name} fill className="object-cover" />
+              </div>
+              <div className="flex-1 min-w-0 p-4">{details}</div>
+            </div>
+          );
+        }
+
+        // Landscape (or no banner): banner spans the top, details below.
+        return (
+          <div
+            key={group.groupId}
+            className="marker-card p-4 hover:shadow-[6px_6px_0_rgba(26,26,26,0.2)] transition-all cursor-pointer group"
+            style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
+            onClick={() => onSelectGroup(group)}
+          >
+            {group.bannerUrl && (
+              <div className="relative -mx-4 -mt-4 mb-3 h-24 overflow-hidden border-b-2 border-[#1A1A1A]">
+                <Image src={group.bannerUrl} alt={group.name} fill className="object-cover" />
+              </div>
+            )}
+            {details}
+          </div>
+        );
+      })}
     </div>
   );
 }

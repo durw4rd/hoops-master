@@ -3,6 +3,7 @@
 import { ChevronLeft, LogOut, Settings, SprayCan } from "lucide-react";
 import { Group, UserProfile } from "@/lib/types";
 import Image from "next/image";
+import PlayerAvatar from "@/components/PlayerAvatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -88,11 +89,11 @@ export default function Header({
             ) : (
               <div className="flex items-center gap-3 min-w-0">
                 <Image
-                  src="/logo-clean-80.png"
+                  src="/logo-clean-400.png"
                   alt="Hoops Master"
-                  width={140}
-                  height={78}
-                  className="flex-shrink-0 h-12 sm:h-14 w-auto"
+                  width={400}
+                  height={200}
+                  className="flex-shrink-0 h-16 sm:h-20 w-auto drop-shadow-[2px_2px_0_rgba(0,0,0,0.5)]"
                   priority
                 />
                 {isAdmin && (
@@ -107,12 +108,25 @@ export default function Header({
             {loggedInUser ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button
-                    className="text-[#F2EFE9] hover:text-[#FF6B1A] transition-colors p-2 rounded-md hover:bg-white/10 outline-none"
-                    aria-label="Settings"
-                  >
-                    <Settings className="w-6 h-6" />
-                  </button>
+                  {userProfile?.pieceUrl ? (
+                    <button
+                      className="rounded-full outline-none ring-2 ring-transparent hover:ring-[#FF6B1A] transition-all"
+                      aria-label="Settings"
+                    >
+                      <PlayerAvatar
+                        pieceUrl={userProfile.pieceUrl}
+                        name={handle}
+                        className="h-10 w-10 border-2 border-[#FF6B1A]"
+                      />
+                    </button>
+                  ) : (
+                    <button
+                      className="text-[#F2EFE9] hover:text-[#FF6B1A] transition-colors p-2 rounded-md hover:bg-white/10 outline-none"
+                      aria-label="Settings"
+                    >
+                      <Settings className="w-6 h-6" />
+                    </button>
+                  )}
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   align="end"

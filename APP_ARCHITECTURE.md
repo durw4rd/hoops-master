@@ -18,7 +18,7 @@ tracked as credit scoped to the crew. The UI is a 1980s NYC subway-graffiti them
 - **ORM**: Drizzle ORM + drizzle-kit (migrations)
 - **DB driver**: `@neondatabase/serverless` WebSocket `Pool` (supports transactions)
 - **Feature flags**: LaunchDarkly (Vercel server SDK + Edge Config server-side; React client SDK with session/user multi-context) — additive only
-- **Image storage**: Vercel Blob (`@vercel/blob`) for crew banners
+- **Image storage**: Vercel Blob (`@vercel/blob`) for crew banners and player "pieces" (avatars)
 - **Styling**: Tailwind CSS + shadcn/ui (Radix primitives)
 - **Hosting**: Vercel (free tier). Package manager: `pnpm`.
 
@@ -30,8 +30,9 @@ app/
   api/                     # Route handlers (see API map below)
 components/
   groups/                  # GroupDashboard, modals, LineupEditor, CreditDashboard, BannerUploadField, etc.
-  Header.tsx               # Logo/crew-banner header + settings menu (Your Tag / Bounce)
-  ProfileSettingsModal.tsx # Edit your handle/tag (display_name)
+  Header.tsx               # Logo/crew-banner header + settings menu (Your Tag / Bounce); shows your piece
+  PlayerAvatar.tsx         # Circular "piece" avatar with initials fallback (used in header + player lists)
+  ProfileSettingsModal.tsx # Edit your handle/tag (display_name) and upload your piece (avatar)
   InvitePlayerModal.tsx    # "Black Book" — app-admin player + role management
   OnboardingScreen.tsx     # First-login username picker
   LaunchDarklyProvider.tsx # Client LD init (session context) + mounts LDIdentify
@@ -55,8 +56,8 @@ scripts/
 
 | Table | Purpose | Key columns / notes |
 |---|---|---|
-| `users` | App users / invite allowlist | `email` unique, `display_name`, `global_role` (`owner`/`admin`/`user`), `onboarded` |
-| `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide`, `banner_url` (optional Vercel Blob image) |
+| `users` | App users / invite allowlist | `email` unique, `display_name`, `piece_url` (optional avatar, Vercel Blob), `global_role` (`owner`/`admin`/`user`), `onboarded` |
+| `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide`, `banner_url` (optional Vercel Blob image), `banner_orientation` (`landscape`/`portrait`) |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
 | `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
 | `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`); unique `(event,user)` |
@@ -146,17 +147,18 @@ slides players across all blocks in order.
 
 ```
 POST   /api/setup                                   # one-time bootstrap
-GET    /api/user/profile                            # current user + memberships
-PATCH  /api/user/profile                            # update handle/tag (display_name)
+GET    /api/user/profile                            # current user (incl. piece_url) + memberships
+PATCH  /api/user/profile                            # update handle/tag (display_name) and/or piece (pieceUrl)
+POST   /api/user/piece                              # upload your piece (avatar) to Blob (any signed-in user)
 POST   /api/user/onboard                            # set username (first login)
 
 GET    /api/groups                                  # my crews (+ member/event counts)
-POST   /api/groups                                  # create crew (app-admin; accepts bannerUrl)
+POST   /api/groups                                  # create crew (app-admin; accepts bannerUrl + bannerOrientation)
 POST   /api/groups/banner                           # upload crew banner to Blob (app-admin create / Capo+King edit)
 GET    /api/groups/public                           # public crews
 POST   /api/groups/join                             # join by invite code
 GET    /api/groups/[id]                             # crew detail
-PATCH  /api/groups/[id]                             # update settings incl. banner (Capo/King)
+PATCH  /api/groups/[id]                             # update settings incl. banner + orientation (Capo/King)
 DELETE /api/groups/[id]                             # hard delete (Owner any / Capo own)
 
 GET    /api/groups/[id]/members                     # list members
@@ -195,7 +197,7 @@ NEXTAUTH_URL=             # no trailing slash
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 SEED_ADMIN_EMAILS=        # comma-separated emails promoted to admin on seed (optional)
-BLOB_READ_WRITE_TOKEN=    # Vercel Blob store token (crew banner uploads); auto-set when the Blob store is linked to the project
+BLOB_READ_WRITE_TOKEN=    # Vercel Blob store token (crew banners + player pieces); auto-set when the Blob store is linked to the project
 # LaunchDarkly (optional; app-admin override + observability/session replay)
 NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=
 EDGE_CONFIG=              # Vercel Edge Config connection (server-side LD eval)

@@ -32,6 +32,7 @@ export function toGroupDTO(row: GroupRow): Group {
     name: row.name,
     description: row.description ?? '',
     bannerUrl: row.bannerUrl ?? undefined,
+    bannerOrientation: (row.bannerOrientation as 'landscape' | 'portrait' | null) ?? 'landscape',
     visibility: row.visibility as GroupVisibility,
     timezone: row.timezone,
     defaultEventSpots: row.defaultEventSpots,
@@ -75,6 +76,7 @@ export interface CreateGroupInput {
   name: string;
   description?: string;
   bannerUrl?: string;
+  bannerOrientation?: 'landscape' | 'portrait';
   visibility?: GroupVisibility;
   defaultEventSpots?: number;
   defaultSlotCost?: number;
@@ -93,6 +95,7 @@ export async function createGroup(input: CreateGroupInput, creatorId: string): P
         name: input.name,
         description: input.description ?? '',
         bannerUrl: input.bannerUrl ?? null,
+        bannerOrientation: input.bannerOrientation ?? 'landscape',
         visibility: input.visibility ?? 'private',
         defaultEventSpots: input.defaultEventSpots ?? 10,
         defaultSlotCost: String(input.defaultSlotCost ?? 0),
@@ -120,6 +123,7 @@ export async function updateGroup(
     visibility: GroupVisibility;
     description: string;
     bannerUrl: string | null;
+    bannerOrientation: 'landscape' | 'portrait';
     defaultEventSpots: number;
     defaultSlotCost: number;
     timezone: string;
@@ -131,6 +135,7 @@ export async function updateGroup(
   if (updates.visibility !== undefined) patch.visibility = updates.visibility;
   if (updates.description !== undefined) patch.description = updates.description;
   if (updates.bannerUrl !== undefined) patch.bannerUrl = updates.bannerUrl;
+  if (updates.bannerOrientation !== undefined) patch.bannerOrientation = updates.bannerOrientation;
   if (updates.defaultEventSpots !== undefined) patch.defaultEventSpots = updates.defaultEventSpots;
   if (updates.defaultSlotCost !== undefined) patch.defaultSlotCost = String(updates.defaultSlotCost);
   if (updates.timezone !== undefined) patch.timezone = updates.timezone;
@@ -229,15 +234,16 @@ export async function isGroupAdmin(groupId: string, email: string): Promise<bool
 
 export async function getGroupMembers(groupId: string): Promise<GroupMember[]> {
   const rows = await db
-    .select({ m: groupMembers, email: users.email, displayName: users.displayName })
+    .select({ m: groupMembers, email: users.email, displayName: users.displayName, pieceUrl: users.pieceUrl })
     .from(groupMembers)
     .innerJoin(users, eq(users.id, groupMembers.userId))
     .where(eq(groupMembers.groupId, groupId));
 
-  return rows.map(({ m, email, displayName }) => ({
+  return rows.map(({ m, email, displayName, pieceUrl }) => ({
     groupId: m.groupId,
     userEmail: email,
     displayName,
+    pieceUrl: pieceUrl ?? undefined,
     groupRole: m.groupRole as GroupRole,
     joinedAt: m.joinedAt.toISOString(),
     invitedBy: m.invitedBy,

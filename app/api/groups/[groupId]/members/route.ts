@@ -33,6 +33,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .map((m) => ({
         userEmail: m.userEmail,
         displayName: m.displayName,
+        pieceUrl: m.pieceUrl,
         groupRole: m.groupRole,
         joinedAt: m.joinedAt,
       }));

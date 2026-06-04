@@ -289,6 +289,7 @@ export default function HoopsMaster() {
           open={profileModalOpen}
           onOpenChange={setProfileModalOpen}
           currentDisplayName={userProfile?.displayName || session?.user?.name || ""}
+          currentPieceUrl={userProfile?.pieceUrl}
           onSaved={() => fetchUserProfile()}
         />
         <Footer />
@@ -386,6 +387,7 @@ export default function HoopsMaster() {
         open={profileModalOpen}
         onOpenChange={setProfileModalOpen}
         currentDisplayName={userProfile?.displayName || session?.user?.name || ""}
+        currentPieceUrl={userProfile?.pieceUrl}
         onSaved={() => fetchUserProfile()}
       />
 

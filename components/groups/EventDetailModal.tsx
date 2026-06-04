@@ -36,6 +36,7 @@ import {
   Star,
 } from "lucide-react";
 import { isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
+import PlayerAvatar from "@/components/PlayerAvatar";
 
 interface EventDetailModalProps {
   open: boolean;
@@ -81,7 +82,7 @@ export default function EventDetailModal({
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [members, setMembers] = useState<{ userEmail: string; displayName: string; groupRole: string }[]>([]);
+  const [members, setMembers] = useState<{ userEmail: string; displayName: string; groupRole: string; pieceUrl?: string }[]>([]);
   const [assignEmail, setAssignEmail] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -108,10 +109,11 @@ export default function EventDetailModal({
       if (res.ok) {
         const data = await res.json();
         const list = (data.data?.members || []).map(
-          (m: { userEmail: string; displayName: string; groupRole?: string }) => ({
+          (m: { userEmail: string; displayName: string; groupRole?: string; pieceUrl?: string }) => ({
             userEmail: m.userEmail,
             displayName: m.displayName,
             groupRole: m.groupRole ?? 'member',
+            pieceUrl: m.pieceUrl,
           })
         );
         setMembers(list);
@@ -327,6 +329,8 @@ export default function EventDetailModal({
 
   // Crew-role lookup so we can flag Capos (crown) and Kings (star) in player lists.
   const roleByEmail = new Map(members.map((m) => [m.userEmail, m.groupRole]));
+  // Piece (profile picture) lookup so player lists show each baller's avatar.
+  const pieceByEmail = new Map(members.map((m) => [m.userEmail, m.pieceUrl]));
   const renderRoleIcon = (email: string) => {
     const role = roleByEmail.get(email);
     if (!role) return null;
@@ -779,7 +783,12 @@ export default function EventDetailModal({
                       }`}
                       style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
                     >
-                      <span className="font-marker text-sm text-[#1A1A1A] truncate flex items-center gap-1">
+                      <span className="font-marker text-sm text-[#1A1A1A] truncate flex items-center gap-1.5">
+                        <PlayerAvatar
+                          pieceUrl={pieceByEmail.get(attendee.userEmail)}
+                          name={attendee.userName}
+                          className="h-6 w-6 shrink-0"
+                        />
                         {renderRoleIcon(attendee.userEmail)}
                         <span className="truncate">{attendee.userName}</span>
                         {attendee.userEmail === userEmail && (
@@ -818,6 +827,11 @@ export default function EventDetailModal({
                         style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                       >
                         <span className="font-graffiti text-[#0084FF] w-6">#{entry.position}</span>
+                        <PlayerAvatar
+                          pieceUrl={pieceByEmail.get(entry.userEmail)}
+                          name={entry.displayName}
+                          className="h-6 w-6 shrink-0"
+                        />
                         {renderRoleIcon(entry.userEmail)}
                         <span className="font-marker text-sm text-[#1A1A1A] truncate">
                           {entry.displayName}

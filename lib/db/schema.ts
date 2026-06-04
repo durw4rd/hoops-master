@@ -30,6 +30,7 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: text('email').notNull().unique(),
   displayName: text('display_name').notNull(),
+  pieceUrl: text('piece_url'), // optional profile picture ("piece"), Vercel Blob URL
   globalRole: text('global_role').notNull().default('user'), // 'admin' | 'user'
   // Invite-only access: a row exists only for invited/seeded users. `onboarded`
   // flips true once the user has chosen their username on first sign-in.
@@ -48,6 +49,7 @@ export const groups = pgTable('groups', {
   name: text('name').notNull(),
   description: text('description').default(''),
   bannerUrl: text('banner_url'), // optional crew banner image (Vercel Blob URL)
+  bannerOrientation: text('banner_orientation').default('landscape'), // 'landscape' | 'portrait'
   visibility: text('visibility').notNull().default('private'), // 'public' | 'private'
   status: text('status').notNull().default('active'), // 'active' | 'archived'
   inviteCode: text('invite_code').notNull().unique(),

@@ -18,8 +18,11 @@ subway-graffiti skin.
   payments, and CSV export.
 - **Invite-only auth** — Google sign-in restricted to pre-invited/seeded emails,
   with a first-login username picker and an editable handle ("Your Tag").
-- **Crew banners** — upload a banner per crew (stored in Vercel Blob); shown on
-  the crew card and as the crew-page header.
+- **Player pieces** — upload your profile picture ("Your Piece", stored in Vercel
+  Blob); shown as your settings avatar and beside your name in player lists.
+- **Crew banners** — upload a banner per crew (stored in Vercel Blob) with a
+  landscape/portrait toggle; the crew card splits vertically for portrait banners,
+  and the banner doubles as the crew-page header.
 - **Quality-of-life UI** — settings menu in the header, collapsible crew info,
   a "Show past games" toggle (hidden by default), "My Games" filter, and subtle
   crown/star markers for Capos and Kings in player lists.
@@ -29,7 +32,7 @@ subway-graffiti skin.
 - Next.js 15 (App Router) · React 19 · TypeScript
 - Neon Postgres · Drizzle ORM (`@neondatabase/serverless` Pool driver)
 - NextAuth v4 (Google OAuth) · LaunchDarkly (additive app-admin override + session/user multi-context)
-- Vercel Blob (crew banner images)
+- Vercel Blob (crew banner + player piece images)
 - Tailwind CSS · shadcn/ui · Vercel · pnpm
 
 See **[`APP_ARCHITECTURE.md`](./APP_ARCHITECTURE.md)** for the full architecture and

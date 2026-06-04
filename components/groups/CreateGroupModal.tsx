@@ -25,6 +25,7 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [bannerUrl, setBannerUrl] = useState<string | undefined>(undefined);
+  const [bannerOrientation, setBannerOrientation] = useState<"landscape" | "portrait">("landscape");
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [defaultSpots, setDefaultSpots] = useState("10");
   const [defaultCost, setDefaultCost] = useState("0");
@@ -47,6 +48,7 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
           name,
           description,
           bannerUrl,
+          bannerOrientation,
           visibility,
           defaultEventSpots: parseInt(defaultSpots) || 10,
           defaultSlotCost: parseFloat(defaultCost) || 0,
@@ -64,6 +66,7 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
       setName("");
       setDescription("");
       setBannerUrl(undefined);
+      setBannerOrientation("landscape");
       setVisibility("private");
       setDefaultSpots("10");
       setDefaultCost("0");
@@ -114,7 +117,12 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
 
           <div className="space-y-2">
             <Label className="font-graffiti text-[#1A1A1A]">Crew Banner</Label>
-            <BannerUploadField value={bannerUrl} onChange={setBannerUrl} />
+            <BannerUploadField
+              value={bannerUrl}
+              onChange={setBannerUrl}
+              orientation={bannerOrientation}
+              onOrientationChange={setBannerOrientation}
+            />
           </div>
 
           <div className="space-y-2">

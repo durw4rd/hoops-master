@@ -27,6 +27,7 @@ import EventDetailModal from "./EventDetailModal";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
 import BannerUploadField from "./BannerUploadField";
+import PlayerAvatar from "@/components/PlayerAvatar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
@@ -55,6 +56,7 @@ interface EventWithCounts extends Event {
 interface MemberInfo {
   userEmail: string;
   displayName: string;
+  pieceUrl?: string;
   groupRole: string;
   joinedAt: string;
 }
@@ -89,6 +91,9 @@ export default function GroupDashboard({
   const [editSpots, setEditSpots] = useState(String(group.defaultEventSpots ?? 10));
   const [editCost, setEditCost] = useState(String(group.defaultSlotCost ?? 0));
   const [editBannerUrl, setEditBannerUrl] = useState<string | undefined>(group.bannerUrl);
+  const [editBannerOrientation, setEditBannerOrientation] = useState<'landscape' | 'portrait'>(
+    group.bannerOrientation === 'portrait' ? 'portrait' : 'landscape'
+  );
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSaved, setSettingsSaved] = useState(false);
@@ -202,6 +207,7 @@ export default function GroupDashboard({
           defaultEventSpots: parseInt(editSpots) || group.defaultEventSpots,
           defaultSlotCost: parseFloat(editCost) || 0,
           bannerUrl: editBannerUrl ?? null,
+          bannerOrientation: editBannerOrientation,
         }),
       });
       const data = await res.json();
@@ -358,12 +364,16 @@ export default function GroupDashboard({
         {activeTab === 'events' && (
           <div className="space-y-3">
             {!eventsLoading && (
-              <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={`grid gap-2 items-stretch ${
+                  events.length > 0 ? 'grid-cols-3' : 'grid-cols-1'
+                }`}
+              >
                 {events.length > 0 && (
                   <>
                     <button
                       onClick={() => setGameFilter('all')}
-                      className={`flex-1 sm:flex-none px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                      className={`h-full flex items-center justify-center text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
                         gameFilter === 'all'
                           ? 'bg-[#1A1A1A] text-[#F2EFE9]'
                           : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
@@ -373,7 +383,7 @@ export default function GroupDashboard({
                     </button>
                     <button
                       onClick={() => setGameFilter('mine')}
-                      className={`flex-1 sm:flex-none px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
+                      className={`h-full flex items-center justify-center text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
                         gameFilter === 'mine'
                           ? 'bg-[#96E600] text-[#1A1A1A]'
                           : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
@@ -385,13 +395,13 @@ export default function GroupDashboard({
                 )}
                 <button
                   onClick={() => setShowPast((v) => !v)}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all sm:ml-auto ${
+                  className={`h-full flex items-center justify-center gap-1.5 text-center leading-tight px-3 py-2 font-graffiti text-sm border-2 border-[#1A1A1A] transition-all ${
                     showPast
                       ? 'bg-[#FFD700] text-[#1A1A1A]'
                       : 'bg-white text-[#1A1A1A] hover:bg-[#F2EFE9]'
                   }`}
                 >
-                  <History className="w-3.5 h-3.5" />
+                  <History className="w-3.5 h-3.5 shrink-0" />
                   {showPast ? 'Hide Past Games' : 'Show Past Games'}
                 </button>
               </div>
@@ -543,11 +553,11 @@ export default function GroupDashboard({
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#8B5CF6] border-2 border-[#1A1A1A] flex items-center justify-center shadow-[2px_2px_0_#1A1A1A]">
-                          <span className="text-white font-graffiti text-sm">
-                            {(member.displayName || member.userEmail).charAt(0).toUpperCase()}
-                          </span>
-                        </div>
+                        <PlayerAvatar
+                          pieceUrl={member.pieceUrl}
+                          name={member.displayName || member.userEmail}
+                          className="h-10 w-10 shadow-[2px_2px_0_#1A1A1A]"
+                        />
                         <div>
                           <p className="font-marker text-[#1A1A1A]">
                             {member.displayName}
@@ -678,6 +688,8 @@ export default function GroupDashboard({
                 <BannerUploadField
                   value={editBannerUrl}
                   onChange={setEditBannerUrl}
+                  orientation={editBannerOrientation}
+                  onOrientationChange={setEditBannerOrientation}
                   groupId={group.groupId}
                 />
               </div>

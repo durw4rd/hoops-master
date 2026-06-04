@@ -13,6 +13,7 @@ function toAppUser(row: UserRow): AppUser {
   return {
     email: row.email,
     displayName: row.displayName,
+    pieceUrl: row.pieceUrl ?? undefined,
     globalRole: row.globalRole as GlobalRole,
     onboarded: row.onboarded,
     createdAt: row.createdAt.toISOString(),
@@ -79,6 +80,16 @@ export async function updateDisplayName(userId: string, name: string): Promise<U
   const [row] = await db
     .update(users)
     .set({ displayName: name.trim() })
+    .where(eq(users.id, userId))
+    .returning();
+  return row ?? null;
+}
+
+/** Update a user's profile picture ("piece"). Pass null to clear it. */
+export async function updatePieceUrl(userId: string, pieceUrl: string | null): Promise<UserRow | null> {
+  const [row] = await db
+    .update(users)
+    .set({ pieceUrl })
     .where(eq(users.id, userId))
     .returning();
   return row ?? null;
