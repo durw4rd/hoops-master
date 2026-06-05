@@ -34,6 +34,7 @@ import {
   Trash2,
   Crown,
   Star,
+  ChevronDown,
 } from "lucide-react";
 import { isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -87,6 +88,7 @@ export default function EventDetailModal({
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<Record<string, string>>({});
+  const [manageSquadOpen, setManageSquadOpen] = useState(false);
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -661,73 +663,86 @@ export default function EventDetailModal({
 
               {/* Manager: reassign or remove players already in the game */}
               {canManage && confirmedAttendees.length > 0 && (
-                <div className="border-2 border-dashed border-asphalt/40 p-3 space-y-2">
-                  <h3 className="font-graffiti text-sm text-asphalt">Manage Squad</h3>
-                  <div className="space-y-2">
-                    {confirmedAttendees.map((attendee) => {
-                      const busy =
-                        actionLoading === `reassign-${attendee.attendeeId}` ||
-                        actionLoading === `unassign-${attendee.attendeeId}`;
-                      return (
-                        <div
-                          key={attendee.attendeeId}
-                          className="bg-white border-2 border-asphalt p-2 space-y-2"
-                        >
-                          <span className="font-marker text-sm text-asphalt block truncate">
-                            {attendee.userName}
-                          </span>
-                          <div className="flex gap-2">
-                            <Select
-                              value={reassignTarget[attendee.attendeeId] ?? ''}
-                              onValueChange={(v) =>
-                                setReassignTarget((prev) => ({ ...prev, [attendee.attendeeId]: v }))
-                              }
-                            >
-                              <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-8 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
-                                <SelectValue placeholder="Swap with…" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                                {members
-                                  .filter(
-                                    (m) =>
-                                      !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
-                                      !offeredSpots.some((a) => a.userEmail === m.userEmail)
-                                  )
-                                  .map((m) => (
-                                    <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
-                                      {m.displayName}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                            <button
-                              onClick={() => handleReassign(attendee.attendeeId)}
-                              disabled={busy || !reassignTarget[attendee.attendeeId]}
-                              className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
-                            >
-                              {actionLoading === `reassign-${attendee.attendeeId}` ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                'SWAP'
-                              )}
-                            </button>
-                            <button
-                              onClick={() => handleUnassign(attendee.attendeeId)}
-                              disabled={busy}
-                              title="Remove from game"
-                              className="bg-terracotta text-white border-2 border-asphalt py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
-                            >
-                              {actionLoading === `unassign-${attendee.attendeeId}` ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="w-4 h-4" />
-                              )}
-                            </button>
+                <div className="border-2 border-dashed border-asphalt/40">
+                  <button
+                    type="button"
+                    onClick={() => setManageSquadOpen((v) => !v)}
+                    className="w-full flex items-center justify-between gap-2 p-3 text-left"
+                  >
+                    <span className="font-graffiti text-sm text-asphalt">
+                      Manage Squad ({confirmedAttendees.length})
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-asphalt flex-shrink-0 transition-transform ${manageSquadOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {manageSquadOpen && (
+                    <div className="border-t-2 border-dashed border-asphalt/40 p-3 space-y-2">
+                      {confirmedAttendees.map((attendee) => {
+                        const busy =
+                          actionLoading === `reassign-${attendee.attendeeId}` ||
+                          actionLoading === `unassign-${attendee.attendeeId}`;
+                        return (
+                          <div
+                            key={attendee.attendeeId}
+                            className="bg-white border-2 border-asphalt p-2 space-y-2"
+                          >
+                            <span className="font-marker text-sm text-asphalt block truncate">
+                              {attendee.userName}
+                            </span>
+                            <div className="flex gap-2">
+                              <Select
+                                value={reassignTarget[attendee.attendeeId] ?? ''}
+                                onValueChange={(v) =>
+                                  setReassignTarget((prev) => ({ ...prev, [attendee.attendeeId]: v }))
+                                }
+                              >
+                                <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-8 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
+                                  <SelectValue placeholder="Swap with…" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                                  {members
+                                    .filter(
+                                      (m) =>
+                                        !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
+                                        !offeredSpots.some((a) => a.userEmail === m.userEmail)
+                                    )
+                                    .map((m) => (
+                                      <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                                        {m.displayName}
+                                      </SelectItem>
+                                    ))}
+                                </SelectContent>
+                              </Select>
+                              <button
+                                onClick={() => handleReassign(attendee.attendeeId)}
+                                disabled={busy || !reassignTarget[attendee.attendeeId]}
+                                className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
+                              >
+                                {actionLoading === `reassign-${attendee.attendeeId}` ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  'SWAP'
+                                )}
+                              </button>
+                              <button
+                                onClick={() => handleUnassign(attendee.attendeeId)}
+                                disabled={busy}
+                                title="Remove from game"
+                                className="bg-terracotta text-white border-2 border-asphalt py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
+                              >
+                                {actionLoading === `unassign-${attendee.attendeeId}` ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
