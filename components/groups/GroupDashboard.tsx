@@ -31,6 +31,7 @@ import CrewMuralHero from "./CrewMuralHero";
 import SettingsMenu from "@/components/SettingsMenu";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -95,6 +96,7 @@ export default function GroupDashboard({
   const [confirmDeleteCrewOpen, setConfirmDeleteCrewOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState<'all' | 'mine'>('all');
   const [showPast, setShowPast] = useState(false);
+  const [piecePreview, setPiecePreview] = useState<{ url: string; name: string } | null>(null);
 
   // Editable crew-details form (Settings tab).
   const [editDescription, setEditDescription] = useState(group.description ?? '');
@@ -542,11 +544,21 @@ export default function GroupDashboard({
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <PlayerAvatar
-                          pieceUrl={member.pieceUrl}
-                          name={member.displayName || member.userEmail}
-                          className="h-10 w-10 shadow-sticker-sm"
-                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            member.pieceUrl &&
+                            setPiecePreview({ url: member.pieceUrl, name: member.displayName || member.userEmail })
+                          }
+                          className={member.pieceUrl ? "cursor-pointer" : "cursor-default"}
+                          aria-label={member.pieceUrl ? `View ${member.displayName}'s piece` : undefined}
+                        >
+                          <PlayerAvatar
+                            pieceUrl={member.pieceUrl}
+                            name={member.displayName || member.userEmail}
+                            className={`h-10 w-10 shadow-sticker-sm ${member.pieceUrl ? "hover:ring-2 hover:ring-terracotta transition-all" : ""}`}
+                          />
+                        </button>
                         <div>
                           <p className="font-marker text-asphalt">
                             {member.displayName}
@@ -831,6 +843,28 @@ export default function GroupDashboard({
           onEventUpdated={fetchEvents}
         />
       )}
+
+      {/* Piece (avatar) full-size preview */}
+      <Dialog open={!!piecePreview} onOpenChange={(open) => !open && setPiecePreview(null)}>
+        <DialogContent className="p-0 border-4 border-asphalt shadow-sticker-lg bg-asphalt max-w-xs sm:max-w-sm rounded-none overflow-hidden">
+          {piecePreview && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={piecePreview.url}
+                alt={`${piecePreview.name}'s piece`}
+                className="w-full h-auto object-cover"
+              />
+              <div className="px-4 py-3 bg-asphalt">
+                <p className="font-graffiti text-xl text-sticker-white tracking-wide leading-tight">
+                  {piecePreview.name}
+                </p>
+                <p className="font-marker text-moss-green text-xs mt-0.5">Their piece</p>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmDeleteCrewOpen}
