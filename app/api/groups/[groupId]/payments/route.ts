@@ -2,14 +2,14 @@
  * Payments API
  *
  * GET  /api/groups/[groupId]/payments - list recorded payments (members)
- * POST /api/groups/[groupId]/payments - record a payment (admin only)
+ * POST /api/groups/[groupId]/payments - record a payment (Capo or King)
  *   Body: { userEmail, amount, description?, paymentDate? }
  *   Batch: { userEmails: string[], amount, description?, paymentDate? }
  *     Records the same payment for every listed player (e.g. a season buy-in).
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireMember, requireGroupAdmin } from '@/lib/apiGuards';
+import { requireMember, requireCrewManager } from '@/lib/apiGuards';
 import { getPayments, recordPayment } from '@/lib/queries/credits';
 import { getGroupMember } from '@/lib/queries/groups';
 
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { groupId } = await params;
-  const ctx = await requireGroupAdmin(groupId);
+  const ctx = await requireCrewManager(groupId);
   if (ctx instanceof NextResponse) return ctx;
 
   try {

@@ -617,7 +617,7 @@ export default function GroupDashboard({
           <CreditDashboard
             groupId={group.groupId}
             userEmail={userEmail}
-            isGroupAdmin={isCapo}
+            isGroupAdmin={canManage}
             members={members}
           />
         )}
