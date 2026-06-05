@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { BookText, ChevronLeft } from "lucide-react";
+import { BookText, ChevronLeft, ScrollText } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import SettingsMenu from "@/components/SettingsMenu";
 
@@ -12,6 +12,7 @@ interface LogoBannerProps {
   onSignOut: () => void;
   onOpenProfile?: () => void;
   onOpenBlackBook?: () => void;
+  onOpenVocab?: () => void;
 }
 
 /** Home mural — same chrome as crew banner (sticky profile row + framed hero). */
@@ -22,10 +23,12 @@ export default function LogoBanner({
   onSignOut,
   onOpenProfile,
   onOpenBlackBook,
+  onOpenVocab,
 }: LogoBannerProps) {
   return (
     <>
-      <div className="sticky top-0 z-40 -mx-4 px-4 py-2 mb-3 flex items-center justify-between gap-2 concrete-bg">
+      <div className="sticky top-0 z-40 -mx-4 px-4 py-2 mb-3 flex items-center gap-2 concrete-bg">
+        {/* Left: Black Book (admin only) */}
         {onOpenBlackBook ? (
           <button
             type="button"
@@ -45,6 +48,22 @@ export default function LogoBanner({
             Crews
           </span>
         )}
+
+        {/* Vocab — always visible when logged in */}
+        {onOpenVocab && (
+          <button
+            type="button"
+            onClick={onOpenVocab}
+            className="sticker-btn-outline flex items-center gap-1.5 text-sm py-1.5 px-3 shrink-0"
+            title="Street glossary"
+          >
+            <ScrollText className="w-4 h-4 shrink-0" />
+            Vocab
+          </button>
+        )}
+
+        {/* Profile / settings pushed to far right */}
+        <span className="ml-auto" />
         <SettingsMenu
           session={session}
           userProfile={userProfile}

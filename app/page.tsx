@@ -12,6 +12,7 @@ import GroupDashboard from "@/components/groups/GroupDashboard";
 import OnboardingScreen from "@/components/OnboardingScreen";
 import InvitePlayerModal from "@/components/InvitePlayerModal";
 import ProfileSettingsModal from "@/components/ProfileSettingsModal";
+import VocabModal from "@/components/VocabModal";
 import { Group, UserProfile } from "@/lib/types";
 import { Plus, Users } from "lucide-react";
 import Image from "next/image";
@@ -29,7 +30,7 @@ const shellProps = (
 const logoBannerProps = (
   session: ReturnType<typeof useSession>["data"],
   userProfile: UserProfile | null,
-  options?: { onOpenProfile?: () => void; onOpenBlackBook?: () => void }
+  options?: { onOpenProfile?: () => void; onOpenBlackBook?: () => void; onOpenVocab?: () => void }
 ) => ({
   session,
   userProfile,
@@ -37,6 +38,7 @@ const logoBannerProps = (
   onSignOut: signOut,
   onOpenProfile: options?.onOpenProfile,
   onOpenBlackBook: options?.onOpenBlackBook,
+  onOpenVocab: options?.onOpenVocab,
 });
 
 export default function HoopsMaster() {
@@ -56,6 +58,7 @@ export default function HoopsMaster() {
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [vocabModalOpen, setVocabModalOpen] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -227,7 +230,7 @@ export default function HoopsMaster() {
     return (
       <AppShell {...shellProps(session, userProfile)}>
         <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
-          <LogoBanner {...logoBannerProps(session, userProfile, { onOpenProfile: () => setProfileModalOpen(true) })} />
+          <LogoBanner {...logoBannerProps(session, userProfile, { onOpenProfile: () => setProfileModalOpen(true), onOpenVocab: () => setVocabModalOpen(true) })} />
           <OnboardingScreen
             defaultUsername={userProfile.displayName}
             onComplete={() => {
@@ -236,6 +239,7 @@ export default function HoopsMaster() {
             }}
           />
         </div>
+        <VocabModal open={vocabModalOpen} onOpenChange={setVocabModalOpen} />
         {profileModal}
       </AppShell>
     );
@@ -278,6 +282,7 @@ export default function HoopsMaster() {
             {...logoBannerProps(session, userProfile, {
               onOpenProfile: () => setProfileModalOpen(true),
               onOpenBlackBook: canCreateCrew ? () => setInviteModalOpen(true) : undefined,
+              onOpenVocab: () => setVocabModalOpen(true),
             })}
           />
 
@@ -326,6 +331,8 @@ export default function HoopsMaster() {
         onOpenChange={setInviteModalOpen}
         currentUserEmail={session?.user?.email ?? undefined}
       />
+
+      <VocabModal open={vocabModalOpen} onOpenChange={setVocabModalOpen} />
 
       {profileModal}
     </AppShell>
