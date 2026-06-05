@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { BookText, ChevronLeft } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import SettingsMenu from "@/components/SettingsMenu";
 
@@ -10,36 +11,64 @@ interface LogoBannerProps {
   onSignIn: () => void;
   onSignOut: () => void;
   onOpenProfile?: () => void;
+  onOpenBlackBook?: () => void;
 }
 
-/** Full-width logo integrated into the concrete page canvas (not a separate chrome strip). */
+/** Home mural — same chrome as crew banner (sticky profile row + framed hero). */
 export default function LogoBanner({
   session,
   userProfile,
   onSignIn,
   onSignOut,
   onOpenProfile,
+  onOpenBlackBook,
 }: LogoBannerProps) {
   return (
-    <div className="relative max-w-4xl mx-auto border-b-4 border-terracotta">
-      <Image
-        src="/logo-new.png"
-        alt="Hoops Master"
-        width={1024}
-        height={571}
-        className="w-full h-auto max-h-[200px] sm:max-h-[280px] object-contain object-center"
-        priority
-      />
-      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
+    <>
+      <div className="sticky top-0 z-40 -mx-4 px-4 py-2 mb-3 flex items-center justify-between gap-2 concrete-bg">
+        {onOpenBlackBook ? (
+          <button
+            type="button"
+            onClick={onOpenBlackBook}
+            className="sticker-btn-outline flex items-center gap-1.5 text-sm py-1.5 px-3 shrink-0"
+            title="Manage players — invites and admin roles"
+          >
+            <BookText className="w-4 h-4 shrink-0" />
+            Black Book
+          </button>
+        ) : (
+          <span
+            className="flex items-center gap-1 font-graffiti text-base sm:text-lg invisible select-none"
+            aria-hidden
+          >
+            <ChevronLeft className="w-6 h-6 shrink-0" />
+            Crews
+          </span>
+        )}
         <SettingsMenu
           session={session}
           userProfile={userProfile}
           onSignIn={onSignIn}
           onSignOut={onSignOut}
           onOpenProfile={onOpenProfile}
-          onLogo
         />
       </div>
-    </div>
+
+      <div
+        className="relative overflow-hidden border-4 border-asphalt shadow-sticker-lg mb-4 sm:mb-6"
+        style={{ transform: "rotate(-0.3deg)" }}
+      >
+        <div className="relative aspect-[1024/571] min-h-[200px] sm:min-h-[260px]">
+          <Image
+            src="/logo-new.png"
+            alt="Hoops Master"
+            fill
+            className="object-cover object-center"
+            priority
+            sizes="(max-width: 896px) 100vw, 896px"
+          />
+        </div>
+      </div>
+    </>
   );
 }

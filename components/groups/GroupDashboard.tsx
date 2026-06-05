@@ -20,7 +20,6 @@ import {
   Crown,
   Star,
   UserPlus,
-  ChevronDown,
   History,
 } from "lucide-react";
 import CreateEventModal from "./CreateEventModal";
@@ -32,7 +31,6 @@ import CrewMuralHero from "./CrewMuralHero";
 import SettingsMenu from "@/components/SettingsMenu";
 import PlayerAvatar from "@/components/PlayerAvatar";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -97,7 +95,6 @@ export default function GroupDashboard({
   const [confirmDeleteCrewOpen, setConfirmDeleteCrewOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState<'all' | 'mine'>('all');
   const [showPast, setShowPast] = useState(false);
-  const [infoOpen, setInfoOpen] = useState(false);
 
   // Editable crew-details form (Settings tab).
   const [editDescription, setEditDescription] = useState(group.description ?? '');
@@ -287,37 +284,6 @@ export default function GroupDashboard({
       )}
 
       <CrewMuralHero group={group} memberCount={members.length} eventCount={events.length} />
-
-      {(group.description || (isCapo && group.inviteCode)) && (
-        <Collapsible open={infoOpen} onOpenChange={setInfoOpen} className="marker-card mb-4 sm:mb-6 overflow-hidden">
-          <CollapsibleTrigger className="w-full flex items-center justify-between gap-3 p-4 text-left">
-            <span className="font-marker text-sm text-asphalt/70">Crew details</span>
-            <ChevronDown
-              className={`w-5 h-5 text-asphalt flex-shrink-0 transition-transform ${infoOpen ? "rotate-180" : ""}`}
-            />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="border-t-2 border-asphalt px-4 py-4 space-y-3">
-              {group.description && (
-                <p className="text-asphalt/70 font-body">{group.description}</p>
-              )}
-              {isCapo && group.inviteCode && (
-                <button
-                  onClick={copyInviteCode}
-                  className="flex items-center gap-2 bg-asphalt text-sticker-white px-3 py-1.5 border-2 border-asphalt font-mono text-sm hover:bg-terracotta transition-colors"
-                >
-                  {inviteCopied ? (
-                    <Check className="w-4 h-4 text-moss-green" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                  {group.inviteCode}
-                </button>
-              )}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
 
       {/* Tabs */}
       <div className="space-y-4">

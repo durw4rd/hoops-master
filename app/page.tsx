@@ -13,7 +13,7 @@ import OnboardingScreen from "@/components/OnboardingScreen";
 import InvitePlayerModal from "@/components/InvitePlayerModal";
 import ProfileSettingsModal from "@/components/ProfileSettingsModal";
 import { Group, UserProfile } from "@/lib/types";
-import { Plus, Users, BookText } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import Image from "next/image";
 
 const shellProps = (
@@ -29,13 +29,14 @@ const shellProps = (
 const logoBannerProps = (
   session: ReturnType<typeof useSession>["data"],
   userProfile: UserProfile | null,
-  onOpenProfile?: () => void
+  options?: { onOpenProfile?: () => void; onOpenBlackBook?: () => void }
 ) => ({
   session,
   userProfile,
   onSignIn: () => signIn("google"),
   onSignOut: signOut,
-  onOpenProfile,
+  onOpenProfile: options?.onOpenProfile,
+  onOpenBlackBook: options?.onOpenBlackBook,
 });
 
 export default function HoopsMaster() {
@@ -179,9 +180,11 @@ export default function HoopsMaster() {
   if (status === "loading") {
     return (
       <AppShell {...shellProps(session, userProfile)}>
-        <LogoBanner {...logoBannerProps(session, userProfile)} />
-        <div className="flex items-center justify-center px-4 py-24">
-          <div className="font-graffiti text-2xl text-terracotta animate-pulse">Loading...</div>
+        <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
+          <LogoBanner {...logoBannerProps(session, userProfile)} />
+          <div className="flex items-center justify-center py-24">
+            <div className="font-graffiti text-2xl text-terracotta animate-pulse">Loading...</div>
+          </div>
         </div>
       </AppShell>
     );
@@ -222,17 +225,17 @@ export default function HoopsMaster() {
 
   if (!profileLoading && userProfile && !userProfile.onboarded) {
     return (
-      <AppShell
-        {...shellProps(session, userProfile)}
-      >
-        <LogoBanner {...logoBannerProps(session, userProfile, () => setProfileModalOpen(true))} />
-        <OnboardingScreen
-          defaultUsername={userProfile.displayName}
-          onComplete={() => {
-            fetchUserProfile();
-            fetchGroups();
-          }}
-        />
+      <AppShell {...shellProps(session, userProfile)}>
+        <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
+          <LogoBanner {...logoBannerProps(session, userProfile, { onOpenProfile: () => setProfileModalOpen(true) })} />
+          <OnboardingScreen
+            defaultUsername={userProfile.displayName}
+            onComplete={() => {
+              fetchUserProfile();
+              fetchGroups();
+            }}
+          />
+        </div>
         {profileModal}
       </AppShell>
     );
@@ -270,39 +273,31 @@ export default function HoopsMaster() {
 
   return (
     <AppShell {...shellProps(session, userProfile)}>
-      <LogoBanner {...logoBannerProps(session, userProfile, () => setProfileModalOpen(true))} />
+      <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
+          <LogoBanner
+            {...logoBannerProps(session, userProfile, {
+              onOpenProfile: () => setProfileModalOpen(true),
+              onOpenBlackBook: canCreateCrew ? () => setInviteModalOpen(true) : undefined,
+            })}
+          />
 
-      <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="flex flex-col gap-4 mb-6">
-          <h2 className="graffiti-title text-3xl sm:text-4xl">Your Crews</h2>
-          <div className="flex flex-wrap gap-2 w-full min-w-0">
+        <div className={`grid gap-2 mb-6 ${canCreateCrew ? "grid-cols-2" : "grid-cols-1"}`}>
+          <button
+            onClick={() => setJoinModalOpen(true)}
+            className="sticker-btn-outline flex items-center justify-center gap-1.5 text-sm py-2 px-3"
+          >
+            <Users className="w-4 h-4 shrink-0" />
+            Join
+          </button>
+          {canCreateCrew && (
             <button
-              onClick={() => setJoinModalOpen(true)}
-              className="sticker-btn-outline flex items-center gap-1.5 text-sm py-2 px-3 whitespace-nowrap"
+              onClick={() => setCreateModalOpen(true)}
+              className="sticker-btn flex items-center justify-center gap-1.5 text-sm py-2 px-3"
             >
-              <Users className="w-4 h-4 shrink-0" />
-              Join
+              <Plus className="w-4 h-4 shrink-0" />
+              Create
             </button>
-            {canCreateCrew && (
-              <button
-                onClick={() => setInviteModalOpen(true)}
-                className="sticker-btn-outline flex items-center gap-1.5 text-sm py-2 px-3 whitespace-nowrap"
-                title="Manage players — invites and admin roles"
-              >
-                <BookText className="w-4 h-4 shrink-0" />
-                Black Book
-              </button>
-            )}
-            {canCreateCrew && (
-              <button
-                onClick={() => setCreateModalOpen(true)}
-                className="sticker-btn flex items-center gap-1.5 text-sm py-2 px-3 whitespace-nowrap"
-              >
-                <Plus className="w-4 h-4 shrink-0" />
-                Create
-              </button>
-            )}
-          </div>
+          )}
         </div>
 
         <GroupList
