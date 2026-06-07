@@ -136,6 +136,15 @@ export default function EventDetailModal({
     }
   }, [open, fetchEvent, fetchMembers]);
 
+  // Re-fetch event data when the user returns to the tab (catches stale state
+  // from race conditions where other players acted while this modal was open).
+  useEffect(() => {
+    if (!open) return;
+    const onFocus = () => fetchEvent();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [open, fetchEvent]);
+
   const handleDelete = async () => {
     setActionLoading('delete');
     setError(null);

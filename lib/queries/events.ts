@@ -634,11 +634,39 @@ export async function offerSpot(params: {
       attendee = row ?? null;
     } else {
       attendee = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
+
       // Guard: cannot offer primary while rider row is still confirmed.
       const rider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
       if (rider && rider.status === 'confirmed') {
         throw new SpotError('Offer or release your Rider first before offering your own spot', 400);
       }
+
+      // Guard: if someone is on the primary bench they should receive the spot
+      // directly via Release, not have it sit as an offer in the marketplace.
+      const [benchEntry] = await tx
+        .select({ id: eventWaitlist.id })
+        .from(eventWaitlist)
+        .where(and(
+          eq(eventWaitlist.eventId, params.eventId),
+          eq(eventWaitlist.forRider, false),
+        ))
+        .limit(1);
+      if (benchEntry) {
+        throw new SpotError(
+          'Someone is on the bench — use Release instead to pass your spot directly',
+          400
+        );
+      }
+
+      // Auto-cancel your own forRider=true bench entry: offering your primary
+      // makes a rider slot irrelevant until you're back in the event.
+      await tx
+        .delete(eventWaitlist)
+        .where(and(
+          eq(eventWaitlist.eventId, params.eventId),
+          eq(eventWaitlist.userId, params.userId),
+          eq(eventWaitlist.forRider, true),
+        ));
     }
     if (!attendee) throw new SpotError('Spot not found', 404);
     if (attendee.userId !== params.userId) throw new SpotError('Not your spot', 403);
