@@ -1,13 +1,12 @@
 /**
  * Event + attendee queries, including concurrency-safe spot mutations.
  *
- * Capacity rule: a brand-new spot fill (admin assign, self signup, round-robin)
- * requires occupancy < total_spots, where occupancy = confirmed + offered rows
- * (an offered spot is still held until transferred). Claiming an *offered* spot
- * is a transfer and does not change occupancy.
+ * Capacity rule: occupancy = SUM(1 + plusOne) across all attendee rows.
+ * Each row with plusOne=true counts as 2 toward event.totalSpots.
+ * Claiming an *offered* spot is a zero-sum transfer and does not change occupancy.
  */
 
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/lib/db';
 import { events, eventAttendees, eventWaitlist, users, groups, spotTransactions } from '@/lib/db/schema';
@@ -89,24 +88,25 @@ export async function getEventRows(groupId: string, opts: GetEventsOpts = {}): P
 }
 
 export interface EventCounts {
-  confirmed: number;
-  offered: number;
-  occupancy: number;
+  confirmed: number; // slot count (plusOne=true rows count as 2)
+  offered: number;   // slot count
+  occupancy: number; // total slots used (confirmed + offered)
 }
 
 export async function getCountsForEvents(eventIds: string[]): Promise<Map<string, EventCounts>> {
   const result = new Map<string, EventCounts>();
   if (eventIds.length === 0) return result;
   const rows = await db
-    .select({ eventId: eventAttendees.eventId, status: eventAttendees.status })
+    .select({ eventId: eventAttendees.eventId, status: eventAttendees.status, plusOne: eventAttendees.plusOne })
     .from(eventAttendees)
     .where(inArray(eventAttendees.eventId, eventIds));
   for (const id of eventIds) result.set(id, { confirmed: 0, offered: 0, occupancy: 0 });
   for (const r of rows) {
     const c = result.get(r.eventId)!;
-    c.occupancy += 1;
-    if (r.status === 'offered') c.offered += 1;
-    else c.confirmed += 1;
+    const slots = 1 + (r.plusOne ? 1 : 0);
+    c.occupancy += slots;
+    if (r.status === 'offered') c.offered += slots;
+    else c.confirmed += slots;
   }
   return result;
 }
@@ -121,12 +121,15 @@ export async function getUserStatusForEvents(
   for (const id of eventIds) result.set(id, { attending: false, onWaitlist: false, hasRider: false });
 
   const attRows = await db
-    .select({ eventId: eventAttendees.eventId })
+    .select({ eventId: eventAttendees.eventId, plusOne: eventAttendees.plusOne })
     .from(eventAttendees)
     .where(and(inArray(eventAttendees.eventId, eventIds), eq(eventAttendees.userId, userId)));
   for (const r of attRows) {
     const s = result.get(r.eventId);
-    if (s) s.attending = true;
+    if (s) {
+      s.attending = true;
+      if (r.plusOne) s.hasRider = true;
+    }
   }
 
   const wlRows = await db
@@ -136,20 +139,6 @@ export async function getUserStatusForEvents(
   for (const r of wlRows) {
     const s = result.get(r.eventId);
     if (s) s.onWaitlist = true;
-  }
-
-  // Rider rows: user holds a plus-one spot (parentAttendeeId IS NOT NULL).
-  const riderRows = await db
-    .select({ eventId: eventAttendees.eventId })
-    .from(eventAttendees)
-    .where(and(
-      inArray(eventAttendees.eventId, eventIds),
-      eq(eventAttendees.userId, userId),
-      isNotNull(eventAttendees.parentAttendeeId),
-    ));
-  for (const r of riderRows) {
-    const s = result.get(r.eventId);
-    if (s) s.hasRider = true;
   }
 
   return result;
@@ -196,8 +185,7 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
     offeredAt: a.offeredAt ? a.offeredAt.toISOString() : null,
     assignedBy: a.assignedBy ? assignedByEmail : null,
     assignedAt: a.assignedAt.toISOString(),
-    parentAttendeeId: a.parentAttendeeId ?? null,
-    isPlusOne: a.parentAttendeeId !== null,
+    plusOne: a.plusOne,
   }));
 }
 
@@ -218,27 +206,27 @@ export async function getWaitlistEntries(eventId: string): Promise<WaitlistEntry
 }
 
 // ---------------------------------------------------------------------------
-// Create
+// Create / update / delete events
 // ---------------------------------------------------------------------------
 
 export interface CreateEventInput {
-  date: string; // YYYY-MM-DD (group-local)
-  startTime: string; // HH:MM
-  endTime: string; // HH:MM
+  date: string;
+  startTime: string;
+  endTime: string;
   totalSpots: number;
   slotCost: number;
   location?: string;
   description?: string;
   eventType?: EventType;
   assignmentMode?: AssignmentMode;
-  signupOpensAt?: string | null; // ISO; null/sentinel = immediate
+  signupOpensAt?: string | null;
   roundRobinOffset?: number | null;
 }
 
 function resolveSignupOpensAt(input: string | null | undefined): Date | null {
   if (!input) return null;
   const d = new Date(input);
-  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return null; // sentinel/epoch => immediate
+  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return null;
   return d;
 }
 
@@ -250,7 +238,6 @@ export async function createEvent(
 ): Promise<Event> {
   const startsAt = zonedToUtc(input.date, input.startTime, timezone);
   let endsAt = zonedToUtc(input.date, input.endTime, timezone);
-  // Handle events that cross midnight (end before start) by rolling to next day.
   if (endsAt <= startsAt) endsAt = new Date(endsAt.getTime() + 24 * 60 * 60 * 1000);
 
   const [row] = await db
@@ -321,7 +308,6 @@ export interface UpdateEventInput {
   signupOpensAt?: string | null;
 }
 
-/** Edit an event's details. Recomputes absolute times from group-local inputs. */
 export async function updateEvent(
   eventId: string,
   timezone: string,
@@ -331,8 +317,6 @@ export async function updateEvent(
   if (!current) return null;
 
   const patch: Record<string, unknown> = {};
-
-  // Recompute start/end if any date/time piece changed.
   if (input.date || input.startTime || input.endTime) {
     const cur = utcToZonedParts(current.startsAt, timezone);
     const curEnd = utcToZonedParts(current.endsAt, timezone);
@@ -353,17 +337,10 @@ export async function updateEvent(
   if (input.signupOpensAt !== undefined) patch.signupOpensAt = resolveSignupOpensAt(input.signupOpensAt);
 
   if (Object.keys(patch).length === 0) return toEventDTO(current, timezone);
-
   const [row] = await db.update(events).set(patch).where(eq(events.id, eventId)).returning();
   return row ? toEventDTO(row, timezone) : null;
 }
 
-/**
- * Hard-delete an event and everything tied to it (attendees + waitlist cascade
- * on FK; spot transactions are removed first since they have no cascade). This
- * also reverses the event's credit effects, which is the intended semantics of
- * deleting an event outright.
- */
 export async function deleteEvent(eventId: string): Promise<void> {
   await serializableTx(async (tx) => {
     await tx.delete(spotTransactions).where(eq(spotTransactions.eventId, eventId));
@@ -372,17 +349,21 @@ export async function deleteEvent(eventId: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Spot mutations (transactional)
+// Spot mutations — internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Occupancy = SUM(1 + plusOne) across all rows. A plusOne=true row counts as 2.
+ */
 async function occupancyInTx(tx: Tx, eventId: string): Promise<number> {
   const rows = await tx
-    .select({ id: eventAttendees.id })
+    .select({ plusOne: eventAttendees.plusOne })
     .from(eventAttendees)
     .where(eq(eventAttendees.eventId, eventId));
-  return rows.length;
+  return rows.reduce((sum, r) => sum + 1 + (r.plusOne ? 1 : 0), 0);
 }
 
+/** Find the single attendee row for a user in an event (one row per user). */
 async function getAttendeeInTx(tx: Tx, eventId: string, userId: string): Promise<AttendeeRow | null> {
   const [row] = await tx
     .select()
@@ -392,43 +373,18 @@ async function getAttendeeInTx(tx: Tx, eventId: string, userId: string): Promise
   return row ?? null;
 }
 
-/** Find the primary (non-rider) spot for a user in an event. */
-async function getPrimaryAttendeeInTx(tx: Tx, eventId: string, userId: string): Promise<AttendeeRow | null> {
-  const [row] = await tx
-    .select()
-    .from(eventAttendees)
-    .where(and(
-      eq(eventAttendees.eventId, eventId),
-      eq(eventAttendees.userId, userId),
-      isNull(eventAttendees.parentAttendeeId),
-    ))
-    .limit(1);
-  return row ?? null;
-}
-
-/** Find the rider spot for a user in an event. */
-async function getRiderAttendeeInTx(tx: Tx, eventId: string, userId: string): Promise<AttendeeRow | null> {
-  const [row] = await tx
-    .select()
-    .from(eventAttendees)
-    .where(and(
-      eq(eventAttendees.eventId, eventId),
-      eq(eventAttendees.userId, userId),
-      isNotNull(eventAttendees.parentAttendeeId),
-    ))
-    .limit(1);
-  return row ?? null;
-}
+// ---------------------------------------------------------------------------
+// Spot mutations — public API
+// ---------------------------------------------------------------------------
 
 /**
- * Fill a fresh (previously empty) spot for `toUserId`. Records a ledger row with
- * from_user_id = NULL (the receiver buys into the pool). Used by admin assign,
+ * Fill a fresh (previously empty) spot for `toUserId`. Used by admin assign,
  * self-signup, and round-robin. Enforces capacity inside the event lock.
  */
 export async function fillSpot(params: {
   eventId: string;
   toUserId: string;
-  assignedById: string | null; // null => self-signup
+  assignedById: string | null;
   type: TransactionType;
   notes?: string;
 }): Promise<AttendeeRow> {
@@ -466,8 +422,8 @@ export async function fillSpot(params: {
 }
 
 /**
- * Batch fill multiple fresh spots in a single transaction (admin assign /
- * round-robin generation). Skips users who already hold a spot. Stops if full.
+ * Batch fill multiple fresh spots (admin assign / round-robin). Skips users
+ * who already hold a spot. Stops if full.
  */
 export async function fillSpots(params: {
   eventId: string;
@@ -488,14 +444,8 @@ export async function fillSpots(params: {
     const held = new Set(existingRows.map((r) => r.userId));
 
     for (const userId of params.toUserIds) {
-      if (held.has(userId)) {
-        skipped.push(userId);
-        continue;
-      }
-      if (occ >= event.totalSpots) {
-        skipped.push(userId);
-        continue;
-      }
+      if (held.has(userId)) { skipped.push(userId); continue; }
+      if (occ >= event.totalSpots) { skipped.push(userId); continue; }
       const [attendee] = await tx
         .insert(eventAttendees)
         .values({
@@ -525,12 +475,11 @@ export async function fillSpots(params: {
 }
 
 /**
- * Claim a spot. If `attendeeId` is given, claim that *offered* spot (transfer,
- * zero-sum). Otherwise self-sign-up into an empty spot (from_user = NULL).
+ * Claim a spot. If `attendeeId` is given, claim that *offered* spot (zero-sum
+ * transfer). Otherwise self-sign-up into an empty slot.
  *
- * When `attendeeId` targets a rider row (parentAttendeeId IS NOT NULL) the caller
- * must already hold a confirmed primary spot and must not yet have a rider. The
- * parentAttendeeId is re-linked to the claimer's own primary so ownership is correct.
+ * Offered spots always transfer as plusOne=false — the original holder must drop
+ * their rider before offering, so there is nothing to carry over.
  */
 export async function claimSpot(params: {
   eventId: string;
@@ -539,7 +488,6 @@ export async function claimSpot(params: {
 }): Promise<AttendeeRow> {
   return withEventLock(params.eventId, async (tx, event) => {
     if (params.attendeeId) {
-      // Transfer an offered spot — primary or rider.
       const [offered] = await tx
         .select()
         .from(eventAttendees)
@@ -548,48 +496,13 @@ export async function claimSpot(params: {
       if (!offered) throw new SpotError('Offered spot not found', 404);
       if (offered.status !== 'offered') throw new SpotError('That spot is no longer available', 409);
 
-      const isRiderRow = offered.parentAttendeeId !== null;
-      const previousHolder = offered.userId;
-
-      if (isRiderRow) {
-        // Rider claim: claimer must have a confirmed primary, must not already have a rider.
-        const claimerPrimary = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
-        if (!claimerPrimary || claimerPrimary.status !== 'confirmed')
-          throw new SpotError('You need a confirmed spot in this game before claiming a Rider slot', 400);
-        const claimerRider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
-        if (claimerRider) throw new SpotError('You already have a Rider spot in this game', 409);
-
-        const [updated] = await tx
-          .update(eventAttendees)
-          .set({
-            userId: params.userId,
-            status: 'confirmed',
-            offeredAt: null,
-            parentAttendeeId: claimerPrimary.id, // re-link to claimer's own primary
-          })
-          .where(eq(eventAttendees.id, offered.id))
-          .returning();
-
-        await recordTransaction(tx, {
-          eventId: params.eventId,
-          groupId: event.groupId,
-          attendeeId: updated.id,
-          type: 'claim',
-          fromUserId: previousHolder,
-          toUserId: params.userId,
-          amount: Number(event.slotCost),
-          notes: 'Claimed offered Rider spot',
-        });
-        return updated;
-      }
-
-      // Primary offered spot: claimer must not already have a primary.
-      const already = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
+      const already = await getAttendeeInTx(tx, params.eventId, params.userId);
       if (already) throw new SpotError('You already have a spot for this event', 409);
 
+      const previousHolder = offered.userId;
       const [updated] = await tx
         .update(eventAttendees)
-        .set({ userId: params.userId, status: 'confirmed', offeredAt: null })
+        .set({ userId: params.userId, status: 'confirmed', offeredAt: null, plusOne: false })
         .where(eq(eventAttendees.id, offered.id))
         .returning();
 
@@ -605,8 +518,8 @@ export async function claimSpot(params: {
       return updated;
     }
 
-    // Self sign-up into an empty spot.
-    const already = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
+    // Self sign-up into an empty slot.
+    const already = await getAttendeeInTx(tx, params.eventId, params.userId);
     if (already) throw new SpotError('You already have a spot for this event', 409);
 
     const occ = await occupancyInTx(tx, params.eventId);
@@ -637,36 +550,19 @@ export async function claimSpot(params: {
 }
 
 /**
- * Mark the caller's spot as offered (audit-only ledger row).
- * Pass `attendeeId` to target the rider spot; omit for the primary spot.
- * Offering the primary spot is blocked while a rider spot still exists.
+ * Mark the caller's spot as offered. Blocked if plusOne=true — drop the rider
+ * first to keep occupancy accounting clean on transfer.
  */
 export async function offerSpot(params: {
   eventId: string;
   userId: string;
-  attendeeId?: string;
 }): Promise<AttendeeRow> {
   return withEventLock(params.eventId, async (tx, event) => {
-    let attendee: AttendeeRow | null;
-    if (params.attendeeId) {
-      const [row] = await tx
-        .select()
-        .from(eventAttendees)
-        .where(and(eq(eventAttendees.id, params.attendeeId), eq(eventAttendees.eventId, params.eventId)))
-        .limit(1);
-      attendee = row ?? null;
-    } else {
-      attendee = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
-      // Guard: cannot offer primary while rider spot is still confirmed.
-      // If the rider is already offered (on the market), both can be available simultaneously.
-      const rider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
-      if (rider && rider.status === 'confirmed') {
-        throw new SpotError("Offer or drop your Rider spot first before offering your own", 400);
-      }
-    }
-    if (!attendee) throw new SpotError('Spot not found', 404);
+    const attendee = await getAttendeeInTx(tx, params.eventId, params.userId);
+    if (!attendee) throw new SpotError('You are not attending this event', 404);
     if (attendee.userId !== params.userId) throw new SpotError('Not your spot', 403);
     if (attendee.status !== 'confirmed') throw new SpotError('Spot is not confirmed', 400);
+    if (attendee.plusOne) throw new SpotError('Drop your Rider before offering your spot', 400);
 
     const [updated] = await tx
       .update(eventAttendees)
@@ -682,7 +578,7 @@ export async function offerSpot(params: {
       fromUserId: params.userId,
       toUserId: params.userId,
       amount: 0,
-      notes: params.attendeeId ? 'Offered Rider spot to marketplace' : 'Offered spot to marketplace',
+      notes: 'Offered spot to marketplace',
     });
     return updated;
   });
@@ -690,26 +586,14 @@ export async function offerSpot(params: {
 
 /**
  * Take back an offered spot before anyone claims it.
- * Pass `attendeeId` to target the rider spot; omit for the primary spot.
  */
 export async function retractOffer(params: {
   eventId: string;
   userId: string;
-  attendeeId?: string;
 }): Promise<AttendeeRow> {
   return withEventLock(params.eventId, async (tx, event) => {
-    let attendee: AttendeeRow | null;
-    if (params.attendeeId) {
-      const [row] = await tx
-        .select()
-        .from(eventAttendees)
-        .where(and(eq(eventAttendees.id, params.attendeeId), eq(eventAttendees.eventId, params.eventId)))
-        .limit(1);
-      attendee = row ?? null;
-    } else {
-      attendee = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
-    }
-    if (!attendee) throw new SpotError('Spot not found', 404);
+    const attendee = await getAttendeeInTx(tx, params.eventId, params.userId);
+    if (!attendee) throw new SpotError('You are not attending this event', 404);
     if (attendee.userId !== params.userId) throw new SpotError('Not your spot', 403);
     if (attendee.status !== 'offered') throw new SpotError('Your spot is not currently offered', 400);
 
@@ -734,135 +618,118 @@ export async function retractOffer(params: {
 }
 
 /**
- * Claim a Rider (plus-one) spot. The caller must already hold a confirmed
- * primary spot in the event. Occupancy-checked; costs the same as a primary.
+ * Add a Rider (+1) to the caller's existing confirmed spot. Sets plusOne=true
+ * on their row, consuming one extra slot. Costs the same as a primary spot.
  */
-export async function claimRiderSpot(params: {
+export async function addRider(params: {
   eventId: string;
   userId: string;
+  byUserId?: string; // if set, this is an admin assignment
 }): Promise<AttendeeRow> {
   return withEventLock(params.eventId, async (tx, event) => {
-    const primary = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
-    if (!primary) throw new SpotError('You need a spot in this game before bringing a Rider', 400);
-    if (primary.status !== 'confirmed') throw new SpotError('Your spot must be confirmed to bring a Rider', 400);
-
-    const existing = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
-    if (existing) throw new SpotError("You already have a Rider spot in this game", 409);
+    const attendee = await getAttendeeInTx(tx, params.eventId, params.userId);
+    if (!attendee) throw new SpotError('You need a spot in this game first', 400);
+    if (attendee.status !== 'confirmed') throw new SpotError('Your spot must be confirmed to add a Rider', 400);
+    if (attendee.plusOne) throw new SpotError('You already have a Rider for this game', 409);
 
     const occ = await occupancyInTx(tx, params.eventId);
-    if (occ >= event.totalSpots) throw new SpotError('No spots left for a Rider', 409);
-
-    const [attendee] = await tx
-      .insert(eventAttendees)
-      .values({
-        eventId: params.eventId,
-        userId: params.userId,
-        originalUserId: params.userId,
-        status: 'confirmed',
-        assignedBy: null,
-        parentAttendeeId: primary.id,
-      })
-      .returning();
-
-    await recordTransaction(tx, {
-      eventId: params.eventId,
-      groupId: event.groupId,
-      attendeeId: attendee.id,
-      type: 'signup',
-      fromUserId: null,
-      toUserId: params.userId,
-      amount: Number(event.slotCost),
-      notes: 'Claimed Rider spot',
-    });
-    return attendee;
-  });
-}
-
-/**
- * Drop a Rider (plus-one) spot. Deletes the attendee row and its transaction
- * history, which automatically reverses the credit debit (same pattern as
- * adminUnassignSpot). Admin-only; player-facing path goes through releaseRiderSpot.
- */
-export async function dropRiderSpot(params: {
-  eventId: string;
-  userId: string;
-}): Promise<void> {
-  await withEventLock(params.eventId, async (tx) => {
-    const rider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
-    if (!rider) throw new SpotError('You do not have a Rider spot in this game', 404);
-
-    await tx.delete(spotTransactions).where(eq(spotTransactions.attendeeId, rider.id));
-    await tx.delete(eventAttendees).where(eq(eventAttendees.id, rider.id));
-  });
-}
-
-/**
- * Release a Rider spot to the first player waiting on the Rider bench.
- * Transfers the rider row to the promoted user (links to their primary spot)
- * and records a zero-sum waitlist_promote transaction.
- * Throws if no forRider bench entries exist.
- */
-export async function releaseRiderSpot(params: {
-  eventId: string;
-  userId: string;
-}): Promise<void> {
-  await withEventLock(params.eventId, async (tx, event) => {
-    const rider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
-    if (!rider) throw new SpotError('You do not have a Rider spot in this game', 404);
-    if (rider.status !== 'confirmed') throw new SpotError('Only a confirmed Rider spot can be released', 400);
-
-    const [riderBenchEntry] = await tx
-      .select()
-      .from(eventWaitlist)
-      .where(and(
-        eq(eventWaitlist.eventId, params.eventId),
-        eq(eventWaitlist.forRider, true),
-      ))
-      .orderBy(asc(eventWaitlist.joinedAt))
-      .limit(1);
-    if (!riderBenchEntry) throw new SpotError('Nobody is waiting for a Rider spot', 400);
-
-    const [targetPrimary] = await tx
-      .select({ id: eventAttendees.id })
-      .from(eventAttendees)
-      .where(and(
-        eq(eventAttendees.eventId, params.eventId),
-        eq(eventAttendees.userId, riderBenchEntry.userId),
-        isNull(eventAttendees.parentAttendeeId),
-      ))
-      .limit(1);
-
-    if (!targetPrimary) {
-      // Stale bench entry — primary spot gone. Clean up and surface the issue.
-      await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, riderBenchEntry.id));
-      throw new SpotError('The next Rider on the bench no longer has a primary spot — try again', 409);
-    }
+    if (occ >= event.totalSpots) throw new SpotError('No room for a Rider — event is full', 409);
 
     const [updated] = await tx
       .update(eventAttendees)
-      .set({
-        userId: riderBenchEntry.userId,
-        originalUserId: riderBenchEntry.userId,
-        status: 'confirmed',
-        offeredAt: null,
-        assignedBy: null,
-        parentAttendeeId: targetPrimary.id,
-      })
-      .where(eq(eventAttendees.id, rider.id))
+      .set({ plusOne: true })
+      .where(eq(eventAttendees.id, attendee.id))
       .returning();
-
-    await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, riderBenchEntry.id));
 
     await recordTransaction(tx, {
       eventId: params.eventId,
       groupId: event.groupId,
       attendeeId: updated.id,
-      type: 'waitlist_promote',
-      fromUserId: params.userId,
-      toUserId: riderBenchEntry.userId,
+      type: 'signup',
+      fromUserId: null,
+      toUserId: params.userId,
       amount: Number(event.slotCost),
-      notes: 'Rider spot released to bench rider',
+      notes: params.byUserId ? 'Rider assigned by admin' : 'Rider added',
     });
+    return updated;
+  });
+}
+
+/**
+ * Drop the Rider (+1) from a spot. Sets plusOne=false on the row, freeing one
+ * slot. If a player is waiting on the rider bench, they are auto-promoted
+ * (zero-sum transfer). Otherwise the dropper is credited via a negative-amount
+ * transaction that offsets their earlier rider debit.
+ */
+export async function dropRider(params: {
+  eventId: string;
+  userId: string;
+}): Promise<void> {
+  await withEventLock(params.eventId, async (tx, event) => {
+    const attendee = await getAttendeeInTx(tx, params.eventId, params.userId);
+    if (!attendee) throw new SpotError('You are not attending this event', 404);
+    if (!attendee.plusOne) throw new SpotError("You don't have a Rider for this game", 400);
+
+    // Clear the rider attribute on the dropper's row.
+    await tx
+      .update(eventAttendees)
+      .set({ plusOne: false })
+      .where(eq(eventAttendees.id, attendee.id));
+
+    // Walk rider bench to find the first promotable entry (exclude the dropper themselves).
+    const riderBench = await tx
+      .select()
+      .from(eventWaitlist)
+      .where(and(eq(eventWaitlist.eventId, params.eventId), eq(eventWaitlist.forRider, true)))
+      .orderBy(asc(eventWaitlist.joinedAt));
+
+    let promoted = false;
+    for (const entry of riderBench) {
+      if (entry.userId === params.userId) {
+        // Stale: dropper is on their own rider bench (shouldn't happen, clean up).
+        await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, entry.id));
+        continue;
+      }
+      const recipientRow = await getAttendeeInTx(tx, params.eventId, entry.userId);
+      if (!recipientRow || recipientRow.plusOne) {
+        // Stale: recipient lost their spot or already has a rider.
+        await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, entry.id));
+        continue;
+      }
+      // Promote this recipient.
+      await tx
+        .update(eventAttendees)
+        .set({ plusOne: true })
+        .where(eq(eventAttendees.id, recipientRow.id));
+      await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, entry.id));
+      await recordTransaction(tx, {
+        eventId: params.eventId,
+        groupId: event.groupId,
+        attendeeId: attendee.id,
+        type: 'waitlist_promote',
+        fromUserId: params.userId,
+        toUserId: entry.userId,
+        amount: Number(event.slotCost),
+        notes: 'Rider slot passed to rider bench',
+      });
+      promoted = true;
+      break;
+    }
+
+    if (!promoted) {
+      // No rider bench to promote — credit the dropper by reversing the debit.
+      // Negative amount reduces total_spent for toUserId, restoring their balance.
+      await recordTransaction(tx, {
+        eventId: params.eventId,
+        groupId: event.groupId,
+        attendeeId: attendee.id,
+        type: 'release',
+        fromUserId: null,
+        toUserId: params.userId,
+        amount: -Number(event.slotCost),
+        notes: 'Rider dropped',
+      });
+    }
   });
 }
 
@@ -870,14 +737,8 @@ export async function releaseRiderSpot(params: {
  * Reassign a spot to another member. If `fromUserId` is given, transfer that
  * holder's spot (zero-sum). If none, fill a fresh spot for `toUserId`.
  *
- * Rider-first auto-selection: when `fromUserId` is provided without an explicit
- * `attendeeId`, the rider row is preferred over the primary row so that the caller
- * always reassigns the rider spot before the primary spot.
- *
- * When the source row is a rider row, `parentAttendeeId` is re-linked to the
- * target's own primary spot (the target must already hold a confirmed primary and
- * must not already have a rider). When the source is a primary row the target must
- * not already hold any primary spot.
+ * If the source row has plusOne=true, the rider is automatically dropped first
+ * (credit to original holder) before the primary is transferred to the recipient.
  */
 export async function reassignSpot(params: {
   eventId: string;
@@ -888,7 +749,7 @@ export async function reassignSpot(params: {
   isAdmin: boolean;
 }): Promise<AttendeeRow> {
   return withEventLock(params.eventId, async (tx, event) => {
-    // Find the source attendee (by id or by user, rider-first).
+    // Find the source attendee row.
     let source: AttendeeRow | null = null;
     if (params.attendeeId) {
       const [row] = await tx
@@ -898,55 +759,40 @@ export async function reassignSpot(params: {
         .limit(1);
       source = row ?? null;
     } else if (params.fromUserId) {
-      // Prefer rider row so caller always reassigns rider before primary.
-      source =
-        (await getRiderAttendeeInTx(tx, params.eventId, params.fromUserId)) ??
-        (await getPrimaryAttendeeInTx(tx, params.eventId, params.fromUserId));
+      source = await getAttendeeInTx(tx, params.eventId, params.fromUserId);
     }
 
     const type: TransactionType = params.isAdmin ? 'admin_reassign' : 'reassign';
 
     if (source) {
-      const isRiderSource = source.parentAttendeeId !== null;
       const previousHolder = source.userId;
 
-      if (isRiderSource) {
-        // Rider reassign: target must have a confirmed primary, must not have a rider.
-        const targetPrimary = await getPrimaryAttendeeInTx(tx, params.eventId, params.toUserId);
-        if (!targetPrimary) throw new SpotError('Recipient does not have a spot in this game', 400);
-        const targetRider = await getRiderAttendeeInTx(tx, params.eventId, params.toUserId);
-        if (targetRider) throw new SpotError('Recipient already has a Rider spot', 409);
+      // Target must not already hold any spot.
+      const targetExisting = await getAttendeeInTx(tx, params.eventId, params.toUserId);
+      if (targetExisting) throw new SpotError('Recipient already has a spot in this event', 409);
 
-        const [updated] = await tx
+      // If the source row has a rider, auto-drop it first (credit original holder).
+      if (source.plusOne) {
+        await tx
           .update(eventAttendees)
-          .set({
-            userId: params.toUserId,
-            status: 'confirmed',
-            offeredAt: null,
-            parentAttendeeId: targetPrimary.id,
-          })
-          .where(eq(eventAttendees.id, source.id))
-          .returning();
+          .set({ plusOne: false })
+          .where(eq(eventAttendees.id, source.id));
         await recordTransaction(tx, {
           eventId: params.eventId,
           groupId: event.groupId,
-          attendeeId: updated.id,
+          attendeeId: source.id,
           type,
-          fromUserId: previousHolder,
-          toUserId: params.toUserId,
-          amount: Number(event.slotCost),
-          notes: 'Rider spot reassigned',
+          fromUserId: null,
+          toUserId: previousHolder,
+          amount: -Number(event.slotCost),
+          notes: 'Rider dropped on spot reassignment',
         });
-        return updated;
       }
 
-      // Primary reassign: target must not already have a primary spot.
-      const targetPrimary = await getPrimaryAttendeeInTx(tx, params.eventId, params.toUserId);
-      if (targetPrimary) throw new SpotError('Target already has a spot in this event', 409);
-
+      // Transfer the primary row.
       const [updated] = await tx
         .update(eventAttendees)
-        .set({ userId: params.toUserId, status: 'confirmed', offeredAt: null, parentAttendeeId: null })
+        .set({ userId: params.toUserId, status: 'confirmed', offeredAt: null, plusOne: false })
         .where(eq(eventAttendees.id, source.id))
         .returning();
       await recordTransaction(tx, {
@@ -961,7 +807,7 @@ export async function reassignSpot(params: {
       return updated;
     }
 
-    // No source -> fill a fresh spot (capacity-checked).
+    // No source → fill a fresh spot (capacity-checked).
     const occ = await occupancyInTx(tx, params.eventId);
     if (occ >= event.totalSpots) {
       throw new SpotError('No available spots. Specify a spot to reassign.', 400);
@@ -990,11 +836,8 @@ export async function reassignSpot(params: {
 }
 
 /**
- * Manager action: remove a player from a game entirely (no replacement). This
- * voids the spot — deleting the attendee row and the spot's whole transaction
- * chain — which exactly reverses its credit footprint (the holder is refunded
- * and any intermediate transfers are unwound), mirroring deleting the event but
- * for a single spot.
+ * Manager action: remove a player from a game entirely (no replacement). Voids
+ * the spot by deleting the row and its transaction chain, which reverses credit.
  */
 export async function adminUnassignSpot(params: {
   eventId: string;

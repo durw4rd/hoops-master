@@ -142,10 +142,7 @@ export default function EventDetailModal({
     try {
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
+      if (!res.ok) { setError(data.error); return; }
       setConfirmDeleteOpen(false);
       onEventUpdated();
       onOpenChange(false);
@@ -165,74 +162,57 @@ export default function EventDetailModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(attendeeId ? { attendeeId } : {}),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
-
+      if (!res.ok) { setError(data.error); return; }
       fetchEvent();
       onEventUpdated();
-    } catch (err) {
+    } catch {
       setError('Failed to claim spot');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleOffer = async (attendeeId?: string) => {
-    setActionLoading(attendeeId ? 'offer-rider' : 'offer');
+  const handleOffer = async () => {
+    setActionLoading('offer');
     setError(null);
     try {
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/offer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(attendeeId ? { attendeeId } : {}),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
-
+      if (!res.ok) { setError(data.error); return; }
       fetchEvent();
       onEventUpdated();
-    } catch (err) {
+    } catch {
       setError('Failed to offer spot');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleRetract = async (attendeeId?: string) => {
-    setActionLoading(attendeeId ? 'retract-rider' : 'retract');
+  const handleRetract = async () => {
+    setActionLoading('retract');
     setError(null);
     try {
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/retract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(attendeeId ? { attendeeId } : {}),
       });
-
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
-
+      if (!res.ok) { setError(data.error); return; }
       fetchEvent();
       onEventUpdated();
-    } catch (err) {
+    } catch {
       setError('Failed to retract offer');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleClaimRider = async () => {
-    setActionLoading('claim-rider');
+  const handleAddRider = async () => {
+    setActionLoading('add-rider');
     setError(null);
     try {
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/claim-rider`, {
@@ -240,10 +220,7 @@ export default function EventDetailModal({
         headers: { 'Content-Type': 'application/json' },
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
+      if (!res.ok) { setError(data.error); return; }
       fetchEvent();
       onEventUpdated();
     } catch {
@@ -253,8 +230,8 @@ export default function EventDetailModal({
     }
   };
 
-  const handleReleaseRider = async () => {
-    setActionLoading('release-rider');
+  const handleDropRider = async () => {
+    setActionLoading('drop-rider');
     setError(null);
     try {
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/drop-rider`, {
@@ -266,7 +243,27 @@ export default function EventDetailModal({
       fetchEvent();
       onEventUpdated();
     } catch {
-      setError('Failed to release Rider spot');
+      setError('Failed to drop Rider');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAdminAssignRider = async (targetUserEmail: string) => {
+    setActionLoading(`assign-rider-${targetUserEmail}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/claim-rider`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to assign Rider');
     } finally {
       setActionLoading(null);
     }
@@ -287,49 +284,27 @@ export default function EventDetailModal({
       setHandoverEmail('');
       fetchEvent();
       onEventUpdated();
-    } catch { setError('Failed to hand over spot'); }
-    finally { setActionLoading(null); }
-  };
-
-  const handleAdminAssignRider = async (targetUserEmail: string) => {
-    setActionLoading(`assign-rider-${targetUserEmail}`);
-    setError(null);
-    try {
-      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/claim-rider`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserEmail }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
-      fetchEvent();
-      onEventUpdated();
     } catch {
-      setError('Failed to assign Rider spot');
+      setError('Failed to hand over spot');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const runAction = async (key: string, path: string, method: string = 'POST') => {
+  const runAction = async (key: string, path: string, method: string = 'POST', body?: object) => {
     setActionLoading(key);
     setError(null);
     try {
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/${path}`, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
+      if (!res.ok) { setError(data.error); return; }
       fetchEvent();
       onEventUpdated();
-    } catch (err) {
+    } catch {
       setError(`Failed to ${key}`);
     } finally {
       setActionLoading(null);
@@ -339,40 +314,10 @@ export default function EventDetailModal({
   const handleRelease = () => runAction('release', 'release');
   const handleJoinWaitlist = () => runAction('waitlist', 'waitlist', 'POST');
   const handleLeaveWaitlist = () => runAction('waitlist', 'waitlist', 'DELETE');
-
-  const handleJoinRiderWaitlist = async () => {
-    setActionLoading('rider-waitlist-join');
-    setError(null);
-    try {
-      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/waitlist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ forRider: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error); return; }
-      fetchEvent();
-      onEventUpdated();
-    } catch { setError('Failed to join rider bench'); }
-    finally { setActionLoading(null); }
-  };
-
-  const handleLeaveRiderWaitlist = async () => {
-    setActionLoading('rider-waitlist-leave');
-    setError(null);
-    try {
-      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/waitlist`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ forRider: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error); return; }
-      fetchEvent();
-      onEventUpdated();
-    } catch { setError('Failed to leave rider bench'); }
-    finally { setActionLoading(null); }
-  };
+  const handleJoinRiderWaitlist = () =>
+    runAction('rider-waitlist-join', 'waitlist', 'POST', { forRider: true });
+  const handleLeaveRiderWaitlist = () =>
+    runAction('rider-waitlist-leave', 'waitlist', 'DELETE', { forRider: true });
 
   const handleAssign = async () => {
     if (!assignEmail) return;
@@ -385,14 +330,11 @@ export default function EventDetailModal({
         body: JSON.stringify({ eventIds: [eventId], userEmails: [assignEmail] }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
+      if (!res.ok) { setError(data.error); return; }
       setAssignEmail("");
       fetchEvent();
       onEventUpdated();
-    } catch (err) {
+    } catch {
       setError('Failed to assign player');
     } finally {
       setActionLoading(null);
@@ -411,10 +353,7 @@ export default function EventDetailModal({
         body: JSON.stringify({ attendeeId, toUserEmail }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
+      if (!res.ok) { setError(data.error); return; }
       setReassignTarget((prev) => {
         const next = { ...prev };
         delete next[attendeeId];
@@ -439,10 +378,7 @@ export default function EventDetailModal({
         body: JSON.stringify({ attendeeId }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.error);
-        return;
-      }
+      if (!res.ok) { setError(data.error); return; }
       fetchEvent();
       onEventUpdated();
     } catch {
@@ -452,82 +388,52 @@ export default function EventDetailModal({
     }
   };
 
-  // Crew-role lookup so we can flag Capos (crown) and Kings (star) in player lists.
+  // Helpers
   const roleByEmail = new Map(members.map((m) => [m.userEmail, m.groupRole]));
-  // Piece (profile picture) lookup so player lists show each baller's avatar.
   const pieceByEmail = new Map(members.map((m) => [m.userEmail, m.pieceUrl]));
   const renderRoleIcon = (email: string) => {
     const role = roleByEmail.get(email);
-    if (!role) return null;
-    if (isCapoRole(role)) {
-      return <Crown className="w-3.5 h-3.5 text-dull-gold flex-shrink-0" aria-label="Crew Capo" />;
-    }
-    if (isCrewManager(role)) {
-      return <Star className="w-3.5 h-3.5 text-terracotta flex-shrink-0" aria-label="King" />;
-    }
+    if (isCapoRole(role ?? '')) return <Crown className="w-3.5 h-3.5 text-dull-gold flex-shrink-0" aria-label="Crew Capo" />;
+    if (isCrewManager(role ?? '')) return <Star className="w-3.5 h-3.5 text-terracotta flex-shrink-0" aria-label="King" />;
     return null;
   };
 
-  const confirmedAttendees = event?.attendees.filter(a => a.status === 'confirmed' && !a.isPlusOne) || [];
-  const offeredPrimarySpots = event?.attendees.filter(a => a.status === 'offered' && !a.isPlusOne) || [];
-  const offeredRiderSpots = event?.attendees.filter(a => a.status === 'offered' && a.isPlusOne) || [];
-  // Combined for occupancy counting and hasBench logic.
-  const offeredSpots = [...offeredPrimarySpots, ...offeredRiderSpots];
-  // Rider spots (plus-ones) — keyed by owner email for display grouping.
-  const riderSpots = event?.attendees.filter(a => a.isPlusOne) || [];
-  const myRiderSpot = riderSpots.find(a => a.userEmail.toLowerCase() === userEmail.toLowerCase()) || null;
-  // Occupancy includes offered spots (still held until claimed).
-  const availableSpots = event ? event.availableSpots : 0;
+  // Derived state — simplified with attribute model (one row per player)
+  const allAttendees = event?.attendees ?? [];
+  const confirmedAttendees = allAttendees.filter(a => a.status === 'confirmed');
+  const offeredSpots = allAttendees.filter(a => a.status === 'offered');
+  const availableSpots = event?.availableSpots ?? 0;
   const isFull = availableSpots <= 0;
-  const waitlist = event?.waitlist || [];
+  const waitlist = event?.waitlist ?? [];
+  const hasBench = waitlist.some(w => !w.forRider);
 
-  // Check if signup is open
-  // Handle empty, invalid, or epoch dates as "always open"
+  const myAttendance = event?.myAttendance ?? null;
+  const isConfirmed = myAttendance?.status === 'confirmed';
+  const isOffered = myAttendance?.status === 'offered';
+  const hasRider = myAttendance?.plusOne === true;
+  const onRiderBench = (event?.myRiderWaitlistPosition ?? null) !== null;
+
+  // Signup window check
   const getSignupStatus = () => {
-    if (!event?.signupOpensAt || event.signupOpensAt.trim() === '') {
-      return { isOpen: true, opensAt: null };
-    }
-    
-    const signupDate = new Date(event.signupOpensAt);
-    
-    // Check for invalid date
-    if (isNaN(signupDate.getTime())) {
-      return { isOpen: true, opensAt: null };
-    }
-    
-    // Check for epoch date (immediate signup - 1970-01-01 or very early dates)
-    // Anything before year 2000 is treated as "always open"
-    if (signupDate.getFullYear() < 2000) {
-      return { isOpen: true, opensAt: null };
-    }
-    
-    const now = new Date();
-    return { 
-      isOpen: signupDate <= now, 
-      opensAt: signupDate 
-    };
+    if (!event?.signupOpensAt || event.signupOpensAt.trim() === '') return { isOpen: true, opensAt: null };
+    const d = new Date(event.signupOpensAt);
+    if (isNaN(d.getTime()) || d.getFullYear() < 2000) return { isOpen: true, opensAt: null };
+    return { isOpen: d <= new Date(), opensAt: d };
   };
-  
   const { isOpen: isSignupOpen, opensAt: signupOpensAt } = getSignupStatus();
-  
-  const formatSignupTime = (date: Date | null) => {
-    if (!date) return null;
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  };
+  const formatSignupTime = (d: Date | null) =>
+    d ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
+  const formatDate = (dateStr: string) =>
+    new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  // Members available to be targets for assignment / reassignment (no spot yet)
+  const membersWithoutSpot = members.filter(
+    (m) => !allAttendees.some((a) => a.userEmail === m.userEmail)
+  );
+
+  // Total occupancy from attendees (1 per row + 1 for each plusOne)
+  const totalOccupancy = allAttendees.reduce((sum, a) => sum + 1 + (a.plusOne ? 1 : 0), 0);
 
   return (
     <>
@@ -556,7 +462,6 @@ export default function EventDetailModal({
           </div>
         ) : event ? (
           <>
-            {/* Event Details */}
             <div className="space-y-4 mt-2">
               {/* Info Badges */}
               <div className="flex flex-wrap gap-2">
@@ -572,7 +477,7 @@ export default function EventDetailModal({
                 )}
                 <span className="badge-green flex items-center gap-1">
                   <Users className="w-3 h-3" />
-                  {confirmedAttendees.length}/{event.totalSpots}
+                  {totalOccupancy}/{event.totalSpots}
                 </span>
                 {event.slotCost > 0 && (
                   <span className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti px-2 py-0.5 text-xs flex items-center gap-1">
@@ -582,7 +487,7 @@ export default function EventDetailModal({
                 )}
               </div>
 
-              {/* Signup Status */}
+              {/* Signup locked banner */}
               {!isSignupOpen && signupOpensAt && formatSignupTime(signupOpensAt) && (
                 <div className="bg-dull-gold border-2 border-asphalt p-3 text-center">
                   <div className="flex items-center justify-center gap-2">
@@ -594,40 +499,33 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Primary Action Buttons */}
-              <div className="space-y-3">
+              {/* ── Primary Action Area ── */}
+              <div className="space-y-2">
+
+                {/* Not attending → CLAIM SPOT */}
                 {!event.isAttending && availableSpots > 0 && isSignupOpen && (
                   <button
                     onClick={() => handleClaim()}
                     disabled={actionLoading === 'claim'}
-                    className="w-full relative bg-moss-green text-asphalt border-4 border-asphalt font-graffiti text-xl py-4 px-6 shadow-[6px_6px_0_var(--asphalt-black)] hover:shadow-sticker-lg hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                    className="w-full bg-moss-green text-asphalt border-4 border-asphalt font-graffiti text-xl py-4 px-6 shadow-[6px_6px_0_var(--asphalt-black)] hover:shadow-sticker-lg hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                   >
                     {actionLoading === 'claim' ? (
                       <Loader2 className="w-6 h-6 animate-spin" />
                     ) : (
-                      <>
-                        <span className="text-2xl">🏀</span>
-                        <span>CLAIM SPOT</span>
-                        <Check className="w-6 h-6" />
-                      </>
+                      <><span className="text-2xl">🏀</span><span>CLAIM SPOT</span><Check className="w-6 h-6" /></>
                     )}
                   </button>
                 )}
-                
-                {/* Join waitlist / claim oldest offered spot when the event is full */}
+
+                {/* Not attending, event full → GET ON THE BENCH (auto-claims offered spot if any) */}
                 {!event.isAttending && isFull && isSignupOpen && event.myWaitlistPosition === null && (
                   <button
                     onClick={() => {
-                      const sorted = [...offeredSpots].sort(
-                        (a, b) =>
-                          new Date(a.offeredAt ?? 0).getTime() - new Date(b.offeredAt ?? 0).getTime()
-                      );
-                      const earliest = sorted[0];
-                      if (earliest) {
-                        handleClaim(earliest.attendeeId);
-                      } else {
-                        handleJoinWaitlist();
-                      }
+                      const earliest = [...offeredSpots].sort(
+                        (a, b) => new Date(a.offeredAt ?? 0).getTime() - new Date(b.offeredAt ?? 0).getTime()
+                      )[0];
+                      if (earliest) handleClaim(earliest.attendeeId);
+                      else handleJoinWaitlist();
                     }}
                     disabled={actionLoading === 'waitlist' || actionLoading === 'claim'}
                     className="w-full bg-slate-blue text-white border-[3px] border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -635,17 +533,14 @@ export default function EventDetailModal({
                     {actionLoading === 'waitlist' || actionLoading === 'claim' ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
-                      <>
-                        <ListPlus className="w-5 h-5" />
-                        <span>GET ON THE BENCH</span>
-                      </>
+                      <><ListPlus className="w-5 h-5" /><span>GET ON THE BENCH</span></>
                     )}
                   </button>
                 )}
 
-                {/* On the waitlist */}
+                {/* On the bench */}
                 {event.myWaitlistPosition !== null && (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="bg-slate-blue/10 border-2 border-slate-blue p-3 text-center font-graffiti text-slate-blue">
                       You&apos;re #{event.myWaitlistPosition} on the bench
                     </div>
@@ -657,202 +552,150 @@ export default function EventDetailModal({
                       {actionLoading === 'waitlist' ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
                       ) : (
-                        <>
-                          <LogOut className="w-5 h-5" />
-                          <span>OFF THE BENCH</span>
-                        </>
+                        <><LogOut className="w-5 h-5" /><span>OFF THE BENCH</span></>
                       )}
                     </button>
                   </div>
                 )}
 
-                {event.myAttendance?.status === 'confirmed' && (() => {
-                  const riderConfirmed = myRiderSpot?.status === 'confirmed';
-                  const riderOffered = myRiderSpot?.status === 'offered';
-                  // Bench has any entry (primary or rider) → use RELEASE, not OFFER.
-                  const hasBench = waitlist.length > 0;
-                  // Rider bench specifically for contextual rider controls.
-                  const hasRiderBench = waitlist.some((w) => w.forRider);
+                {/* Attending, confirmed */}
+                {isConfirmed && (
+                  <div className="space-y-1.5">
 
-                  return (
-                    <div className="space-y-1.5">
-                      {/* ── Rider spot controls ── */}
-                      {riderConfirmed && (
-                        hasRiderBench ? (
-                          // Rider bench has entries → RELEASE RIDER auto-promotes.
-                          <button
-                            onClick={handleReleaseRider}
-                            disabled={actionLoading === 'release-rider'}
-                            title="Passes your Rider slot to the next head on the Rider bench"
-                            className="w-full bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                          >
-                            {actionLoading === 'release-rider' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserMinus className="w-4 h-4" /><span>RELEASE RIDER</span></>}
-                          </button>
+                    {/* Rider controls */}
+                    {hasRider ? (
+                      <button
+                        onClick={handleDropRider}
+                        disabled={actionLoading === 'drop-rider'}
+                        className="w-full bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'drop-rider' ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
                         ) : (
-                          // Rider bench empty → OFFER RIDER (or use HAND IT OVER to transfer directly).
-                          <button
-                            onClick={() => handleOffer(myRiderSpot.attendeeId)}
-                            disabled={actionLoading === 'offer'}
-                            title="Opens your Rider slot for someone to claim"
-                            className="w-full bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                          >
-                            {actionLoading === 'offer' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Hand className="w-4 h-4" /><span>OFFER RIDER</span></>}
-                          </button>
-                        )
-                      )}
-                      {riderOffered && (
-                        <button
-                          onClick={() => handleRetract(myRiderSpot.attendeeId)}
-                          disabled={actionLoading === 'retract-rider'}
-                          className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-base py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                          {actionLoading === 'retract-rider' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Undo2 className="w-5 h-5" /><span>RETRACT RIDER OFFER</span></>}
-                        </button>
-                      )}
-
-                      {/* ── Primary spot: single contextual give-up button ── */}
-                      {riderConfirmed ? (
-                        // Rider confirmed — primary give-up blocked until rider is dealt with.
+                          <><UserMinus className="w-5 h-5" /><span>DROP RIDER</span></>
+                        )}
+                      </button>
+                    ) : onRiderBench ? (
+                      <div className="space-y-1">
                         <p className="text-xs text-asphalt/60 font-body text-center">
-                          Sort your Rider first — offer, release, or hand it over below.
+                          Your Rider is <span className="font-semibold">#{event.myRiderWaitlistPosition}</span> on the bench
                         </p>
-                      ) : hasBench ? (
-                        // Bench has entries → RELEASE auto-promotes first in queue.
                         <button
-                          onClick={handleRelease}
-                          disabled={actionLoading === 'release'}
-                          title="Passes your spot to the next head on the bench"
-                          className="w-full bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          onClick={handleLeaveRiderWaitlist}
+                          disabled={actionLoading === 'rider-waitlist-leave'}
+                          className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                          {actionLoading === 'release' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><LogOut className="w-5 h-5" /><span>RELEASE</span></>}
+                          {actionLoading === 'rider-waitlist-leave' ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <><UserMinus className="w-4 h-4" /><span>TAKE RIDER OFF BENCH</span></>
+                          )}
+                        </button>
+                      </div>
+                    ) : isSignupOpen ? (
+                      availableSpots > 0 ? (
+                        <button
+                          onClick={handleAddRider}
+                          disabled={actionLoading === 'add-rider'}
+                          className="w-full bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {actionLoading === 'add-rider' ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <><UserPlus className="w-5 h-5" /><span>BRING A RIDER</span></>
+                          )}
                         </button>
                       ) : (
-                        // Bench empty → OFFER puts spot on the marketplace.
                         <button
-                          onClick={() => handleOffer()}
-                          disabled={actionLoading === 'offer'}
-                          title="Opens your spot for anyone in the crew to claim"
-                          className="w-full bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          onClick={handleJoinRiderWaitlist}
+                          disabled={actionLoading === 'rider-waitlist-join'}
+                          className="w-full bg-dull-gold/60 text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                          {actionLoading === 'offer' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Hand className="w-5 h-5" /><span>OFFER</span></>}
+                          {actionLoading === 'rider-waitlist-join' ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <><UserPlus className="w-5 h-5" /><span>PUT RIDER ON BENCH</span></>
+                          )}
                         </button>
-                      )}
+                      )
+                    ) : null}
 
-                      {/* ── Direct handover: rider-first, then primary ── */}
-                      {(() => {
-                        // When user has a confirmed rider, show members who can receive it
-                        // (have a primary but no rider). After rider is handled, show members
-                        // with no spot at all for primary handover.
-                        const handoverTargets = riderConfirmed
-                          ? members.filter(
-                              (m) =>
-                                m.userEmail.toLowerCase() !== userEmail.toLowerCase() &&
-                                confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
-                                !riderSpots.some((a) => a.userEmail === m.userEmail)
-                            )
-                          : members.filter(
-                              (m) =>
-                                m.userEmail.toLowerCase() !== userEmail.toLowerCase() &&
-                                !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
-                                !offeredPrimarySpots.some((a) => a.userEmail === m.userEmail)
-                            );
-                        return (
-                          <div className="space-y-0.5">
-                            {riderConfirmed && (
-                              <p className="text-[10px] text-asphalt/50 font-body text-center">
-                                Rider goes first — recipient must already have a spot
-                              </p>
-                            )}
-                            <div className="flex gap-2">
-                              <Select value={handoverEmail} onValueChange={setHandoverEmail}>
-                                <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
-                                  <SelectValue placeholder="Hand it to…" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                                  {handoverTargets.map((m) => (
-                                    <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
-                                      {m.displayName}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <button
-                                onClick={handleSelfHandover}
-                                disabled={!handoverEmail || actionLoading === 'handover'}
-                                className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
-                              >
-                                {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND IT OVER'}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* ── Rider section ── */}
-                      {!myRiderSpot && !event.myRiderWaitlistPosition && isSignupOpen && (
-                        availableSpots > 0 ? (
-                          <button
-                            onClick={handleClaimRider}
-                            disabled={actionLoading === 'claim-rider'}
-                            className="w-full bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            {actionLoading === 'claim-rider' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><UserPlus className="w-5 h-5" /><span>BRING A RIDER</span></>}
-                          </button>
+                    {/* Primary give-up: blocked while rider is confirmed */}
+                    {hasRider ? (
+                      <p className="text-xs text-asphalt/60 font-body text-center">
+                        Drop your Rider first before offering your own spot.
+                      </p>
+                    ) : hasBench ? (
+                      <button
+                        onClick={handleRelease}
+                        disabled={actionLoading === 'release'}
+                        title="Passes your spot to the next player on the bench"
+                        className="w-full bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'release' ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
                         ) : (
-                          <button
-                            onClick={() => {
-                              // If an offered rider spot exists, claim it directly instead of queuing.
-                              const sortedRiderOffers = [...offeredRiderSpots].sort(
-                                (a, b) =>
-                                  new Date(a.offeredAt ?? 0).getTime() - new Date(b.offeredAt ?? 0).getTime()
-                              );
-                              const earliest = sortedRiderOffers[0];
-                              if (earliest) {
-                                handleClaim(earliest.attendeeId);
-                              } else {
-                                handleJoinRiderWaitlist();
-                              }
-                            }}
-                            disabled={actionLoading === 'rider-waitlist-join' || actionLoading === 'claim'}
-                            className="w-full bg-dull-gold/60 text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            {actionLoading === 'rider-waitlist-join' || actionLoading === 'claim' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><UserPlus className="w-5 h-5" /><span>PUT RIDER ON THE BENCH</span></>}
-                          </button>
-                        )
-                      )}
+                          <><LogOut className="w-5 h-5" /><span>RELEASE</span></>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleOffer}
+                        disabled={actionLoading === 'offer'}
+                        title="Opens your spot for anyone in the crew to claim"
+                        className="w-full bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'offer' ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <><Hand className="w-5 h-5" /><span>OFFER</span></>
+                        )}
+                      </button>
+                    )}
 
-                      {/* Take rider off the bench */}
-                      {!myRiderSpot && event.myRiderWaitlistPosition && (
-                        <div className="space-y-1">
-                          <p className="text-xs text-asphalt/60 font-body text-center">
-                            Your Rider is <span className="font-semibold">#{event.myRiderWaitlistPosition}</span> on the bench
-                          </p>
-                          <button
-                            onClick={handleLeaveRiderWaitlist}
-                            disabled={actionLoading === 'rider-waitlist-leave'}
-                            className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            {actionLoading === 'rider-waitlist-leave' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserMinus className="w-4 h-4" /><span>TAKE RIDER OFF THE BENCH</span></>}
-                          </button>
-                        </div>
+                    {/* Direct handover — backend auto-drops rider if needed */}
+                    <div className="space-y-0.5">
+                      {hasRider && (
+                        <p className="text-[10px] text-asphalt/50 font-body text-center">
+                          Handing over drops your Rider automatically
+                        </p>
                       )}
+                      <div className="flex gap-2">
+                        <Select value={handoverEmail} onValueChange={setHandoverEmail}>
+                          <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
+                            <SelectValue placeholder="Hand it to…" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                            {membersWithoutSpot.map((m) => (
+                              <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                                {m.displayName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <button
+                          onClick={handleSelfHandover}
+                          disabled={!handoverEmail || actionLoading === 'handover'}
+                          className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND IT OVER'}
+                        </button>
+                      </div>
                     </div>
-                  );
-                })()}
+                  </div>
+                )}
 
-                {event.myAttendance?.status === 'offered' && (
+                {/* Attending, offered → RETRACT OFFER */}
+                {isOffered && (
                   <button
-                    onClick={() => handleRetract()}
+                    onClick={handleRetract}
                     disabled={actionLoading === 'retract'}
                     className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {actionLoading === 'retract' ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
-                      <>
-                        <Undo2 className="w-5 h-5" />
-                        <span>RETRACT OFFER</span>
-                      </>
+                      <><Undo2 className="w-5 h-5" /><span>RETRACT OFFER</span></>
                     )}
                   </button>
                 )}
@@ -864,7 +707,7 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Manager: edit / delete the game */}
+              {/* Manager: edit / delete */}
               {canManage && (
                 <div className="flex gap-2">
                   <button
@@ -879,19 +722,12 @@ export default function EventDetailModal({
                     disabled={actionLoading === 'delete'}
                     className="flex-1 bg-terracotta text-white border-2 border-asphalt font-graffiti text-sm py-2 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {actionLoading === 'delete' ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Trash2 className="w-4 h-4" />
-                        DELETE
-                      </>
-                    )}
+                    {actionLoading === 'delete' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Trash2 className="w-4 h-4" />DELETE</>}
                   </button>
                 </div>
               )}
 
-              {/* Manager: assign a player to an open spot */}
+              {/* Manager: assign to open spot */}
               {canManage && availableSpots > 0 && (
                 <div className="border-2 border-dashed border-asphalt/40 p-3 space-y-2">
                   <h3 className="font-graffiti text-sm text-asphalt">Assign a player</h3>
@@ -901,17 +737,11 @@ export default function EventDetailModal({
                         <SelectValue placeholder="Select a player…" />
                       </SelectTrigger>
                       <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                        {members
-                          .filter(
-                            (m) =>
-                              !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
-                              !offeredSpots.some((a) => a.userEmail === m.userEmail)
-                          )
-                          .map((m) => (
-                            <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
-                              {m.displayName}
-                            </SelectItem>
-                          ))}
+                        {membersWithoutSpot.map((m) => (
+                          <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                            {m.displayName}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <button
@@ -919,18 +749,14 @@ export default function EventDetailModal({
                       disabled={!assignEmail || actionLoading === 'assign'}
                       className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                     >
-                      {actionLoading === 'assign' ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        'ASSIGN'
-                      )}
+                      {actionLoading === 'assign' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'ASSIGN'}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Manager: reassign or remove players already in the game (confirmed + offered + riders) */}
-              {canManage && (confirmedAttendees.length + offeredSpots.length + riderSpots.length) > 0 && (
+              {/* Manager: Manage Squad */}
+              {canManage && allAttendees.length > 0 && (
                 <div className="border-2 border-dashed border-asphalt/40">
                   <button
                     type="button"
@@ -938,7 +764,7 @@ export default function EventDetailModal({
                     className="w-full flex items-center justify-between gap-2 p-3 text-left"
                   >
                     <span className="font-graffiti text-sm text-asphalt">
-                      Manage Squad ({confirmedAttendees.length + offeredSpots.length + riderSpots.length})
+                      Manage Squad ({allAttendees.length})
                     </span>
                     <ChevronDown
                       className={`w-4 h-4 text-asphalt flex-shrink-0 transition-transform ${manageSquadOpen ? "rotate-180" : ""}`}
@@ -946,28 +772,25 @@ export default function EventDetailModal({
                   </button>
                   {manageSquadOpen && (
                     <div className="border-t-2 border-dashed border-asphalt/40 p-3 space-y-2">
-                      {[...confirmedAttendees, ...offeredSpots, ...riderSpots].map((attendee) => {
+                      {allAttendees.map((attendee) => {
                         const busy =
                           actionLoading === `reassign-${attendee.attendeeId}` ||
                           actionLoading === `unassign-${attendee.attendeeId}`;
-                        const hasRider = riderSpots.some(
-                          (r) => r.userEmail.toLowerCase() === attendee.userEmail.toLowerCase()
-                        );
                         return (
                           <div
                             key={attendee.attendeeId}
                             className="bg-white border-2 border-asphalt p-2 space-y-2"
                           >
                             <span className="font-marker text-sm text-asphalt flex items-center gap-1.5 truncate">
-                              {attendee.isPlusOne ? `${attendee.userName}'s Rider` : attendee.userName}
+                              {attendee.userName}
                               {attendee.status === 'offered' && (
                                 <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
                                   OFFERING
                                 </span>
                               )}
-                              {attendee.isPlusOne && (
+                              {attendee.plusOne && (
                                 <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1 py-0.5 leading-none shrink-0">
-                                  RIDER
+                                  +1
                                 </span>
                               )}
                             </span>
@@ -982,17 +805,11 @@ export default function EventDetailModal({
                                   <SelectValue placeholder="Swap with…" />
                                 </SelectTrigger>
                                 <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                                  {members
-                                    .filter(
-                                      (m) =>
-                                        !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
-                                        !offeredSpots.some((a) => a.userEmail === m.userEmail)
-                                    )
-                                    .map((m) => (
-                                      <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
-                                        {m.displayName}
-                                      </SelectItem>
-                                    ))}
+                                  {membersWithoutSpot.map((m) => (
+                                    <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                                      {m.displayName}
+                                    </SelectItem>
+                                  ))}
                                 </SelectContent>
                               </Select>
                               <button
@@ -1002,16 +819,14 @@ export default function EventDetailModal({
                               >
                                 {actionLoading === `reassign-${attendee.attendeeId}` ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  'SWAP'
-                                )}
+                                ) : 'SWAP'}
                               </button>
-                              {/* Add Rider button — only for primary spots with no rider yet and capacity */}
-                              {!attendee.isPlusOne && !hasRider && availableSpots > 0 && (
+                              {/* Add Rider: only for players without a rider and when capacity allows */}
+                              {!attendee.plusOne && availableSpots > 0 && (
                                 <button
                                   onClick={() => handleAdminAssignRider(attendee.userEmail)}
                                   disabled={!!actionLoading}
-                                  title="Add a Rider (+1) spot for this player"
+                                  title="Add a Rider (+1) for this player"
                                   className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti text-xs py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center gap-1"
                                 >
                                   {actionLoading === `assign-rider-${attendee.userEmail}` ? (
@@ -1042,14 +857,14 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Offered Spots — primary and rider */}
+              {/* Available (offered) spots */}
               {offeredSpots.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="font-graffiti text-lg text-terracotta">
                     Available Spots ({offeredSpots.length})
                   </h3>
                   <div className="space-y-2">
-                    {offeredPrimarySpots.map((attendee, index) => (
+                    {offeredSpots.map((attendee, index) => (
                       <div
                         key={attendee.attendeeId}
                         className="marker-card bg-terracotta/10 p-3 flex items-center justify-between"
@@ -1070,90 +885,44 @@ export default function EventDetailModal({
                         )}
                       </div>
                     ))}
-                    {offeredRiderSpots.map((attendee, index) => (
-                      <div
-                        key={attendee.attendeeId}
-                        className="marker-card bg-dull-gold/10 p-3 flex items-center justify-between"
-                        style={{ transform: `rotate(${(offeredPrimarySpots.length + index) % 2 === 0 ? -0.3 : 0.3}deg)` }}
-                      >
-                        <span className="font-marker text-asphalt flex items-center gap-1">
-                          {renderRoleIcon(attendee.userEmail)}
-                          {attendee.userName}&apos;s Rider
-                          <span className="ml-1 text-[10px] font-graffiti bg-dull-gold text-asphalt px-1.5 py-0.5 border border-asphalt">+1</span>
-                        </span>
-                        {/* Only players who have a confirmed primary but no rider can claim a rider slot */}
-                        {event.isAttending && !myRiderSpot && event.myAttendance?.status === 'confirmed' && isSignupOpen && (
-                          <button
-                            onClick={() => handleClaim(attendee.attendeeId)}
-                            disabled={actionLoading === 'claim'}
-                            className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
-                          >
-                            {actionLoading === 'claim' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'CLAIM AS RIDER'}
-                          </button>
-                        )}
-                      </div>
-                    ))}
                   </div>
                 </div>
               )}
 
-              {/* Playing: confirmed + offered (primary) + rider spots — all count toward occupancy */}
+              {/* Playing section */}
               {(() => {
-                // Build an ordered flat list: primary → their rider (if any) → next primary → ...
-                const riderByOwner = new Map(riderSpots.map(r => [r.userEmail.toLowerCase(), r]));
-                const primaryList = [...confirmedAttendees, ...offeredSpots];
-                const displayList: Array<{ attendee: typeof primaryList[0]; isRider: boolean }> = [];
-                const ownersWithRider = new Set<string>();
-                for (const a of primaryList) {
-                  displayList.push({ attendee: a, isRider: false });
-                  const rider = riderByOwner.get(a.userEmail.toLowerCase());
-                  if (rider) {
-                    displayList.push({ attendee: rider, isRider: true });
-                    ownersWithRider.add(a.userEmail.toLowerCase());
-                  }
-                }
-                // Orphan riders (edge case: primary transferred away but rider still exists)
-                for (const r of riderSpots) {
-                  if (!ownersWithRider.has(r.userEmail.toLowerCase())) {
-                    displayList.push({ attendee: r, isRider: true });
-                  }
-                }
-                const totalPlaying = confirmedAttendees.length + offeredSpots.length + riderSpots.length;
+                const displayList = [...confirmedAttendees, ...offeredSpots];
                 return (
                   <div className="space-y-2">
                     <h3 className="font-graffiti text-lg text-slate-blue">
-                      Playing ({totalPlaying}/{event.totalSpots})
+                      Playing ({totalOccupancy}/{event.totalSpots})
                     </h3>
                     <div className="grid grid-cols-2 gap-2">
-                      {displayList.map(({ attendee, isRider }, index) => (
+                      {displayList.map((attendee, index) => (
                         <div
                           key={attendee.attendeeId}
                           className={`marker-card p-2 ${
-                            isRider
-                              ? 'bg-dull-gold/30 border-dashed'
-                              : attendee.userEmail === userEmail
+                            attendee.userEmail === userEmail
                               ? 'bg-moss-green border-asphalt'
                               : 'bg-white'
                           }`}
                           style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
                         >
                           <span className="font-marker text-sm text-asphalt truncate flex flex-wrap items-center gap-1.5">
-                            {!isRider && (
-                              <PlayerAvatar
-                                pieceUrl={pieceByEmail.get(attendee.userEmail)}
-                                name={attendee.userName}
-                                className="h-6 w-6 shrink-0"
-                              />
+                            <PlayerAvatar
+                              pieceUrl={pieceByEmail.get(attendee.userEmail)}
+                              name={attendee.userName}
+                              className="h-6 w-6 shrink-0"
+                            />
+                            {renderRoleIcon(attendee.userEmail)}
+                            <span className="truncate">{attendee.userName}</span>
+                            {attendee.plusOne && (
+                              <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1 py-0.5 leading-none shrink-0 border border-asphalt">
+                                +1
+                              </span>
                             )}
-                            {!isRider && renderRoleIcon(attendee.userEmail)}
-                            <span className="truncate">
-                              {isRider ? `${attendee.userName}'s Rider` : attendee.userName}
-                            </span>
-                            {!isRider && attendee.userEmail === userEmail && (
+                            {attendee.userEmail === userEmail && (
                               <span className="text-asphalt/60">(you)</span>
-                            )}
-                            {isRider && attendee.userEmail === userEmail && (
-                              <span className="text-asphalt/60">(yours)</span>
                             )}
                             {attendee.status === 'offered' && (
                               <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
@@ -1179,7 +948,7 @@ export default function EventDetailModal({
                 );
               })()}
 
-              {/* Waitlist */}
+              {/* Bench / Waitlist */}
               {waitlist.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="font-graffiti text-lg text-slate-blue">
@@ -1188,7 +957,7 @@ export default function EventDetailModal({
                   <div className="space-y-2">
                     {waitlist.map((entry, index) => (
                       <div
-                        key={entry.userEmail}
+                        key={`${entry.userEmail}-${entry.forRider}`}
                         className={`marker-card p-2 flex items-center gap-2 ${
                           entry.userEmail === userEmail ? 'bg-slate-blue/15' : 'bg-white'
                         }`}
@@ -1202,13 +971,13 @@ export default function EventDetailModal({
                         />
                         {renderRoleIcon(entry.userEmail)}
                         <span className="font-marker text-sm text-asphalt truncate flex items-center gap-1.5">
-                          {entry.forRider ? `${entry.displayName}'s Rider` : entry.displayName}
+                          {entry.displayName}
                           {entry.userEmail === userEmail && (
                             <span className="text-asphalt/60">(you)</span>
                           )}
                           {entry.forRider && (
                             <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1 py-0.5 leading-none shrink-0">
-                              RIDER
+                              +1
                             </span>
                           )}
                         </span>

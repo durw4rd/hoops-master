@@ -1,17 +1,17 @@
 /**
- * Claim Rider Spot API
+ * Add Rider API
  *
  * POST /api/groups/[groupId]/events/[eventId]/claim-rider
  *
  * Body (optional): { targetUserEmail: string } — Capo/King can assign a Rider
- * spot for a player who's already in the event. Omit to claim for yourself.
+ * for a player already in the event. Omit to add for yourself.
  *
- * Costs the same as a primary spot for the target user.
+ * Sets plusOne=true on the attendee row, consuming one extra slot.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireMember, requireCrewManager } from '@/lib/apiGuards';
-import { getEventRowById, claimRiderSpot } from '@/lib/queries/events';
+import { requireMember } from '@/lib/apiGuards';
+import { getEventRowById, addRider } from '@/lib/queries/events';
 import { getUserRowByEmail } from '@/lib/queries/users';
 import { SpotError } from '@/lib/queries/_tx';
 import { isPastEvent, isSignupOpen } from '@/lib/eventRules';
@@ -30,36 +30,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = await request.json().catch(() => ({}));
     const { targetUserEmail } = body ?? {};
 
-    // Admin-assign path: Capo/King can assign a Rider for someone else.
-    if (targetUserEmail) {
-      if (!isCrewManager(ctx.member.groupRole)) {
-        return NextResponse.json({ error: 'Only Capo or King can assign Rider spots' }, { status: 403 });
-      }
-      const targetUser = await getUserRowByEmail(targetUserEmail);
-      if (!targetUser) {
-        return NextResponse.json({ error: 'Player not found' }, { status: 404 });
-      }
-
-      const eventRow = await getEventRowById(eventId);
-      if (!eventRow || eventRow.groupId !== groupId) {
-        return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-      }
-      if (eventRow.status === 'cancelled') {
-        return NextResponse.json({ error: 'This event has been cancelled' }, { status: 400 });
-      }
-      if (isPastEvent(eventRow)) {
-        return NextResponse.json({ error: 'Cannot assign Rider spots for past events' }, { status: 400 });
-      }
-
-      const attendee = await claimRiderSpot({ eventId, userId: targetUser.id });
-      return NextResponse.json({
-        success: true,
-        message: `Rider spot assigned for ${targetUser.displayName}`,
-        data: { attendeeId: attendee.id },
-      });
-    }
-
-    // Self-claim path.
     const eventRow = await getEventRowById(eventId);
     if (!eventRow || eventRow.groupId !== groupId) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -68,28 +38,46 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'This event has been cancelled' }, { status: 400 });
     }
     if (isPastEvent(eventRow)) {
-      return NextResponse.json({ error: 'Cannot claim spots for past events' }, { status: 400 });
+      return NextResponse.json({ error: 'Cannot assign Rider spots for past events' }, { status: 400 });
     }
+
+    if (targetUserEmail) {
+      // Admin-assign path: Capo/King assigns a Rider for someone else.
+      if (!isCrewManager(ctx.member.groupRole)) {
+        return NextResponse.json({ error: 'Only Capo or King can assign Rider spots' }, { status: 403 });
+      }
+      const targetUser = await getUserRowByEmail(targetUserEmail);
+      if (!targetUser) {
+        return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+      }
+      const attendee = await addRider({ eventId, userId: targetUser.id, byUserId: ctx.user.id });
+      return NextResponse.json({
+        success: true,
+        message: `Rider added for ${targetUser.displayName}`,
+        data: { attendeeId: attendee.id },
+      });
+    }
+
+    // Self-add path.
     if (!isSignupOpen(eventRow)) {
       return NextResponse.json(
         { error: 'Signup is not open yet', signupOpensAt: eventRow.signupOpensAt?.toISOString() },
         { status: 400 }
       );
     }
-
-    const attendee = await claimRiderSpot({ eventId, userId: ctx.user.id });
+    const attendee = await addRider({ eventId, userId: ctx.user.id });
     return NextResponse.json({
       success: true,
-      message: "Rider spot claimed — you've got two in this game",
+      message: "Rider added — you've got two in this game",
       data: { attendeeId: attendee.id },
     });
   } catch (error) {
     if (error instanceof SpotError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    console.error('Error claiming Rider spot:', error);
+    console.error('Error adding Rider:', error);
     return NextResponse.json(
-      { error: 'Failed to claim Rider spot', details: String(error) },
+      { error: 'Failed to add Rider', details: String(error) },
       { status: 500 }
     );
   }

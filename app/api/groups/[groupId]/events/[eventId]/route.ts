@@ -50,11 +50,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && w.forRider
     );
 
-    // Occupancy includes confirmed + offered spots (an offered spot is still held
-    // until claimed, so it does not free a general signup slot).
-    const occupancy = attendees.filter(
-      (a) => a.status === 'confirmed' || a.status === 'offered'
-    ).length;
+    // Occupancy = SUM(1 + plusOne) — a row with plusOne=true counts as 2 slots.
+    // Offered spots still count toward occupancy (held until claimed).
+    const occupancy = attendees.reduce((sum, a) => sum + 1 + (a.plusOne ? 1 : 0), 0);
     const availableSpots = Math.max(0, dto.totalSpots - occupancy);
 
     return NextResponse.json({
