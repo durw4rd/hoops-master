@@ -2,7 +2,7 @@
  * Waitlist queries (FIFO by joined_at) + spot release with auto-promotion.
  */
 
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { eventAttendees, eventWaitlist } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
 import { withEventLock, SpotError, type Tx } from './_tx';
@@ -75,12 +75,30 @@ export interface ReleaseResult {
  */
 export async function releaseSpot(params: { eventId: string; userId: string }): Promise<ReleaseResult> {
   return withEventLock(params.eventId, async (tx, event) => {
+    // Find the primary spot (rider rows are excluded via IS NULL check).
     const [attendee] = await tx
       .select()
       .from(eventAttendees)
-      .where(and(eq(eventAttendees.eventId, params.eventId), eq(eventAttendees.userId, params.userId)))
+      .where(and(
+        eq(eventAttendees.eventId, params.eventId),
+        eq(eventAttendees.userId, params.userId),
+        isNull(eventAttendees.parentAttendeeId),
+      ))
       .limit(1);
     if (!attendee) throw new SpotError('You are not attending this event', 404);
+
+    // Guard: must drop (or offer) rider spot before releasing primary.
+    const [confirmedRider] = await tx
+      .select({ id: eventAttendees.id })
+      .from(eventAttendees)
+      .where(and(
+        eq(eventAttendees.eventId, params.eventId),
+        eq(eventAttendees.userId, params.userId),
+        isNotNull(eventAttendees.parentAttendeeId),
+        eq(eventAttendees.status, 'confirmed'),
+      ))
+      .limit(1);
+    if (confirmedRider) throw new SpotError("Offer or drop your Rider spot before releasing your own", 400);
 
     // Earliest waitlist member. Releasing is only allowed when someone is
     // waiting — otherwise the holder should use "Offer" to open the spot.

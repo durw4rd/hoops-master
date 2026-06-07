@@ -26,6 +26,11 @@ const TERMS: { term: string; badge?: string; def: string }[] = [
     def: "Your seat in the game. Claim it, offer it, or lose it — don't sleep.",
   },
   {
+    term: "Rider",
+    badge: "+1",
+    def: "Your plus-one. Someone you vouch for and bring to the run. You hold their spot, you own the tab. Drop them before you can drop yourself.",
+  },
+  {
     term: "The Bench",
     def: "The waitlist. If the game's full you ride the bench. Soon as a spot opens, first in line gets it.",
   },

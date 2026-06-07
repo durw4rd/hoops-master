@@ -19,6 +19,7 @@ import {
   uniqueIndex,
   index,
   pgView,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -128,9 +129,16 @@ export const eventAttendees = pgTable(
     assignedBy: uuid('assigned_by').references(() => users.id),
     assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    // Rider (plus-one) spot: non-null means this is a +1 spot owned by the same userId.
+    // The referenced row is the owner's primary spot in the same event.
+    parentAttendeeId: uuid('parent_attendee_id').references((): AnyPgColumn => eventAttendees.id),
   },
   (t) => ({
-    eventUserUnique: uniqueIndex('event_attendees_event_user_unique').on(t.eventId, t.userId),
+    // Partial unique index: one primary spot per user per event.
+    // Rider rows (parentAttendeeId IS NOT NULL) are exempt, allowing a second row.
+    primarySpotUnique: uniqueIndex('event_attendees_primary_spot_unique')
+      .on(t.eventId, t.userId)
+      .where(sql`${t.parentAttendeeId} IS NULL`),
     eventIdx: index('idx_attendees_event').on(t.eventId),
     userIdx: index('idx_attendees_user').on(t.userId),
   })

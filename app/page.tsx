@@ -60,11 +60,23 @@ export default function HoopsMaster() {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [vocabModalOpen, setVocabModalOpen] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [chooseAccount, setChooseAccount] = useState(false);
 
   useEffect(() => {
-    const err = new URLSearchParams(window.location.search).get("error");
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
     if (err) setAuthError(err);
+    if (params.get("chooseAccount") === "1") setChooseAccount(true);
   }, []);
+
+  // After signing out via "Try a different account", auto-trigger Google
+  // sign-in with prompt:select_account so the browser doesn't silently reuse
+  // the previous Google session.
+  useEffect(() => {
+    if (chooseAccount && status === "unauthenticated") {
+      signIn("google", { callbackUrl: "/" }, { prompt: "select_account" });
+    }
+  }, [chooseAccount, status]);
 
   const fetchUserProfile = useCallback(async () => {
     if (!session?.user?.email) return;
@@ -215,7 +227,7 @@ export default function HoopsMaster() {
                 </p>
               </div>
               <button
-                onClick={() => signOut({ callbackUrl: "/" })}
+                onClick={() => signOut({ callbackUrl: "/?chooseAccount=1" })}
                 className="sticker-btn-outline w-full text-base py-2.5 px-6"
               >
                 Try a different account

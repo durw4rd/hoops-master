@@ -35,6 +35,8 @@ import {
   Crown,
   Star,
   ChevronDown,
+  UserPlus,
+  UserMinus,
 } from "lucide-react";
 import { isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -177,13 +179,14 @@ export default function EventDetailModal({
     }
   };
 
-  const handleOffer = async () => {
-    setActionLoading('offer');
+  const handleOffer = async (attendeeId?: string) => {
+    setActionLoading(attendeeId ? 'offer-rider' : 'offer');
     setError(null);
     try {
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/offer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(attendeeId ? { attendeeId } : {}),
       });
 
       const data = await res.json();
@@ -201,13 +204,14 @@ export default function EventDetailModal({
     }
   };
 
-  const handleRetract = async () => {
-    setActionLoading('retract');
+  const handleRetract = async (attendeeId?: string) => {
+    setActionLoading(attendeeId ? 'retract-rider' : 'retract');
     setError(null);
     try {
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/retract`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(attendeeId ? { attendeeId } : {}),
       });
 
       const data = await res.json();
@@ -220,6 +224,50 @@ export default function EventDetailModal({
       onEventUpdated();
     } catch (err) {
       setError('Failed to retract offer');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleClaimRider = async () => {
+    setActionLoading('claim-rider');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/claim-rider`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to bring Rider');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDropRider = async () => {
+    setActionLoading('drop-rider');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/drop-rider`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to drop Rider');
     } finally {
       setActionLoading(null);
     }
@@ -345,8 +393,11 @@ export default function EventDetailModal({
     return null;
   };
 
-  const confirmedAttendees = event?.attendees.filter(a => a.status === 'confirmed') || [];
-  const offeredSpots = event?.attendees.filter(a => a.status === 'offered') || [];
+  const confirmedAttendees = event?.attendees.filter(a => a.status === 'confirmed' && !a.isPlusOne) || [];
+  const offeredSpots = event?.attendees.filter(a => a.status === 'offered' && !a.isPlusOne) || [];
+  // Rider spots (plus-ones) — keyed by owner email for display grouping.
+  const riderSpots = event?.attendees.filter(a => a.isPlusOne) || [];
+  const myRiderSpot = riderSpots.find(a => a.userEmail.toLowerCase() === userEmail.toLowerCase()) || null;
   // Occupancy includes offered spots (still held until claimed).
   const availableSpots = event ? event.availableSpots : 0;
   const isFull = availableSpots <= 0;
@@ -539,10 +590,41 @@ export default function EventDetailModal({
 
                 {event.myAttendance?.status === 'confirmed' && (
                   <div className="space-y-1.5">
+                    {/* Rider spot controls */}
+                    {myRiderSpot && myRiderSpot.status === 'confirmed' && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleOffer(myRiderSpot.attendeeId)}
+                          disabled={actionLoading === 'offer-rider'}
+                          className="bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                        >
+                          {actionLoading === 'offer-rider' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Hand className="w-4 h-4" /><span>OFFER RIDER</span></>}
+                        </button>
+                        <button
+                          onClick={handleDropRider}
+                          disabled={actionLoading === 'drop-rider'}
+                          className="bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                        >
+                          {actionLoading === 'drop-rider' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserMinus className="w-4 h-4" /><span>DROP RIDER</span></>}
+                        </button>
+                      </div>
+                    )}
+                    {myRiderSpot && myRiderSpot.status === 'offered' && (
+                      <button
+                        onClick={() => handleRetract(myRiderSpot.attendeeId)}
+                        disabled={actionLoading === 'retract-rider'}
+                        className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-base py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'retract-rider' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Undo2 className="w-5 h-5" /><span>RETRACT RIDER OFFER</span></>}
+                      </button>
+                    )}
+
+                    {/* Primary spot controls */}
                     <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={handleOffer}
-                        disabled={actionLoading === 'offer'}
+                        onClick={() => handleOffer()}
+                        disabled={actionLoading === 'offer' || (myRiderSpot?.status === 'confirmed')}
+                        title={myRiderSpot?.status === 'confirmed' ? 'Offer or drop your Rider first' : undefined}
                         className="bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {actionLoading === 'offer' ? (
@@ -556,10 +638,12 @@ export default function EventDetailModal({
                       </button>
                       <button
                         onClick={handleRelease}
-                        disabled={actionLoading === 'release' || waitlist.length === 0}
+                        disabled={actionLoading === 'release' || waitlist.length === 0 || myRiderSpot?.status === 'confirmed'}
                         className="bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md enabled:hover:shadow-[6px_6px_0_var(--asphalt-black)] enabled:hover:translate-y-[-2px] enabled:active:shadow-sticker-sm enabled:active:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         title={
-                          waitlist.length > 0
+                          myRiderSpot?.status === 'confirmed'
+                            ? 'Offer or drop your Rider before releasing your own spot'
+                            : waitlist.length > 0
                             ? 'Releasing passes your spot to the next head on the bench'
                             : 'Release only works when someone is on the bench — use Offer instead'
                         }
@@ -574,18 +658,36 @@ export default function EventDetailModal({
                         )}
                       </button>
                     </div>
-                    {waitlist.length === 0 && (
+                    {waitlist.length === 0 && !myRiderSpot && (
                       <p className="text-xs text-asphalt/60 font-body text-center">
                         Release opens up once someone&apos;s on the bench. To give up your
                         spot now, use <span className="font-semibold">Offer</span>.
                       </p>
+                    )}
+
+                    {/* Bring a Rider — only when no rider exists and event has capacity */}
+                    {!myRiderSpot && availableSpots > 0 && isSignupOpen && (
+                      <button
+                        onClick={handleClaimRider}
+                        disabled={actionLoading === 'claim-rider'}
+                        className="w-full bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'claim-rider' ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <>
+                            <UserPlus className="w-5 h-5" />
+                            <span>BRING A RIDER</span>
+                          </>
+                        )}
+                      </button>
                     )}
                   </div>
                 )}
 
                 {event.myAttendance?.status === 'offered' && (
                   <button
-                    onClick={handleRetract}
+                    onClick={() => handleRetract()}
                     disabled={actionLoading === 'retract'}
                     className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
@@ -672,8 +774,8 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Manager: reassign or remove players already in the game (confirmed + offered) */}
-              {canManage && (confirmedAttendees.length + offeredSpots.length) > 0 && (
+              {/* Manager: reassign or remove players already in the game (confirmed + offered + riders) */}
+              {canManage && (confirmedAttendees.length + offeredSpots.length + riderSpots.length) > 0 && (
                 <div className="border-2 border-dashed border-asphalt/40">
                   <button
                     type="button"
@@ -681,7 +783,7 @@ export default function EventDetailModal({
                     className="w-full flex items-center justify-between gap-2 p-3 text-left"
                   >
                     <span className="font-graffiti text-sm text-asphalt">
-                      Manage Squad ({confirmedAttendees.length + offeredSpots.length})
+                      Manage Squad ({confirmedAttendees.length + offeredSpots.length + riderSpots.length})
                     </span>
                     <ChevronDown
                       className={`w-4 h-4 text-asphalt flex-shrink-0 transition-transform ${manageSquadOpen ? "rotate-180" : ""}`}
@@ -689,7 +791,7 @@ export default function EventDetailModal({
                   </button>
                   {manageSquadOpen && (
                     <div className="border-t-2 border-dashed border-asphalt/40 p-3 space-y-2">
-                      {[...confirmedAttendees, ...offeredSpots].map((attendee) => {
+                      {[...confirmedAttendees, ...offeredSpots, ...riderSpots].map((attendee) => {
                         const busy =
                           actionLoading === `reassign-${attendee.attendeeId}` ||
                           actionLoading === `unassign-${attendee.attendeeId}`;
@@ -699,10 +801,15 @@ export default function EventDetailModal({
                             className="bg-white border-2 border-asphalt p-2 space-y-2"
                           >
                             <span className="font-marker text-sm text-asphalt flex items-center gap-1.5 truncate">
-                              {attendee.userName}
+                              {attendee.isPlusOne ? `${attendee.userName}'s Rider` : attendee.userName}
                               {attendee.status === 'offered' && (
                                 <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
                                   OFFERING
+                                </span>
+                              )}
+                              {attendee.isPlusOne && (
+                                <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1 py-0.5 leading-none shrink-0">
+                                  RIDER
                                 </span>
                               )}
                             </span>
@@ -798,54 +905,87 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Confirmed + Offered Attendees — offered still count as playing */}
-              <div className="space-y-2">
-                <h3 className="font-graffiti text-lg text-slate-blue">
-                  Playing ({confirmedAttendees.length + offeredSpots.length}/{event.totalSpots})
-                </h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {[...confirmedAttendees, ...offeredSpots].map((attendee, index) => (
-                    <div 
-                      key={attendee.attendeeId} 
-                      className={`marker-card p-2 ${
-                        attendee.userEmail === userEmail 
-                          ? 'bg-moss-green border-asphalt' 
-                          : 'bg-white'
-                      }`}
-                      style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
-                    >
-                      <span className="font-marker text-sm text-asphalt truncate flex flex-wrap items-center gap-1.5">
-                        <PlayerAvatar
-                          pieceUrl={pieceByEmail.get(attendee.userEmail)}
-                          name={attendee.userName}
-                          className="h-6 w-6 shrink-0"
-                        />
-                        {renderRoleIcon(attendee.userEmail)}
-                        <span className="truncate">{attendee.userName}</span>
-                        {attendee.userEmail === userEmail && (
-                          <span className="text-asphalt/60">(you)</span>
-                        )}
-                        {attendee.status === 'offered' && (
-                          <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
-                            OFFERING
+              {/* Playing: confirmed + offered (primary) + rider spots — all count toward occupancy */}
+              {(() => {
+                // Build an ordered flat list: primary → their rider (if any) → next primary → ...
+                const riderByOwner = new Map(riderSpots.map(r => [r.userEmail.toLowerCase(), r]));
+                const primaryList = [...confirmedAttendees, ...offeredSpots];
+                const displayList: Array<{ attendee: typeof primaryList[0]; isRider: boolean }> = [];
+                const ownersWithRider = new Set<string>();
+                for (const a of primaryList) {
+                  displayList.push({ attendee: a, isRider: false });
+                  const rider = riderByOwner.get(a.userEmail.toLowerCase());
+                  if (rider) {
+                    displayList.push({ attendee: rider, isRider: true });
+                    ownersWithRider.add(a.userEmail.toLowerCase());
+                  }
+                }
+                // Orphan riders (edge case: primary transferred away but rider still exists)
+                for (const r of riderSpots) {
+                  if (!ownersWithRider.has(r.userEmail.toLowerCase())) {
+                    displayList.push({ attendee: r, isRider: true });
+                  }
+                }
+                const totalPlaying = confirmedAttendees.length + offeredSpots.length + riderSpots.length;
+                return (
+                  <div className="space-y-2">
+                    <h3 className="font-graffiti text-lg text-slate-blue">
+                      Playing ({totalPlaying}/{event.totalSpots})
+                    </h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {displayList.map(({ attendee, isRider }, index) => (
+                        <div
+                          key={attendee.attendeeId}
+                          className={`marker-card p-2 ${
+                            isRider
+                              ? 'bg-dull-gold/30 border-dashed'
+                              : attendee.userEmail === userEmail
+                              ? 'bg-moss-green border-asphalt'
+                              : 'bg-white'
+                          }`}
+                          style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
+                        >
+                          <span className="font-marker text-sm text-asphalt truncate flex flex-wrap items-center gap-1.5">
+                            {!isRider && (
+                              <PlayerAvatar
+                                pieceUrl={pieceByEmail.get(attendee.userEmail)}
+                                name={attendee.userName}
+                                className="h-6 w-6 shrink-0"
+                              />
+                            )}
+                            {!isRider && renderRoleIcon(attendee.userEmail)}
+                            <span className="truncate">
+                              {isRider ? `${attendee.userName}'s Rider` : attendee.userName}
+                            </span>
+                            {!isRider && attendee.userEmail === userEmail && (
+                              <span className="text-asphalt/60">(you)</span>
+                            )}
+                            {isRider && attendee.userEmail === userEmail && (
+                              <span className="text-asphalt/60">(yours)</span>
+                            )}
+                            {attendee.status === 'offered' && (
+                              <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
+                                OFFERING
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
+                        </div>
+                      ))}
+
+                      {/* Empty spots */}
+                      {Array.from({ length: availableSpots }).map((_, i) => (
+                        <div
+                          key={`empty-${i}`}
+                          className="marker-card p-2 border-dashed border-asphalt/30 bg-white/50"
+                          style={{ transform: `rotate(${i % 2 === 0 ? -0.3 : 0.3}deg)` }}
+                        >
+                          <span className="text-sm text-asphalt/30 font-body">Open</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                  
-                  {/* Empty spots */}
-                  {Array.from({ length: availableSpots }).map((_, i) => (
-                    <div 
-                      key={`empty-${i}`} 
-                      className="marker-card p-2 border-dashed border-asphalt/30 bg-white/50"
-                      style={{ transform: `rotate(${i % 2 === 0 ? -0.3 : 0.3}deg)` }}
-                    >
-                      <span className="text-sm text-asphalt/30 font-body">Open</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
 
               {/* Waitlist */}
               {waitlist.length > 0 && (

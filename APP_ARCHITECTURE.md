@@ -74,7 +74,7 @@ scripts/
 | `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide`, `banner_url` (optional Vercel Blob image), `banner_orientation` (`landscape`/`portrait`) |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
 | `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
-| `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`); unique `(event,user)` |
+| `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
 | `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user)` |
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
 | `spot_transactions` | Append-only credit ledger | `from_user_id` (nullable), `to_user_id`, `amount`, `type` (audit only) |
@@ -82,6 +82,15 @@ scripts/
 | `player_credit_balances` | **View** | `balance = paid − spent(to_user) + earned(from_user)` per active member |
 
 Notes for agents:
+- **Rider (plus-one) spots:** `parent_attendee_id` is non-null for Rider rows. A
+  user may hold at most one primary + one Rider spot per event. `claimRiderSpot`
+  requires a confirmed primary; `dropRiderSpot` deletes the row + its transactions
+  (reversing the debit, same pattern as `adminUnassignSpot`). Offering/releasing
+  the primary is blocked while the Rider is confirmed — the Rider must be offered
+  or dropped first (both can be simultaneously on the market). `releaseSpot`
+  checks for a confirmed Rider and throws if one exists. Rider spots are
+  excluded from `confirmedAttendees`/`offeredSpots` in the UI; they are shown
+  inline after their owner in the Playing grid as *"Name's Rider"*.
 - **Times are absolute** (`timestamptz`). The crew's `timezone` is the source of
   truth for rendering/input conversions (`lib/datetime.ts`). Don't store wall-clock.
 - **Credit math is symmetric & type-agnostic.** The ledger balance never filters on
@@ -124,6 +133,10 @@ This is for targeting/analytics only — it does not grant authorization.
 1. Google OAuth via NextAuth. The `signIn` callback allows login **only if a
    `users` row already exists** for that email (created by an admin invite or the
    seed). No auto-provisioning — unknown emails are denied (`?error=AccessDenied`).
+   Denied users see a "Try a different account" button which signs out to
+   `/?chooseAccount=1`; on the next page load, `signIn` is called with
+   `prompt: "select_account"` so Google shows the account picker instead of
+   silently reusing the previous session.
 2. JWT caches the DB `userId` and `globalRole` (avoids per-request lookups).
    After a role change, the token can be stale until re-login — for owner-gated
    destructive actions, re-read the role from the DB (see `DELETE /api/groups/[id]`).
@@ -133,9 +146,10 @@ This is for targeting/analytics only — it does not grant authorization.
 ## Concurrency
 
 Spot-mutating operations (claim, offer, release, reassign, batch/round-robin
-assign, waitlist promotion) run inside **serializable transactions** with
-`SELECT ... FOR UPDATE` on the event row (`lib/queries/_tx.ts`,
-`lib/queries/events.ts`, `waitlist.ts`). This prevents oversell and double-claims.
+assign, waitlist promotion, Rider claim/drop) run inside **serializable
+transactions** with `SELECT ... FOR UPDATE` on the event row
+(`lib/queries/_tx.ts`, `lib/queries/events.ts`, `waitlist.ts`). This prevents
+oversell and double-claims.
 
 ## Assignment modes (`events.assignment_mode`)
 
@@ -188,7 +202,9 @@ DELETE /api/groups/[id]/events/[eventId]            # delete game (Capo/King)
 POST   /api/groups/[id]/events/bulk                 # recurring series
 POST   /api/groups/[id]/events/round-robin          # rotation series (+preview)
 POST   /api/groups/[id]/events/batch-assign         # batch assign
-POST   .../events/[eventId]/claim|offer|retract|release|reassign|waitlist
+POST   .../events/[eventId]/claim|offer|retract|release|reassign|unassign|waitlist
+POST   .../events/[eventId]/claim-rider     # bring a +1 (Rider) into the game
+POST   .../events/[eventId]/drop-rider      # remove your Rider spot (refund)
 
 GET    /api/groups/[id]/roster                      # rotation roster
 PUT    /api/groups/[id]/roster                      # set/reorder roster (Capo/King)

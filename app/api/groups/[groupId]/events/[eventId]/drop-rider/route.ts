@@ -1,12 +1,15 @@
 /**
- * Offer Event Spot API
+ * Drop Rider Spot API
  *
- * POST /api/groups/[groupId]/events/[eventId]/offer - Offer your spot to the marketplace
+ * POST /api/groups/[groupId]/events/[eventId]/drop-rider
+ *
+ * Removes the caller's Rider (plus-one) spot, refunding the slot cost.
+ * The primary spot is unaffected.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireMember } from '@/lib/apiGuards';
-import { getEventRowById, offerSpot } from '@/lib/queries/events';
+import { getEventRowById, dropRiderSpot } from '@/lib/queries/events';
 import { SpotError } from '@/lib/queries/_tx';
 import { isPastEvent } from '@/lib/eventRules';
 
@@ -25,27 +28,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
     if (isPastEvent(eventRow)) {
-      return NextResponse.json({ error: 'Cannot offer spots for past events' }, { status: 400 });
+      return NextResponse.json({ error: 'Cannot drop spots for past events' }, { status: 400 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const { attendeeId } = body ?? {};
+    await dropRiderSpot({ eventId, userId: ctx.user.id });
 
-    const attendee = await offerSpot({ eventId, userId: ctx.user.id, attendeeId });
     return NextResponse.json({
       success: true,
-      message: attendeeId
-        ? "Rider spot is now available for others to claim"
-        : 'Your spot is now available for others to claim',
-      data: { attendeeId: attendee.id },
+      message: 'Rider spot dropped and refunded',
     });
   } catch (error) {
     if (error instanceof SpotError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    console.error('Error offering spot:', error);
+    console.error('Error dropping Rider spot:', error);
     return NextResponse.json(
-      { error: 'Failed to offer spot', details: String(error) },
+      { error: 'Failed to drop Rider spot', details: String(error) },
       { status: 500 }
     );
   }

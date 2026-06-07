@@ -24,10 +24,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    const attendee = await retractOffer({ eventId, userId: ctx.user.id });
+    const body = await request.json().catch(() => ({}));
+    const { attendeeId } = body ?? {};
+
+    const attendee = await retractOffer({ eventId, userId: ctx.user.id, attendeeId });
     return NextResponse.json({
       success: true,
-      message: 'Your spot offer has been retracted',
+      message: attendeeId ? 'Rider spot offer retracted' : 'Your spot offer has been retracted',
       data: { attendeeId: attendee.id },
     });
   } catch (error) {

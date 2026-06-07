@@ -13,6 +13,9 @@ subway-graffiti skin.
 - **Assignment modes** — admin-assign (single/batch), player self-signup, and a
   sliding **round-robin rotation** for when there are more players than spots.
 - **Spot trading** — claim, offer, release, reassign; every move recorded.
+- **Rider spots** — bring a plus-one into the game. Each player can hold one
+  primary spot + one Rider (+1). Both cost the same and are tracked in the ledger.
+  Drop the Rider first before releasing your own spot.
 - **The Bench (waitlist)** — FIFO; releasing a spot auto-promotes the next player.
 - **Credit ledger** — per-crew balances (`paid − spent + earned`), admin-recorded
   payments (single or batch — record the same amount for many players at once,
