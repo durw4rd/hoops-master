@@ -273,6 +273,29 @@ export default function EventDetailModal({
     }
   };
 
+  const handleAdminAssignRider = async (targetUserEmail: string) => {
+    setActionLoading(`assign-rider-${targetUserEmail}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/claim-rider`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUserEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to assign Rider spot');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const runAction = async (key: string, path: string, method: string = 'POST') => {
     setActionLoading(key);
     setError(null);
@@ -795,6 +818,9 @@ export default function EventDetailModal({
                         const busy =
                           actionLoading === `reassign-${attendee.attendeeId}` ||
                           actionLoading === `unassign-${attendee.attendeeId}`;
+                        const hasRider = riderSpots.some(
+                          (r) => r.userEmail.toLowerCase() === attendee.userEmail.toLowerCase()
+                        );
                         return (
                           <div
                             key={attendee.attendeeId}
@@ -848,6 +874,21 @@ export default function EventDetailModal({
                                   'SWAP'
                                 )}
                               </button>
+                              {/* Add Rider button — only for primary spots with no rider yet and capacity */}
+                              {!attendee.isPlusOne && !hasRider && availableSpots > 0 && (
+                                <button
+                                  onClick={() => handleAdminAssignRider(attendee.userEmail)}
+                                  disabled={!!actionLoading}
+                                  title="Add a Rider (+1) spot for this player"
+                                  className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti text-xs py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  {actionLoading === `assign-rider-${attendee.userEmail}` ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <><UserPlus className="w-3.5 h-3.5" /><span>+1</span></>
+                                  )}
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleUnassign(attendee.attendeeId)}
                                 disabled={busy}
