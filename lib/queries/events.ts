@@ -900,6 +900,11 @@ export async function reassignSpot(params: {
     const type: TransactionType = params.isAdmin ? 'admin_reassign' : 'reassign';
 
     if (source) {
+      // Non-admins can only reassign their own spots.
+      if (!params.isAdmin && source.userId !== params.byUserId) {
+        throw new SpotError('You can only reassign your own spot', 403);
+      }
+
       const isRiderSource = source.parentAttendeeId !== null;
       const previousHolder = source.userId;
 

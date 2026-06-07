@@ -729,7 +729,7 @@ export default function EventDetailModal({
                         onClick={handleRelease}
                         disabled={actionLoading === 'release'}
                         title="Passes your spot to the next player on the bench"
-                        className="w-full bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full bg-slate-blue text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {actionLoading === 'release' ? (
                           <Loader2 className="w-5 h-5 animate-spin" />

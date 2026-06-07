@@ -55,17 +55,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const isAdmin = isCrewManager(ctx.member.groupRole);
     const fromUserId = fromUserEmail ? emailToId.get(String(fromUserEmail).toLowerCase()) : undefined;
 
-    // Non-admins may only give up their own spot.
-    if (!isAdmin) {
-      if (attendeeId) {
-        return NextResponse.json(
-          { error: 'Only admins can reassign by attendee id' },
-          { status: 403 }
-        );
-      }
-      if (fromUserId && fromUserId !== ctx.user.id) {
-        return NextResponse.json({ error: 'You can only reassign your own spot' }, { status: 403 });
-      }
+    // Non-admins may only reassign their own spot (ownership verified in reassignSpot).
+    if (!isAdmin && fromUserId && fromUserId !== ctx.user.id) {
+      return NextResponse.json({ error: 'You can only reassign your own spot' }, { status: 403 });
     }
 
     const effectiveFromUserId = isAdmin ? fromUserId : ctx.user.id;
@@ -74,7 +66,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       eventId,
       toUserId,
       fromUserId: effectiveFromUserId,
-      attendeeId: isAdmin ? attendeeId : undefined,
+      attendeeId,
       byUserId: ctx.user.id,
       isAdmin,
     });
