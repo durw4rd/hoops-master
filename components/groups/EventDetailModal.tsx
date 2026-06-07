@@ -88,6 +88,7 @@ export default function EventDetailModal({
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<{ userEmail: string; displayName: string; groupRole: string; pieceUrl?: string }[]>([]);
   const [assignEmail, setAssignEmail] = useState("");
+  const [handoverEmail, setHandoverEmail] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<Record<string, string>>({});
@@ -272,6 +273,25 @@ export default function EventDetailModal({
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const handleSelfHandover = async () => {
+    if (!handoverEmail) return;
+    setActionLoading('handover');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/reassign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toUserEmail: handoverEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      setHandoverEmail('');
+      fetchEvent();
+      onEventUpdated();
+    } catch { setError('Failed to hand over spot'); }
+    finally { setActionLoading(null); }
   };
 
   const handleAdminAssignRider = async (targetUserEmail: string) => {
@@ -646,143 +666,133 @@ export default function EventDetailModal({
                   </div>
                 )}
 
-                {event.myAttendance?.status === 'confirmed' && (
-                  <div className="space-y-1.5">
-                    {/* Rider spot controls */}
-                    {myRiderSpot && myRiderSpot.status === 'confirmed' && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          onClick={() => handleOffer(myRiderSpot.attendeeId)}
-                          disabled={actionLoading === 'offer-rider'}
-                          className="bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                        >
-                          {actionLoading === 'offer-rider' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Hand className="w-4 h-4" /><span>OFFER RIDER</span></>}
-                        </button>
+                {event.myAttendance?.status === 'confirmed' && (() => {
+                  const riderConfirmed = myRiderSpot?.status === 'confirmed';
+                  const riderOffered = myRiderSpot?.status === 'offered';
+                  // Bench has any entry (primary or rider) → use RELEASE, not OFFER.
+                  const hasBench = waitlist.length > 0;
+
+                  return (
+                    <div className="space-y-1.5">
+                      {/* ── Rider spot controls ── */}
+                      {riderConfirmed && (
                         <button
                           onClick={handleDropRider}
                           disabled={actionLoading === 'drop-rider'}
-                          className="bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                          className="w-full bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                         >
                           {actionLoading === 'drop-rider' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserMinus className="w-4 h-4" /><span>DROP RIDER</span></>}
                         </button>
-                      </div>
-                    )}
-                    {myRiderSpot && myRiderSpot.status === 'offered' && (
-                      <button
-                        onClick={() => handleRetract(myRiderSpot.attendeeId)}
-                        disabled={actionLoading === 'retract-rider'}
-                        className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-base py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {actionLoading === 'retract-rider' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Undo2 className="w-5 h-5" /><span>RETRACT RIDER OFFER</span></>}
-                      </button>
-                    )}
-
-                    {/* Primary spot controls */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => handleOffer()}
-                        disabled={actionLoading === 'offer' || (myRiderSpot?.status === 'confirmed')}
-                        title={myRiderSpot?.status === 'confirmed' ? 'Offer or drop your Rider first' : undefined}
-                        className="bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {actionLoading === 'offer' ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                          <>
-                            <Hand className="w-5 h-5" />
-                            <span>OFFER</span>
-                          </>
-                        )}
-                      </button>
-                      <button
-                        onClick={handleRelease}
-                        disabled={actionLoading === 'release' || waitlist.length === 0 || myRiderSpot?.status === 'confirmed'}
-                        className="bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md enabled:hover:shadow-[6px_6px_0_var(--asphalt-black)] enabled:hover:translate-y-[-2px] enabled:active:shadow-sticker-sm enabled:active:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        title={
-                          myRiderSpot?.status === 'confirmed'
-                            ? 'Offer or drop your Rider before releasing your own spot'
-                            : waitlist.length > 0
-                            ? 'Releasing passes your spot to the next head on the bench'
-                            : 'Release only works when someone is on the bench — use Offer instead'
-                        }
-                      >
-                        {actionLoading === 'release' ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                          <>
-                            <LogOut className="w-5 h-5" />
-                            <span>RELEASE</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    {waitlist.length === 0 && !myRiderSpot && (
-                      <p className="text-xs text-asphalt/60 font-body text-center">
-                        Release opens up once someone&apos;s on the bench. To give up your
-                        spot now, use <span className="font-semibold">Offer</span>.
-                      </p>
-                    )}
-
-                    {/* Bring a Rider — only when no rider exists and event has capacity */}
-                    {!myRiderSpot && !event.myRiderWaitlistPosition && availableSpots > 0 && isSignupOpen && (
-                      <button
-                        onClick={handleClaimRider}
-                        disabled={actionLoading === 'claim-rider'}
-                        className="w-full bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {actionLoading === 'claim-rider' ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                          <>
-                            <UserPlus className="w-5 h-5" />
-                            <span>BRING A RIDER</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-
-                    {/* Put Rider on the bench — when game is full and no rider/rider-waitlist yet */}
-                    {!myRiderSpot && !event.myRiderWaitlistPosition && availableSpots === 0 && isSignupOpen && (
-                      <button
-                        onClick={handleJoinRiderWaitlist}
-                        disabled={actionLoading === 'rider-waitlist-join'}
-                        className="w-full bg-dull-gold/60 text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {actionLoading === 'rider-waitlist-join' ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                          <>
-                            <UserPlus className="w-5 h-5" />
-                            <span>PUT RIDER ON THE BENCH</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-
-                    {/* Take rider off the bench */}
-                    {!myRiderSpot && event.myRiderWaitlistPosition && (
-                      <div className="space-y-1">
-                        <p className="text-xs text-asphalt/60 font-body text-center">
-                          Your Rider is <span className="font-semibold">#{event.myRiderWaitlistPosition}</span> on the bench
-                        </p>
+                      )}
+                      {riderOffered && (
                         <button
-                          onClick={handleLeaveRiderWaitlist}
-                          disabled={actionLoading === 'rider-waitlist-leave'}
-                          className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          onClick={() => handleRetract(myRiderSpot.attendeeId)}
+                          disabled={actionLoading === 'retract-rider'}
+                          className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-base py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
-                          {actionLoading === 'rider-waitlist-leave' ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <>
-                              <UserMinus className="w-4 h-4" />
-                              <span>TAKE RIDER OFF THE BENCH</span>
-                            </>
-                          )}
+                          {actionLoading === 'retract-rider' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Undo2 className="w-5 h-5" /><span>RETRACT RIDER OFFER</span></>}
                         </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                      )}
+
+                      {/* ── Primary spot: single contextual give-up button ── */}
+                      {riderConfirmed ? (
+                        // Blocked while rider is confirmed — must drop rider first.
+                        <p className="text-xs text-asphalt/60 font-body text-center">
+                          Drop your Rider before leaving your own spot.
+                        </p>
+                      ) : hasBench ? (
+                        // Bench has entries → RELEASE auto-promotes first in queue.
+                        <button
+                          onClick={handleRelease}
+                          disabled={actionLoading === 'release'}
+                          title="Passes your spot to the next head on the bench"
+                          className="w-full bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {actionLoading === 'release' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><LogOut className="w-5 h-5" /><span>RELEASE</span></>}
+                        </button>
+                      ) : (
+                        // Bench empty → OFFER puts spot on the marketplace.
+                        <button
+                          onClick={() => handleOffer()}
+                          disabled={actionLoading === 'offer'}
+                          title="Opens your spot for anyone in the crew to claim"
+                          className="w-full bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {actionLoading === 'offer' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Hand className="w-5 h-5" /><span>OFFER</span></>}
+                        </button>
+                      )}
+
+                      {/* ── Direct handover: pass spot to a specific player ── */}
+                      {!riderConfirmed && (
+                        <div className="flex gap-2 pt-0.5">
+                          <Select value={handoverEmail} onValueChange={setHandoverEmail}>
+                            <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
+                              <SelectValue placeholder="Hand it to…" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                              {members
+                                .filter(
+                                  (m) =>
+                                    m.userEmail.toLowerCase() !== userEmail.toLowerCase() &&
+                                    !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
+                                    !offeredSpots.some((a) => a.userEmail === m.userEmail)
+                                )
+                                .map((m) => (
+                                  <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                                    {m.displayName}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <button
+                            onClick={handleSelfHandover}
+                            disabled={!handoverEmail || actionLoading === 'handover'}
+                            className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND IT OVER'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* ── Rider section ── */}
+                      {!myRiderSpot && !event.myRiderWaitlistPosition && isSignupOpen && (
+                        availableSpots > 0 ? (
+                          <button
+                            onClick={handleClaimRider}
+                            disabled={actionLoading === 'claim-rider'}
+                            className="w-full bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {actionLoading === 'claim-rider' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><UserPlus className="w-5 h-5" /><span>BRING A RIDER</span></>}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={handleJoinRiderWaitlist}
+                            disabled={actionLoading === 'rider-waitlist-join'}
+                            className="w-full bg-dull-gold/60 text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {actionLoading === 'rider-waitlist-join' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><UserPlus className="w-5 h-5" /><span>PUT RIDER ON THE BENCH</span></>}
+                          </button>
+                        )
+                      )}
+
+                      {/* Take rider off the bench */}
+                      {!myRiderSpot && event.myRiderWaitlistPosition && (
+                        <div className="space-y-1">
+                          <p className="text-xs text-asphalt/60 font-body text-center">
+                            Your Rider is <span className="font-semibold">#{event.myRiderWaitlistPosition}</span> on the bench
+                          </p>
+                          <button
+                            onClick={handleLeaveRiderWaitlist}
+                            disabled={actionLoading === 'rider-waitlist-leave'}
+                            className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {actionLoading === 'rider-waitlist-leave' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserMinus className="w-4 h-4" /><span>TAKE RIDER OFF THE BENCH</span></>}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {event.myAttendance?.status === 'offered' && (
                   <button
