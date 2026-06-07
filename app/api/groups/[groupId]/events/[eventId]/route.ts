@@ -44,7 +44,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       (a) => a.userEmail.toLowerCase() === ctx.user.email.toLowerCase()
     );
     const myWaitlist = waitlist.find(
-      (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase()
+      (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && !w.forRider
+    );
+    const myRiderWaitlist = waitlist.find(
+      (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && w.forRider
     );
 
     // Occupancy includes confirmed + offered spots (an offered spot is still held
@@ -64,6 +67,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         isAttending: !!userAttendance,
         myAttendance: userAttendance || null,
         myWaitlistPosition: myWaitlist ? myWaitlist.position : null,
+        myRiderWaitlistPosition: myRiderWaitlist ? myRiderWaitlist.position : null,
       },
     });
   } catch (error) {

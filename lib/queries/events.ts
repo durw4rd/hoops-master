@@ -199,6 +199,7 @@ export async function getWaitlistEntries(eventId: string): Promise<WaitlistEntry
     displayName,
     position: idx + 1,
     joinedAt: w.joinedAt.toISOString(),
+    forRider: w.forRider,
   }));
 }
 

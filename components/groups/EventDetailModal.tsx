@@ -70,6 +70,7 @@ interface EventDetail {
   isAttending: boolean;
   myAttendance: EventAttendee | null;
   myWaitlistPosition: number | null;
+  myRiderWaitlistPosition: number | null;
 }
 
 export default function EventDetailModal({
@@ -321,6 +322,40 @@ export default function EventDetailModal({
   const handleRelease = () => runAction('release', 'release');
   const handleJoinWaitlist = () => runAction('waitlist', 'waitlist', 'POST');
   const handleLeaveWaitlist = () => runAction('waitlist', 'waitlist', 'DELETE');
+
+  const handleJoinRiderWaitlist = async () => {
+    setActionLoading('rider-waitlist-join');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/waitlist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forRider: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      fetchEvent();
+      onEventUpdated();
+    } catch { setError('Failed to join rider bench'); }
+    finally { setActionLoading(null); }
+  };
+
+  const handleLeaveRiderWaitlist = async () => {
+    setActionLoading('rider-waitlist-leave');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/waitlist`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forRider: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      fetchEvent();
+      onEventUpdated();
+    } catch { setError('Failed to leave rider bench'); }
+    finally { setActionLoading(null); }
+  };
 
   const handleAssign = async () => {
     if (!assignEmail) return;
@@ -689,7 +724,7 @@ export default function EventDetailModal({
                     )}
 
                     {/* Bring a Rider — only when no rider exists and event has capacity */}
-                    {!myRiderSpot && availableSpots > 0 && isSignupOpen && (
+                    {!myRiderSpot && !event.myRiderWaitlistPosition && availableSpots > 0 && isSignupOpen && (
                       <button
                         onClick={handleClaimRider}
                         disabled={actionLoading === 'claim-rider'}
@@ -704,6 +739,47 @@ export default function EventDetailModal({
                           </>
                         )}
                       </button>
+                    )}
+
+                    {/* Put Rider on the bench — when game is full and no rider/rider-waitlist yet */}
+                    {!myRiderSpot && !event.myRiderWaitlistPosition && availableSpots === 0 && isSignupOpen && (
+                      <button
+                        onClick={handleJoinRiderWaitlist}
+                        disabled={actionLoading === 'rider-waitlist-join'}
+                        className="w-full bg-dull-gold/60 text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'rider-waitlist-join' ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <>
+                            <UserPlus className="w-5 h-5" />
+                            <span>PUT RIDER ON THE BENCH</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Take rider off the bench */}
+                    {!myRiderSpot && event.myRiderWaitlistPosition && (
+                      <div className="space-y-1">
+                        <p className="text-xs text-asphalt/60 font-body text-center">
+                          Your Rider is <span className="font-semibold">#{event.myRiderWaitlistPosition}</span> on the bench
+                        </p>
+                        <button
+                          onClick={handleLeaveRiderWaitlist}
+                          disabled={actionLoading === 'rider-waitlist-leave'}
+                          className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {actionLoading === 'rider-waitlist-leave' ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              <UserMinus className="w-4 h-4" />
+                              <span>TAKE RIDER OFF THE BENCH</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1050,10 +1126,15 @@ export default function EventDetailModal({
                           className="h-6 w-6 shrink-0"
                         />
                         {renderRoleIcon(entry.userEmail)}
-                        <span className="font-marker text-sm text-asphalt truncate">
-                          {entry.displayName}
+                        <span className="font-marker text-sm text-asphalt truncate flex items-center gap-1.5">
+                          {entry.forRider ? `${entry.displayName}'s Rider` : entry.displayName}
                           {entry.userEmail === userEmail && (
-                            <span className="text-asphalt/60 ml-1">(you)</span>
+                            <span className="text-asphalt/60">(you)</span>
+                          )}
+                          {entry.forRider && (
+                            <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1 py-0.5 leading-none shrink-0">
+                              RIDER
+                            </span>
                           )}
                         </span>
                       </div>

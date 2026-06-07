@@ -36,10 +36,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Cannot join the waitlist for past events' }, { status: 400 });
     }
 
-    const position = await joinWaitlist({ eventId, userId: ctx.user.id });
+    const body = await request.json().catch(() => ({}));
+    const forRider = body?.forRider === true;
+
+    const position = await joinWaitlist({ eventId, userId: ctx.user.id, forRider });
     return NextResponse.json({
       success: true,
-      message: `You are #${position} on the waitlist`,
+      message: forRider
+        ? `Your Rider is #${position} on the bench`
+        : `You are #${position} on the waitlist`,
       data: { position },
     });
   } catch (error) {
@@ -60,8 +65,14 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   if (ctx instanceof NextResponse) return ctx;
 
   try {
-    await leaveWaitlist({ eventId, userId: ctx.user.id });
-    return NextResponse.json({ success: true, message: 'Left the waitlist' });
+    const body = await request.json().catch(() => ({}));
+    const forRider = body?.forRider === true;
+
+    await leaveWaitlist({ eventId, userId: ctx.user.id, forRider });
+    return NextResponse.json({
+      success: true,
+      message: forRider ? 'Rider removed from the bench' : 'Left the waitlist',
+    });
   } catch (error) {
     console.error('Error leaving waitlist:', error);
     return NextResponse.json(

@@ -170,8 +170,9 @@ export type TransactionType =
 export interface WaitlistEntry {
   userEmail: string;
   displayName: string;
-  position: number;          // computed FIFO position (1-based)
+  position: number;          // computed FIFO position (1-based, across all entries)
   joinedAt: string;          // ISO timestamp
+  forRider: boolean;         // true = queuing for a Rider (+1) spot
 }
 
 export interface RosterEntry {

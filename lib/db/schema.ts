@@ -155,9 +155,12 @@ export const eventWaitlist = pgTable(
     eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
     userId: uuid('user_id').notNull().references(() => users.id),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+    // true = queuing for a Rider (+1) spot (user already holds a primary spot)
+    forRider: boolean('for_rider').notNull().default(false),
   },
   (t) => ({
-    eventUserUnique: uniqueIndex('event_waitlist_event_user_unique').on(t.eventId, t.userId),
+    // Allows one primary waitlist entry AND one rider waitlist entry per user per event.
+    eventUserTypeUnique: uniqueIndex('event_waitlist_event_user_type_unique').on(t.eventId, t.userId, t.forRider),
     eventJoinedIdx: index('idx_waitlist_event_joined').on(t.eventId, t.joinedAt),
   })
 );
