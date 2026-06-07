@@ -2,9 +2,9 @@
  * Group + membership queries (Neon/Drizzle).
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { groups, groupMembers, users, spotTransactions, payments, events } from '@/lib/db/schema';
+import { groups, groupMembers, users, spotTransactions, payments, events, eventAttendees } from '@/lib/db/schema';
 import { getUserRowByEmail } from './users';
 import type {
   Group,
@@ -308,6 +308,48 @@ export async function addGroupMember(
     invitedBy: row.invitedBy,
     status: row.status as MemberStatus,
   };
+}
+
+/**
+ * Remove a member from the crew (soft-delete: status → 'inactive').
+ * Throws if the player has confirmed spots in any future events in this crew
+ * — the Capo must unassign them from those games first.
+ */
+export async function removeGroupMember(groupId: string, email: string): Promise<void> {
+  const user = await getUserRowByEmail(email);
+  if (!user) throw new Error('User not found');
+
+  const member = await getMemberRow(groupId, user.id);
+  if (!member || member.status !== 'active') throw new Error('Member not found in this crew');
+
+  // Block removal if they hold spots in upcoming events.
+  const now = new Date();
+  const upcomingEvents = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.groupId, groupId), gt(events.startsAt, now)));
+
+  if (upcomingEvents.length > 0) {
+    const eventIds = upcomingEvents.map((e) => e.id);
+    const [confirmed] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(eventAttendees)
+      .where(and(
+        eq(eventAttendees.userId, user.id),
+        inArray(eventAttendees.eventId, eventIds),
+        eq(eventAttendees.status, 'confirmed'),
+      ));
+    if (confirmed && confirmed.count > 0) {
+      throw new Error(
+        `${user.displayName} has ${confirmed.count} confirmed spot${confirmed.count > 1 ? 's' : ''} in upcoming games — unassign them first`
+      );
+    }
+  }
+
+  await db
+    .update(groupMembers)
+    .set({ status: 'inactive' })
+    .where(eq(groupMembers.id, member.id));
 }
 
 /** Memberships for a user (by email), enriched with group name. */

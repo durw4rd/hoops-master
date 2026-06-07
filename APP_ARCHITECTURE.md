@@ -89,8 +89,18 @@ Notes for agents:
   the primary is blocked while the Rider is confirmed — the Rider must be offered
   or dropped first (both can be simultaneously on the market). `releaseSpot`
   checks for a confirmed Rider and throws if one exists. Rider spots are
-  excluded from `confirmedAttendees`/`offeredSpots` in the UI; they are shown
-  inline after their owner in the Playing grid as *"Name's Rider"*.
+  shown inline after their owner in the Playing grid as *"Name's Rider"*.
+- **Offer vs Release:** `offerSpot` (primary) includes a server-side guard: if any
+  `forRider=false` entry exists on the waitlist, it throws 400 and instructs the
+  player to use Release instead. This prevents the stale-UI race condition where
+  the offer button appears when there are bench players awaiting a direct handover.
+  The `EventDetailModal` additionally re-fetches event data on `window` focus to
+  keep button states fresh. `offerSpot` also auto-cancels the caller's own
+  `forRider=true` bench entry when offering the primary.
+- **Self-reassign (non-admin):** Non-admin players can hand over their own spot via
+  "Hand It Over" in `EventDetailModal`. The reassign route previously blocked any
+  `attendeeId` param for non-admins; it now allows it and instead `reassignSpot`
+  enforces ownership: if `!isAdmin && source.userId !== byUserId`, it throws 403.
 - **Times are absolute** (`timestamptz`). The crew's `timezone` is the source of
   truth for rendering/input conversions (`lib/datetime.ts`). Don't store wall-clock.
 - **Credit math is symmetric & type-agnostic.** The ledger balance never filters on
@@ -127,6 +137,18 @@ pre-login the app evaluates a single `session` context (key = persisted session 
 plus `deviceType`/`browser`). On login, `LDIdentify` re-identifies to a `multi`
 context adding a `user` kind (key = email, with `email`/`name`/`deviceType`/`browser`).
 This is for targeting/analytics only — it does not grant authorization.
+
+## Crew member management
+
+The **Players tab** in `GroupDashboard.tsx` exposes all member admin actions:
+
+| Action | Who | Notes |
+|---|---|---|
+| Put 'Em On (add) | Capo or King | User must exist (be signed in at least once); re-activates inactive rows |
+| Make King / Demote | Capo only | Toggle between `coleader` and `member`; cannot target other Capos |
+| Remove (Boot) | Capo only | Soft-delete (`status → inactive`); blocked if the player has ≥1 confirmed spot in any upcoming game — unassign them from those events first. Credit/payment history is retained. |
+
+`removeGroupMember()` in `lib/queries/groups.ts` queries `event_attendees JOIN events` to find upcoming confirmed spots before setting `group_members.status = 'inactive'`. The check is intentionally conservative (any upcoming event, not just active-status events) to prevent orphaned credit rows.
 
 ## Auth flow (invite-only)
 
@@ -192,6 +214,7 @@ DELETE /api/groups/[id]                             # hard delete (Owner any / C
 GET    /api/groups/[id]/members                     # list members
 POST   /api/groups/[id]/members                     # add member (Capo/King)
 PATCH  /api/groups/[id]/members                     # change crew role (Capo)
+DELETE /api/groups/[id]/members                     # remove member (Capo; blocked if upcoming confirmed spots)
 GET    /api/groups/[id]/members/available           # addable player profiles
 
 GET    /api/groups/[id]/events                      # list games

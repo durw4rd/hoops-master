@@ -93,6 +93,9 @@ export default function GroupDashboard({
   const [activeTab, setActiveTab] = useState<'events' | 'members' | 'credits' | 'settings'>('events');
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
+  const [removeMemberEmail, setRemoveMemberEmail] = useState<string | null>(null);
+  const [removingMember, setRemovingMember] = useState(false);
+  const [removeMemberError, setRemoveMemberError] = useState<string | null>(null);
   const [deletingCrew, setDeletingCrew] = useState(false);
   const [confirmDeleteCrewOpen, setConfirmDeleteCrewOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState<'all' | 'mine'>('all');
@@ -260,6 +263,31 @@ export default function GroupDashboard({
       console.error('Failed to update member role:', error);
     } finally {
       setRoleUpdating(null);
+    }
+  };
+
+  const handleRemoveMember = async () => {
+    if (!removeMemberEmail) return;
+    setRemovingMember(true);
+    setRemoveMemberError(null);
+    try {
+      const res = await fetch(`/api/groups/${group.groupId}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userEmail: removeMemberEmail }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setRemoveMemberEmail(null);
+        await fetchMembers();
+      } else {
+        setRemoveMemberError(data.error || 'Failed to remove member');
+      }
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+      setRemoveMemberError('Failed to remove member');
+    } finally {
+      setRemovingMember(false);
     }
   };
 
@@ -609,6 +637,17 @@ export default function GroupDashboard({
                             </button>
                           )
                         )}
+                        {/* Capo can remove any non-Capo, non-self member */}
+                        {isCapo && member.groupRole !== 'admin' && member.userEmail !== userEmail && (
+                          <button
+                            onClick={() => { setRemoveMemberError(null); setRemoveMemberEmail(member.userEmail); }}
+                            title={`Remove ${member.displayName} from crew`}
+                            className="text-terracotta hover:text-terracotta/70 transition-colors"
+                            aria-label={`Remove ${member.displayName}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -881,6 +920,27 @@ export default function GroupDashboard({
         onConfirm={handleDeleteCrew}
         loading={deletingCrew}
       />
+
+      {/* Remove member confirm dialog */}
+      {removeMemberEmail && (() => {
+        const target = members.find((m) => m.userEmail === removeMemberEmail);
+        return (
+          <ConfirmDialog
+            open={!!removeMemberEmail}
+            onOpenChange={(open) => { if (!open) { setRemoveMemberEmail(null); setRemoveMemberError(null); } }}
+            title="Boot 'Em?"
+            message={
+              removeMemberError
+                ? removeMemberError
+                : `Remove ${target?.displayName ?? removeMemberEmail} from the crew? Their credit history stays on the books.`
+            }
+            confirmLabel={removeMemberError ? 'OK' : 'BOOT EM'}
+            cancelLabel="Nevermind"
+            onConfirm={removeMemberError ? () => { setRemoveMemberEmail(null); setRemoveMemberError(null); } : handleRemoveMember}
+            loading={removingMember}
+          />
+        );
+      })()}
     </div>
   );
 }

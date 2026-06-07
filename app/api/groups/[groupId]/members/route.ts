@@ -13,6 +13,7 @@ import {
   getGroupMembers,
   getGroupMember,
   updateMemberRole,
+  removeGroupMember,
 } from '@/lib/queries/groups';
 import { getUserByEmail } from '@/lib/queries/users';
 import { GroupRole } from '@/lib/types';
@@ -146,5 +147,43 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       { error: 'Failed to update member role', details: String(error) },
       { status: 500 }
     );
+  }
+}
+
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { groupId } = await params;
+  const ctx = await requireGroupAdmin(groupId);
+  if (ctx instanceof NextResponse) return ctx;
+
+  try {
+    const body = await request.json();
+    const { userEmail } = body;
+
+    if (!userEmail) return NextResponse.json({ error: 'userEmail is required' }, { status: 400 });
+
+    const target = await getGroupMember(groupId, userEmail);
+    if (!target) {
+      return NextResponse.json({ error: 'Member not found in this crew' }, { status: 404 });
+    }
+    if (target.groupRole === 'admin') {
+      return NextResponse.json({ error: 'Cannot remove the Crew Capo' }, { status: 400 });
+    }
+    if (target.userEmail === ctx.user.email) {
+      return NextResponse.json({ error: 'Cannot remove yourself' }, { status: 400 });
+    }
+
+    await removeGroupMember(groupId, userEmail);
+
+    return NextResponse.json({
+      success: true,
+      message: `${target.displayName ?? userEmail} removed from the crew`,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('Error removing group member:', error);
+    // Surface business-rule errors (e.g. has upcoming confirmed spots) as 400
+    const knownErrors = ['confirmed spot', 'not found', 'not a member'];
+    const status = knownErrors.some((s) => msg.toLowerCase().includes(s)) ? 400 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }
