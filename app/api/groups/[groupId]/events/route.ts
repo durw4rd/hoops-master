@@ -45,7 +45,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const data = rows.map((row) => {
       const dto = toEventDTO(row, ctx.group.timezone);
       const c = counts.get(row.id) ?? { confirmed: 0, offered: 0, occupancy: 0 };
-      const s = myStatus.get(row.id) ?? { attending: false, onWaitlist: false };
+      const s = myStatus.get(row.id) ?? { attending: false, onWaitlist: false, hasRider: false };
       return {
         ...dto,
         attendeeCount: c.confirmed,
@@ -54,6 +54,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         waitlistCount: waitlistCounts.get(row.id) ?? 0,
         isAttending: s.attending,
         onWaitlist: s.onWaitlist,
+        hasRider: s.hasRider,
       };
     });
 

@@ -89,7 +89,6 @@ export default function EventDetailModal({
   const [members, setMembers] = useState<{ userEmail: string; displayName: string; groupRole: string; pieceUrl?: string }[]>([]);
   const [assignEmail, setAssignEmail] = useState("");
   const [handoverEmail, setHandoverEmail] = useState("");
-  const [handoverRiderEmail, setHandoverRiderEmail] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<Record<string, string>>({});
@@ -268,28 +267,6 @@ export default function EventDetailModal({
       onEventUpdated();
     } catch {
       setError('Failed to release Rider spot');
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleHandoverRider = async () => {
-    if (!handoverRiderEmail) return;
-    setActionLoading('handover-rider');
-    setError(null);
-    try {
-      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/hand-rider-over`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toUserEmail: handoverRiderEmail }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error); return; }
-      setHandoverRiderEmail('');
-      fetchEvent();
-      onEventUpdated();
-    } catch {
-      setError('Failed to hand over Rider spot');
     } finally {
       setActionLoading(null);
     }
@@ -492,7 +469,10 @@ export default function EventDetailModal({
   };
 
   const confirmedAttendees = event?.attendees.filter(a => a.status === 'confirmed' && !a.isPlusOne) || [];
-  const offeredSpots = event?.attendees.filter(a => a.status === 'offered' && !a.isPlusOne) || [];
+  const offeredPrimarySpots = event?.attendees.filter(a => a.status === 'offered' && !a.isPlusOne) || [];
+  const offeredRiderSpots = event?.attendees.filter(a => a.status === 'offered' && a.isPlusOne) || [];
+  // Combined for occupancy counting and hasBench logic.
+  const offeredSpots = [...offeredPrimarySpots, ...offeredRiderSpots];
   // Rider spots (plus-ones) — keyed by owner email for display grouping.
   const riderSpots = event?.attendees.filter(a => a.isPlusOne) || [];
   const myRiderSpot = riderSpots.find(a => a.userEmail.toLowerCase() === userEmail.toLowerCase()) || null;
@@ -693,13 +673,6 @@ export default function EventDetailModal({
                   const hasBench = waitlist.length > 0;
                   // Rider bench specifically for contextual rider controls.
                   const hasRiderBench = waitlist.some((w) => w.forRider);
-                  // Members eligible to receive a rider handover: have a primary spot but no rider.
-                  const riderHandoverEligible = members.filter(
-                    (m) =>
-                      m.userEmail.toLowerCase() !== userEmail.toLowerCase() &&
-                      confirmedAttendees.some((a) => a.userEmail === m.userEmail && !a.isPlusOne) &&
-                      !riderSpots.some((a) => a.userEmail === m.userEmail)
-                  );
 
                   return (
                     <div className="space-y-1.5">
@@ -716,42 +689,15 @@ export default function EventDetailModal({
                             {actionLoading === 'release-rider' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><UserMinus className="w-4 h-4" /><span>RELEASE RIDER</span></>}
                           </button>
                         ) : (
-                          // Rider bench empty → OFFER RIDER + HAND RIDER OVER.
-                          <>
-                            <button
-                              onClick={() => handleOffer(myRiderSpot.attendeeId)}
-                              disabled={actionLoading === 'offer'}
-                              title="Opens your Rider slot for someone to claim"
-                              className="w-full bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                            >
-                              {actionLoading === 'offer' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Hand className="w-4 h-4" /><span>OFFER RIDER</span></>}
-                            </button>
-                            <div className="flex gap-2 pt-0.5">
-                              <Select value={handoverRiderEmail} onValueChange={setHandoverRiderEmail}>
-                                <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
-                                  <SelectValue placeholder="Hand Rider to…" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                                  {riderHandoverEligible.length === 0 ? (
-                                    <div className="px-3 py-2 text-xs text-asphalt/50 font-body">No eligible players</div>
-                                  ) : (
-                                    riderHandoverEligible.map((m) => (
-                                      <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
-                                        {m.displayName}
-                                      </SelectItem>
-                                    ))
-                                  )}
-                                </SelectContent>
-                              </Select>
-                              <button
-                                onClick={handleHandoverRider}
-                                disabled={!handoverRiderEmail || actionLoading === 'handover-rider'}
-                                className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
-                              >
-                                {actionLoading === 'handover-rider' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND RIDER OVER'}
-                              </button>
-                            </div>
-                          </>
+                          // Rider bench empty → OFFER RIDER (or use HAND IT OVER to transfer directly).
+                          <button
+                            onClick={() => handleOffer(myRiderSpot.attendeeId)}
+                            disabled={actionLoading === 'offer'}
+                            title="Opens your Rider slot for someone to claim"
+                            className="w-full bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                          >
+                            {actionLoading === 'offer' ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Hand className="w-4 h-4" /><span>OFFER RIDER</span></>}
+                          </button>
                         )
                       )}
                       {riderOffered && (
@@ -766,9 +712,9 @@ export default function EventDetailModal({
 
                       {/* ── Primary spot: single contextual give-up button ── */}
                       {riderConfirmed ? (
-                        // Blocked while rider is confirmed — must hand rider off first.
+                        // Rider confirmed — primary give-up blocked until rider is dealt with.
                         <p className="text-xs text-asphalt/60 font-body text-center">
-                          Sort your Rider spot before leaving your own.
+                          Sort your Rider first — offer, release, or hand it over below.
                         </p>
                       ) : hasBench ? (
                         // Bench has entries → RELEASE auto-promotes first in queue.
@@ -792,37 +738,55 @@ export default function EventDetailModal({
                         </button>
                       )}
 
-                      {/* ── Direct handover: pass primary spot to a specific player ── */}
-                      {!riderConfirmed && (
-                        <div className="flex gap-2 pt-0.5">
-                          <Select value={handoverEmail} onValueChange={setHandoverEmail}>
-                            <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
-                              <SelectValue placeholder="Hand it to…" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                              {members
-                                .filter(
-                                  (m) =>
-                                    m.userEmail.toLowerCase() !== userEmail.toLowerCase() &&
-                                    !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
-                                    !offeredSpots.some((a) => a.userEmail === m.userEmail)
-                                )
-                                .map((m) => (
-                                  <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
-                                    {m.displayName}
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                          <button
-                            onClick={handleSelfHandover}
-                            disabled={!handoverEmail || actionLoading === 'handover'}
-                            className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
-                          >
-                            {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND IT OVER'}
-                          </button>
-                        </div>
-                      )}
+                      {/* ── Direct handover: rider-first, then primary ── */}
+                      {(() => {
+                        // When user has a confirmed rider, show members who can receive it
+                        // (have a primary but no rider). After rider is handled, show members
+                        // with no spot at all for primary handover.
+                        const handoverTargets = riderConfirmed
+                          ? members.filter(
+                              (m) =>
+                                m.userEmail.toLowerCase() !== userEmail.toLowerCase() &&
+                                confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
+                                !riderSpots.some((a) => a.userEmail === m.userEmail)
+                            )
+                          : members.filter(
+                              (m) =>
+                                m.userEmail.toLowerCase() !== userEmail.toLowerCase() &&
+                                !confirmedAttendees.some((a) => a.userEmail === m.userEmail) &&
+                                !offeredPrimarySpots.some((a) => a.userEmail === m.userEmail)
+                            );
+                        return (
+                          <div className="space-y-0.5">
+                            {riderConfirmed && (
+                              <p className="text-[10px] text-asphalt/50 font-body text-center">
+                                Rider goes first — recipient must already have a spot
+                              </p>
+                            )}
+                            <div className="flex gap-2">
+                              <Select value={handoverEmail} onValueChange={setHandoverEmail}>
+                                <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
+                                  <SelectValue placeholder="Hand it to…" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                                  {handoverTargets.map((m) => (
+                                    <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                                      {m.displayName}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <button
+                                onClick={handleSelfHandover}
+                                disabled={!handoverEmail || actionLoading === 'handover'}
+                                className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
+                              >
+                                {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND IT OVER'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* ── Rider section ── */}
                       {!myRiderSpot && !event.myRiderWaitlistPosition && isSignupOpen && (
@@ -836,11 +800,23 @@ export default function EventDetailModal({
                           </button>
                         ) : (
                           <button
-                            onClick={handleJoinRiderWaitlist}
-                            disabled={actionLoading === 'rider-waitlist-join'}
+                            onClick={() => {
+                              // If an offered rider spot exists, claim it directly instead of queuing.
+                              const sortedRiderOffers = [...offeredRiderSpots].sort(
+                                (a, b) =>
+                                  new Date(a.offeredAt ?? 0).getTime() - new Date(b.offeredAt ?? 0).getTime()
+                              );
+                              const earliest = sortedRiderOffers[0];
+                              if (earliest) {
+                                handleClaim(earliest.attendeeId);
+                              } else {
+                                handleJoinRiderWaitlist();
+                              }
+                            }}
+                            disabled={actionLoading === 'rider-waitlist-join' || actionLoading === 'claim'}
                             className="w-full bg-dull-gold/60 text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                           >
-                            {actionLoading === 'rider-waitlist-join' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><UserPlus className="w-5 h-5" /><span>PUT RIDER ON THE BENCH</span></>}
+                            {actionLoading === 'rider-waitlist-join' || actionLoading === 'claim' ? <Loader2 className="w-5 h-5 animate-spin" /> : <><UserPlus className="w-5 h-5" /><span>PUT RIDER ON THE BENCH</span></>}
                           </button>
                         )
                       )}
@@ -1066,16 +1042,16 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Offered Spots */}
+              {/* Offered Spots — primary and rider */}
               {offeredSpots.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="font-graffiti text-lg text-terracotta">
                     Available Spots ({offeredSpots.length})
                   </h3>
                   <div className="space-y-2">
-                    {offeredSpots.map((attendee, index) => (
-                      <div 
-                        key={attendee.attendeeId} 
+                    {offeredPrimarySpots.map((attendee, index) => (
+                      <div
+                        key={attendee.attendeeId}
                         className="marker-card bg-terracotta/10 p-3 flex items-center justify-between"
                         style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                       >
@@ -1089,11 +1065,30 @@ export default function EventDetailModal({
                             disabled={actionLoading === 'claim'}
                             className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                           >
-                            {actionLoading === 'claim' ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              'CLAIM'
-                            )}
+                            {actionLoading === 'claim' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'CLAIM'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {offeredRiderSpots.map((attendee, index) => (
+                      <div
+                        key={attendee.attendeeId}
+                        className="marker-card bg-dull-gold/10 p-3 flex items-center justify-between"
+                        style={{ transform: `rotate(${(offeredPrimarySpots.length + index) % 2 === 0 ? -0.3 : 0.3}deg)` }}
+                      >
+                        <span className="font-marker text-asphalt flex items-center gap-1">
+                          {renderRoleIcon(attendee.userEmail)}
+                          {attendee.userName}&apos;s Rider
+                          <span className="ml-1 text-[10px] font-graffiti bg-dull-gold text-asphalt px-1.5 py-0.5 border border-asphalt">+1</span>
+                        </span>
+                        {/* Only players who have a confirmed primary but no rider can claim a rider slot */}
+                        {event.isAttending && !myRiderSpot && event.myAttendance?.status === 'confirmed' && isSignupOpen && (
+                          <button
+                            onClick={() => handleClaim(attendee.attendeeId)}
+                            disabled={actionLoading === 'claim'}
+                            className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
+                          >
+                            {actionLoading === 'claim' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'CLAIM AS RIDER'}
                           </button>
                         )}
                       </div>

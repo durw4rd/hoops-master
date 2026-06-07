@@ -58,6 +58,7 @@ interface EventWithCounts extends Event {
   waitlistCount?: number;
   isAttending?: boolean;
   onWaitlist?: boolean;
+  hasRider?: boolean;
 }
 
 interface MemberInfo {
@@ -461,7 +462,12 @@ export default function GroupDashboard({
                             {event.startTime} - {event.endTime}
                           </span>
                           {event.isAttending && (
-                            <span className="badge-green text-[10px]">YOU&apos;RE IN</span>
+                            <>
+                              <span className="badge-green text-[10px]">YOU&apos;RE IN</span>
+                              {event.hasRider && (
+                                <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1.5 py-0.5 border border-asphalt">+1</span>
+                              )}
+                            </>
                           )}
                           {!event.isAttending && event.onWaitlist && (
                             <span className="badge-blue text-[10px]">ON THE BENCH</span>
