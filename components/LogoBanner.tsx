@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { BookText, ChevronLeft, ScrollText } from "lucide-react";
+import { BookText, ScrollText } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import SettingsMenu from "@/components/SettingsMenu";
 
@@ -28,28 +28,7 @@ export default function LogoBanner({
   return (
     <>
       <div className="sticky top-0 z-40 -mx-4 px-4 py-2 mb-3 flex items-center gap-2 concrete-bg">
-        {/* Left: Black Book (admin only) */}
-        {onOpenBlackBook ? (
-          <button
-            type="button"
-            onClick={onOpenBlackBook}
-            className="sticker-btn-outline flex items-center gap-1.5 text-sm py-1.5 px-3 shrink-0"
-            title="Manage players — invites and admin roles"
-          >
-            <BookText className="w-4 h-4 shrink-0" />
-            Black Book
-          </button>
-        ) : (
-          <span
-            className="flex items-center gap-1 font-graffiti text-base sm:text-lg invisible select-none"
-            aria-hidden
-          >
-            <ChevronLeft className="w-6 h-6 shrink-0" />
-            Crews
-          </span>
-        )}
-
-        {/* Vocab — always visible when logged in */}
+        {/* Left: Vocab always first */}
         {onOpenVocab && (
           <button
             type="button"
@@ -59,6 +38,19 @@ export default function LogoBanner({
           >
             <ScrollText className="w-4 h-4 shrink-0" />
             Vocab
+          </button>
+        )}
+
+        {/* Black Book (admin only) */}
+        {onOpenBlackBook && (
+          <button
+            type="button"
+            onClick={onOpenBlackBook}
+            className="sticker-btn-outline flex items-center gap-1.5 text-sm py-1.5 px-3 shrink-0"
+            title="Manage players — invites and admin roles"
+          >
+            <BookText className="w-4 h-4 shrink-0" />
+            Black Book
           </button>
         )}
 

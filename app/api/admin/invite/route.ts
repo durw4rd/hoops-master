@@ -1,9 +1,11 @@
 /**
  * App-admin Invite API
  *
- * GET  /api/admin/invite - List all users with invite/onboarding status (app-admin).
- * POST /api/admin/invite - Invite a player by email (app-admin).
+ * GET   /api/admin/invite - List all users with invite/onboarding status (app-admin).
+ * POST  /api/admin/invite - Invite a player by email (app-admin).
  *   Body: { email: string }
+ * PATCH /api/admin/invite - Change a registered player's email (app-admin).
+ *   Body: { oldEmail: string, newEmail: string }
  *
  * Invite-only access: only emails added here (or seeded) can sign in. The invitee
  * picks their username during onboarding on first sign-in.
@@ -12,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiGuards';
 import { isAppAdmin } from '@/lib/launchdarkly';
-import { inviteUser, listUsers } from '@/lib/queries/users';
+import { inviteUser, listUsers, updateUserEmail } from '@/lib/queries/users';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -77,5 +79,39 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to invite user', details: String(error) },
       { status: 500 }
     );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  if (!(await isAppAdmin(ctx.user.email, ctx.user.globalRole))) {
+    return NextResponse.json({ error: 'App admin access required' }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const oldEmail = typeof body?.oldEmail === 'string' ? body.oldEmail.trim().toLowerCase() : '';
+    const newEmail = typeof body?.newEmail === 'string' ? body.newEmail.trim().toLowerCase() : '';
+
+    if (!EMAIL_RE.test(oldEmail) || !EMAIL_RE.test(newEmail)) {
+      return NextResponse.json({ error: 'Both oldEmail and newEmail must be valid email addresses' }, { status: 400 });
+    }
+
+    await updateUserEmail(oldEmail, newEmail);
+    return NextResponse.json({
+      success: true,
+      message: `Email updated from ${oldEmail} to ${newEmail}. The player will need to sign in again with their new address.`,
+    });
+  } catch (error) {
+    if (String(error).includes('already in use')) {
+      return NextResponse.json({ error: 'That email is already in use' }, { status: 409 });
+    }
+    if (String(error).includes('not found')) {
+      return NextResponse.json({ error: 'No user found with that email' }, { status: 404 });
+    }
+    console.error('Error updating user email:', error);
+    return NextResponse.json({ error: 'Failed to update email', details: String(error) }, { status: 500 });
   }
 }

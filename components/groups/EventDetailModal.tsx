@@ -485,14 +485,25 @@ export default function EventDetailModal({
                   </button>
                 )}
                 
-                {/* Join waitlist when the event is full */}
+                {/* Join waitlist / claim oldest offered spot when the event is full */}
                 {!event.isAttending && isFull && isSignupOpen && event.myWaitlistPosition === null && (
                   <button
-                    onClick={handleJoinWaitlist}
-                    disabled={actionLoading === 'waitlist'}
-                    className="w-full bg-slate-blue text-white border-3 border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    onClick={() => {
+                      const sorted = [...offeredSpots].sort(
+                        (a, b) =>
+                          new Date(a.offeredAt ?? 0).getTime() - new Date(b.offeredAt ?? 0).getTime()
+                      );
+                      const earliest = sorted[0];
+                      if (earliest) {
+                        handleClaim(earliest.attendeeId);
+                      } else {
+                        handleJoinWaitlist();
+                      }
+                    }}
+                    disabled={actionLoading === 'waitlist' || actionLoading === 'claim'}
+                    className="w-full bg-slate-blue text-white border-[3px] border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {actionLoading === 'waitlist' ? (
+                    {actionLoading === 'waitlist' || actionLoading === 'claim' ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
                       <>
@@ -512,7 +523,7 @@ export default function EventDetailModal({
                     <button
                       onClick={handleLeaveWaitlist}
                       disabled={actionLoading === 'waitlist'}
-                      className="w-full bg-white text-asphalt border-3 border-asphalt font-graffiti text-base py-2.5 px-5 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-[5px_5px_0_#1A1A1A] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-base py-2.5 px-5 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-[5px_5px_0_#1A1A1A] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {actionLoading === 'waitlist' ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
@@ -532,7 +543,7 @@ export default function EventDetailModal({
                       <button
                         onClick={handleOffer}
                         disabled={actionLoading === 'offer'}
-                        className="bg-terracotta text-white border-3 border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
                         {actionLoading === 'offer' ? (
                           <Loader2 className="w-5 h-5 animate-spin" />
@@ -546,7 +557,7 @@ export default function EventDetailModal({
                       <button
                         onClick={handleRelease}
                         disabled={actionLoading === 'release' || waitlist.length === 0}
-                        className="bg-asphalt text-white border-3 border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md enabled:hover:shadow-[6px_6px_0_var(--asphalt-black)] enabled:hover:translate-y-[-2px] enabled:active:shadow-sticker-sm enabled:active:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="bg-asphalt text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-3 shadow-sticker-md enabled:hover:shadow-[6px_6px_0_var(--asphalt-black)] enabled:hover:translate-y-[-2px] enabled:active:shadow-sticker-sm enabled:active:translate-y-[1px] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         title={
                           waitlist.length > 0
                             ? 'Releasing passes your spot to the next head on the bench'
@@ -576,7 +587,7 @@ export default function EventDetailModal({
                   <button
                     onClick={handleRetract}
                     disabled={actionLoading === 'retract'}
-                    className="w-full bg-white text-asphalt border-3 border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {actionLoading === 'retract' ? (
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -661,8 +672,8 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Manager: reassign or remove players already in the game */}
-              {canManage && confirmedAttendees.length > 0 && (
+              {/* Manager: reassign or remove players already in the game (confirmed + offered) */}
+              {canManage && (confirmedAttendees.length + offeredSpots.length) > 0 && (
                 <div className="border-2 border-dashed border-asphalt/40">
                   <button
                     type="button"
@@ -670,7 +681,7 @@ export default function EventDetailModal({
                     className="w-full flex items-center justify-between gap-2 p-3 text-left"
                   >
                     <span className="font-graffiti text-sm text-asphalt">
-                      Manage Squad ({confirmedAttendees.length})
+                      Manage Squad ({confirmedAttendees.length + offeredSpots.length})
                     </span>
                     <ChevronDown
                       className={`w-4 h-4 text-asphalt flex-shrink-0 transition-transform ${manageSquadOpen ? "rotate-180" : ""}`}
@@ -678,7 +689,7 @@ export default function EventDetailModal({
                   </button>
                   {manageSquadOpen && (
                     <div className="border-t-2 border-dashed border-asphalt/40 p-3 space-y-2">
-                      {confirmedAttendees.map((attendee) => {
+                      {[...confirmedAttendees, ...offeredSpots].map((attendee) => {
                         const busy =
                           actionLoading === `reassign-${attendee.attendeeId}` ||
                           actionLoading === `unassign-${attendee.attendeeId}`;
@@ -687,8 +698,13 @@ export default function EventDetailModal({
                             key={attendee.attendeeId}
                             className="bg-white border-2 border-asphalt p-2 space-y-2"
                           >
-                            <span className="font-marker text-sm text-asphalt block truncate">
+                            <span className="font-marker text-sm text-asphalt flex items-center gap-1.5 truncate">
                               {attendee.userName}
+                              {attendee.status === 'offered' && (
+                                <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
+                                  OFFERING
+                                </span>
+                              )}
                             </span>
                             <div className="flex gap-2">
                               <Select
@@ -782,13 +798,13 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Confirmed Attendees */}
+              {/* Confirmed + Offered Attendees — offered still count as playing */}
               <div className="space-y-2">
                 <h3 className="font-graffiti text-lg text-slate-blue">
-                  Playing ({confirmedAttendees.length}/{event.totalSpots})
+                  Playing ({confirmedAttendees.length + offeredSpots.length}/{event.totalSpots})
                 </h3>
                 <div className="grid grid-cols-2 gap-2">
-                  {confirmedAttendees.map((attendee, index) => (
+                  {[...confirmedAttendees, ...offeredSpots].map((attendee, index) => (
                     <div 
                       key={attendee.attendeeId} 
                       className={`marker-card p-2 ${
@@ -798,7 +814,7 @@ export default function EventDetailModal({
                       }`}
                       style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
                     >
-                      <span className="font-marker text-sm text-asphalt truncate flex items-center gap-1.5">
+                      <span className="font-marker text-sm text-asphalt truncate flex flex-wrap items-center gap-1.5">
                         <PlayerAvatar
                           pieceUrl={pieceByEmail.get(attendee.userEmail)}
                           name={attendee.userName}
@@ -808,6 +824,11 @@ export default function EventDetailModal({
                         <span className="truncate">{attendee.userName}</span>
                         {attendee.userEmail === userEmail && (
                           <span className="text-asphalt/60">(you)</span>
+                        )}
+                        {attendee.status === 'offered' && (
+                          <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
+                            OFFERING
+                          </span>
                         )}
                       </span>
                     </div>

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Mail, Check, Clock, Crown, ShieldCheck, ChevronUp, ChevronDown } from "lucide-react";
+import { Loader2, Mail, Check, Clock, Crown, ShieldCheck, ChevronUp, ChevronDown, Pencil, X } from "lucide-react";
 
 interface InvitePlayerModalProps {
   open: boolean;
@@ -37,6 +37,9 @@ export default function InvitePlayerModal({
   const [success, setSuccess] = useState<string | null>(null);
   const [users, setUsers] = useState<InviteUser[]>([]);
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
+  const [editingEmail, setEditingEmail] = useState<string | null>(null);
+  const [editEmailValue, setEditEmailValue] = useState("");
+  const [emailUpdating, setEmailUpdating] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -79,6 +82,48 @@ export default function InvitePlayerModal({
       setError("An unexpected error occurred");
     } finally {
       setRoleUpdating(null);
+    }
+  };
+
+  const startEditEmail = (userEmail: string) => {
+    setEditingEmail(userEmail);
+    setEditEmailValue(userEmail);
+    setError(null);
+    setSuccess(null);
+  };
+
+  const cancelEditEmail = () => {
+    setEditingEmail(null);
+    setEditEmailValue("");
+  };
+
+  const saveEmail = async (oldEmail: string) => {
+    const newEmail = editEmailValue.trim().toLowerCase();
+    if (!newEmail || newEmail === oldEmail) {
+      cancelEditEmail();
+      return;
+    }
+    setEmailUpdating(oldEmail);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch("/api/admin/invite", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldEmail, newEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to update email");
+        return;
+      }
+      setSuccess(data.message || "Email updated");
+      cancelEditEmail();
+      fetchUsers();
+    } catch {
+      setError("An unexpected error occurred");
+    } finally {
+      setEmailUpdating(null);
     }
   };
 
@@ -164,7 +209,7 @@ export default function InvitePlayerModal({
                 key={u.email}
                 className="flex items-center justify-between gap-2 bg-white border-2 border-asphalt px-3 py-2"
               >
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="font-marker text-sm text-asphalt truncate flex items-center gap-1">
                     {u.onboarded ? u.displayName : u.email.split("@")[0]}
                     {u.globalRole === "owner" && (
@@ -178,7 +223,42 @@ export default function InvitePlayerModal({
                       </span>
                     )}
                   </p>
-                  <p className="text-xs text-asphalt/50 font-body truncate">{u.email}</p>
+                  {editingEmail === u.email ? (
+                    <div className="flex items-center gap-1 mt-1">
+                      <Input
+                        type="email"
+                        value={editEmailValue}
+                        onChange={(e) => setEditEmailValue(e.target.value)}
+                        className="sketch-input h-6 text-xs py-0 px-1 flex-1"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveEmail(u.email);
+                          if (e.key === "Escape") cancelEditEmail();
+                        }}
+                      />
+                      <button
+                        onClick={() => saveEmail(u.email)}
+                        disabled={emailUpdating === u.email}
+                        className="text-[10px] font-graffiti border border-asphalt bg-moss-green text-asphalt px-1.5 py-0.5 shadow-sticker-sm hover:bg-[#6aaa64] transition-colors"
+                      >
+                        {emailUpdating === u.email ? <Loader2 className="w-3 h-3 animate-spin" /> : "OK"}
+                      </button>
+                      <button onClick={cancelEditEmail} className="text-asphalt/50 hover:text-asphalt">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="flex items-center gap-1 group">
+                      <span className="text-xs text-asphalt/50 font-body truncate">{u.email}</span>
+                      <button
+                        onClick={() => startEditEmail(u.email)}
+                        title="Change email"
+                        className="opacity-0 group-hover:opacity-100 text-asphalt/40 hover:text-asphalt transition-opacity"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {u.onboarded ? (

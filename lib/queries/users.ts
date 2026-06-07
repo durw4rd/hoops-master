@@ -116,6 +116,24 @@ export async function getUsersByIds(ids: string[]): Promise<Map<string, UserRow>
   return new Map(rows.map((r) => [r.id, r]));
 }
 
+/**
+ * Update a user's email address (app-admin action).
+ * Throws if oldEmail is not found or if newEmail is already taken.
+ */
+export async function updateUserEmail(oldEmail: string, newEmail: string): Promise<UserRow> {
+  const normalized = newEmail.trim().toLowerCase();
+  const existing = await getUserRowByEmail(normalized);
+  if (existing) throw new Error('Email already in use');
+
+  const [row] = await db
+    .update(users)
+    .set({ email: normalized })
+    .where(eq(users.email, oldEmail.trim().toLowerCase()))
+    .returning();
+  if (!row) throw new Error('User not found');
+  return row;
+}
+
 export async function getUsersByEmails(emails: string[]): Promise<Map<string, UserRow>> {
   if (emails.length === 0) return new Map();
   const normalized = emails.map((e) => e.toLowerCase());

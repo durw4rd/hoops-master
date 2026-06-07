@@ -207,11 +207,19 @@ export default function HoopsMaster() {
           />
 
           {authError && (
-            <div className="max-w-md mx-auto mt-6 bg-dull-gold border-3 border-asphalt p-3 shadow-sticker-md">
-              <p className="font-graffiti text-asphalt">This app is invite-only.</p>
-              <p className="text-sm text-asphalt/70 font-body mt-1">
-                Ask an admin to invite your email, then sign in again.
-              </p>
+            <div className="w-full max-w-sm space-y-3 mt-6">
+              <div className="bg-dull-gold border-[3px] border-asphalt p-3 shadow-sticker-md">
+                <p className="font-graffiti text-asphalt">This app is invite-only.</p>
+                <p className="text-sm text-asphalt/70 font-body mt-1">
+                  Ask an admin to invite your email, then sign in again.
+                </p>
+              </div>
+              <button
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="sticker-btn-outline w-full text-base py-2.5 px-6"
+              >
+                Try a different account
+              </button>
             </div>
           )}
 
