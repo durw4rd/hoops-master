@@ -2,8 +2,10 @@
  * Retract Offered Spot API
  *
  * POST /api/groups/[groupId]/events/[eventId]/retract
+ * Body (optional): { attendeeId: string }
  *
- * Takes back the caller's offered spot. One row per user.
+ * Takes back an offered spot before it is claimed. Providing attendeeId targets
+ * a specific row (e.g. a rider row); without it the caller's primary is targeted.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -26,10 +28,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
-    const attendee = await retractOffer({ eventId, userId: ctx.user.id });
+    const body = await request.json().catch(() => ({}));
+    const attendeeId: string | undefined = body?.attendeeId;
+
+    const attendee = await retractOffer({ eventId, userId: ctx.user.id, attendeeId });
     return NextResponse.json({
       success: true,
-      message: 'Your spot offer has been retracted',
+      message: 'Spot offer retracted',
       data: { attendeeId: attendee.id },
     });
   } catch (error) {

@@ -40,8 +40,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     ]);
 
     const dto = toEventDTO(eventRow, ctx.group.timezone);
+    // Primary row: userEmail matches and it is not a rider row (parentAttendeeId is null).
     const userAttendance = attendees.find(
-      (a) => a.userEmail.toLowerCase() === ctx.user.email.toLowerCase()
+      (a) => a.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && !a.isPlusOne
     );
     const myWaitlist = waitlist.find(
       (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && !w.forRider
@@ -50,9 +51,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && w.forRider
     );
 
-    // Occupancy = SUM(1 + plusOne) — a row with plusOne=true counts as 2 slots.
+    // Occupancy = one slot per attendee row (each rider row is a separate row).
     // Offered spots still count toward occupancy (held until claimed).
-    const occupancy = attendees.reduce((sum, a) => sum + 1 + (a.plusOne ? 1 : 0), 0);
+    const occupancy = attendees.length;
     const availableSpots = Math.max(0, dto.totalSpots - occupancy);
 
     return NextResponse.json({

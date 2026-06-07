@@ -1,15 +1,16 @@
 /**
- * Drop Rider API
+ * Release Rider API
  *
  * POST /api/groups/[groupId]/events/[eventId]/drop-rider
  *
- * Removes the plusOne from the caller's spot. If a player is on the rider
- * bench, they are auto-promoted (zero-sum). Otherwise the caller is credited.
+ * Releases the caller's confirmed Rider slot to the first player on the Rider
+ * bench (forRider=true waitlist). Throws a 400 if the bench is empty — the
+ * player should use the offer endpoint with their rider's attendeeId instead.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireMember } from '@/lib/apiGuards';
-import { getEventRowById, dropRider } from '@/lib/queries/events';
+import { getEventRowById, releaseRiderSpot } from '@/lib/queries/events';
 import { SpotError } from '@/lib/queries/_tx';
 import { isPastEvent } from '@/lib/eventRules';
 
@@ -31,19 +32,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Cannot modify spots for past events' }, { status: 400 });
     }
 
-    await dropRider({ eventId, userId: ctx.user.id });
+    await releaseRiderSpot({ eventId, userId: ctx.user.id });
 
     return NextResponse.json({
       success: true,
-      message: 'Rider dropped',
+      message: 'Rider released to the Rider bench',
     });
   } catch (error) {
     if (error instanceof SpotError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    console.error('Error dropping Rider:', error);
+    console.error('Error releasing Rider:', error);
     return NextResponse.json(
-      { error: 'Failed to drop Rider', details: String(error) },
+      { error: 'Failed to release Rider', details: String(error) },
       { status: 500 }
     );
   }

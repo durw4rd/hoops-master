@@ -1,125 +1,80 @@
 /**
- * Waitlist queries (FIFO by joined_at) + spot release with auto-promotion.
+ * Waitlist operations: join, leave, and auto-promote on spot release.
  *
- * forRider=false: player has no spot and wants one.
- * forRider=true:  player has a confirmed primary spot and wants a +1 (Rider).
+ * Two queues share the same `event_waitlist` table:
+ *   forRider=false  Primary queue (player wants their own slot)
+ *   forRider=true   Rider bench (player already has a primary; wants a +1)
  *
- * When a primary spot is released, only forRider=false entries are promoted.
- * When a rider slot is freed (via dropRider in events.ts), only forRider=true
- * entries are promoted — that logic lives alongside dropRider.
+ * releaseSpot (primary release) surgical fix:
+ *   - Only promotes forRider=false entries — never forRider=true. The Rider bench
+ *     is exclusively drained by releaseRiderSpot / offerSpot (rider row).
+ *   - Auto-cancels the departing player's own forRider=true bench entry (if any),
+ *     preventing the "rider in but primary out" invalid state.
+ *
+ * "No free drops" rule: releaseSpot only runs if someone is on the primary bench.
+ * If the bench is empty the player must use offerSpot (marketplace) instead.
+ * Likewise releaseRiderSpot only runs if someone is on the rider bench (see events.ts).
  */
 
 import { and, asc, eq, isNull } from 'drizzle-orm';
+import { db } from '@/lib/db';
 import { eventAttendees, eventWaitlist } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
-import { withEventLock, SpotError, type Tx } from './_tx';
+import { withEventLock, SpotError } from './_tx';
 
-/**
- * Occupancy = SUM(1 + plusOne) across all attendee rows.
- */
-async function occupancy(tx: Tx, eventId: string): Promise<number> {
-  const rows = await tx
-    .select({ plusOne: eventAttendees.plusOne })
-    .from(eventAttendees)
-    .where(eq(eventAttendees.eventId, eventId));
-  return rows.reduce((sum, r) => sum + 1 + (r.plusOne ? 1 : 0), 0);
-}
+// ---------------------------------------------------------------------------
+// Join / Leave
+// ---------------------------------------------------------------------------
 
-/**
- * Join the waitlist.
- *
- * forRider=false (default): player must have no spot and event must be full.
- * forRider=true: player must already have a confirmed spot (plusOne=false) and
- *   must not already have a rider, and event must be full.
- */
 export async function joinWaitlist(params: {
   eventId: string;
   userId: string;
   forRider?: boolean;
 }): Promise<number> {
-  const forRider = params.forRider ?? false;
-  return withEventLock(params.eventId, async (tx, event) => {
-    const occ = await occupancy(tx, params.eventId);
-
-    if (forRider) {
-      // Must have a confirmed primary spot (plusOne=false).
-      const [attendee] = await tx
-        .select()
+  return withEventLock(params.eventId, async (tx) => {
+    if (params.forRider) {
+      // Must have a confirmed primary to join the Rider bench.
+      const [primary] = await tx
+        .select({ id: eventAttendees.id, status: eventAttendees.status })
         .from(eventAttendees)
         .where(and(
           eq(eventAttendees.eventId, params.eventId),
           eq(eventAttendees.userId, params.userId),
+          isNull(eventAttendees.parentAttendeeId),
         ))
         .limit(1);
-      if (!attendee) {
-        throw new SpotError('You need a spot in this game before queuing for a Rider', 400);
-      }
-      if (attendee.status !== 'confirmed') {
-        throw new SpotError('Your spot must be confirmed to queue for a Rider', 400);
-      }
-      if (attendee.plusOne) {
-        throw new SpotError('You already have a Rider spot in this game', 409);
-      }
-      if (occ < event.totalSpots) {
-        throw new SpotError('Spots are still available — bring a Rider directly', 400);
-      }
-    } else {
-      // Primary queue: must not already have any spot.
-      const [existing] = await tx
-        .select({ id: eventAttendees.id })
-        .from(eventAttendees)
-        .where(and(
-          eq(eventAttendees.eventId, params.eventId),
-          eq(eventAttendees.userId, params.userId),
-        ))
-        .limit(1);
-      if (existing) {
-        throw new SpotError('You already hold a spot for this event', 409);
-      }
-      if (occ < event.totalSpots) {
-        throw new SpotError('Spots are still available — claim one instead of waitlisting', 400);
+      if (!primary || primary.status !== 'confirmed') {
+        throw new SpotError('You need a confirmed spot in this game before joining the Rider bench', 400);
       }
     }
 
-    // Check for existing waitlist entry of the same type.
-    const [existingEntry] = await tx
-      .select()
+    // No duplicate entries.
+    const [existing] = await tx
+      .select({ id: eventWaitlist.id })
       .from(eventWaitlist)
       .where(and(
         eq(eventWaitlist.eventId, params.eventId),
         eq(eventWaitlist.userId, params.userId),
-        eq(eventWaitlist.forRider, forRider),
+        eq(eventWaitlist.forRider, params.forRider ?? false),
       ))
       .limit(1);
-    if (existingEntry) {
-      throw new SpotError(
-        forRider ? 'Your Rider is already on the bench' : 'You are already on the waitlist',
-        409
-      );
-    }
+    if (existing) throw new SpotError('Already on the waitlist', 409);
 
     await tx.insert(eventWaitlist).values({
       eventId: params.eventId,
       userId: params.userId,
-      forRider,
+      forRider: params.forRider ?? false,
     });
 
     const all = await tx
       .select({ id: eventWaitlist.id })
       .from(eventWaitlist)
-      .where(eq(eventWaitlist.eventId, params.eventId))
-      .orderBy(asc(eventWaitlist.joinedAt));
-
-    const myEntry = await tx
-      .select({ id: eventWaitlist.id })
-      .from(eventWaitlist)
       .where(and(
         eq(eventWaitlist.eventId, params.eventId),
-        eq(eventWaitlist.userId, params.userId),
-        eq(eventWaitlist.forRider, forRider),
+        eq(eventWaitlist.forRider, params.forRider ?? false),
       ))
-      .limit(1);
-    return all.findIndex((r) => r.id === myEntry[0]?.id) + 1;
+      .orderBy(asc(eventWaitlist.joinedAt));
+    return all.length;
   });
 }
 
@@ -128,55 +83,61 @@ export async function leaveWaitlist(params: {
   userId: string;
   forRider?: boolean;
 }): Promise<void> {
-  const forRider = params.forRider ?? false;
-  await withEventLock(params.eventId, async (tx) => {
-    await tx
-      .delete(eventWaitlist)
-      .where(and(
-        eq(eventWaitlist.eventId, params.eventId),
-        eq(eventWaitlist.userId, params.userId),
-        eq(eventWaitlist.forRider, forRider),
-      ));
-  });
+  await db
+    .delete(eventWaitlist)
+    .where(and(
+      eq(eventWaitlist.eventId, params.eventId),
+      eq(eventWaitlist.userId, params.userId),
+      eq(eventWaitlist.forRider, params.forRider ?? false),
+    ));
 }
 
-export interface ReleaseResult {
-  promotedUserId: string | null;
-}
+// ---------------------------------------------------------------------------
+// Release primary spot → auto-promote from bench
+// ---------------------------------------------------------------------------
 
 /**
- * Release the caller's primary spot. Promotes the earliest forRider=false bench
- * entry (zero-sum waitlist_promote). The caller's own rider bench entries are
- * auto-cancelled. Throws if no primary bench entries exist; use offerSpot instead.
+ * Release the caller's primary spot.
+ *
+ * Requires someone on the primary bench (forRider=false); throws otherwise.
+ * Caller must not have a confirmed rider row — handle the rider first.
+ *
+ * Safety fixes applied vs. the original implementation:
+ *   1. Guard: rider row must not be in 'confirmed' state before releasing primary.
+ *   2. Only promote forRider=false entries — the rider bench is its own flow.
+ *   3. Auto-cancel caller's own forRider=true bench entry on departure.
  */
-export async function releaseSpot(params: { eventId: string; userId: string }): Promise<ReleaseResult> {
+export async function releaseSpot(params: {
+  eventId: string;
+  userId: string;
+}): Promise<{ promotedUserId: string | null }> {
   return withEventLock(params.eventId, async (tx, event) => {
-    // Find the caller's attendee row.
-    const [attendee] = await tx
+    const [primary] = await tx
       .select()
       .from(eventAttendees)
       .where(and(
         eq(eventAttendees.eventId, params.eventId),
         eq(eventAttendees.userId, params.userId),
+        isNull(eventAttendees.parentAttendeeId),
       ))
       .limit(1);
-    if (!attendee) throw new SpotError('You are not attending this event', 404);
+    if (!primary) throw new SpotError('You do not have a spot in this event', 404);
 
-    // Guard: cannot release while holding a rider (drop rider first).
-    if (attendee.plusOne) {
-      throw new SpotError('Drop your Rider spot before releasing your own', 400);
+    // Must handle rider row first (offer or release) before releasing primary.
+    const [rider] = await tx
+      .select({ id: eventAttendees.id, status: eventAttendees.status })
+      .from(eventAttendees)
+      .where(and(
+        eq(eventAttendees.eventId, params.eventId),
+        eq(eventAttendees.userId, params.userId),
+        eq(eventAttendees.parentAttendeeId, primary.id),
+      ))
+      .limit(1);
+    if (rider && rider.status === 'confirmed') {
+      throw new SpotError('Release or offer your Rider before releasing your own spot', 400);
     }
 
-    // Auto-cancel the caller's own rider bench entries (if they had queued for a rider).
-    await tx
-      .delete(eventWaitlist)
-      .where(and(
-        eq(eventWaitlist.eventId, params.eventId),
-        eq(eventWaitlist.userId, params.userId),
-        eq(eventWaitlist.forRider, true),
-      ));
-
-    // Find the first promotable primary bench entry (forRider=false), skipping the departing player.
+    // Find the primary bench (forRider=false), excluding the departing player.
     const queue = await tx
       .select()
       .from(eventWaitlist)
@@ -190,40 +151,50 @@ export async function releaseSpot(params: { eventId: string; userId: string }): 
 
     if (primaryQueue.length === 0) {
       throw new SpotError(
-        'No one is on the bench. Use "Offer" to make your spot available instead.',
+        'No one is on the bench — offer your spot instead so it can be claimed',
         400
       );
     }
 
     const next = primaryQueue[0];
-    const promotedUserId = next.userId;
 
-    const [updated] = await tx
+    // Transfer the primary row to the next bench person.
+    const [promoted] = await tx
       .update(eventAttendees)
       .set({
-        userId: promotedUserId,
-        originalUserId: promotedUserId,
+        userId: next.userId,
+        originalUserId: next.userId,
         status: 'confirmed',
         offeredAt: null,
         assignedBy: null,
-        plusOne: false,
+        parentAttendeeId: null,
       })
-      .where(eq(eventAttendees.id, attendee.id))
+      .where(eq(eventAttendees.id, primary.id))
       .returning();
 
+    // Remove them from the bench.
     await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, next.id));
+
+    // Auto-cancel the departing player's own forRider=true bench entry (if any).
+    await tx
+      .delete(eventWaitlist)
+      .where(and(
+        eq(eventWaitlist.eventId, params.eventId),
+        eq(eventWaitlist.userId, params.userId),
+        eq(eventWaitlist.forRider, true),
+      ));
 
     await recordTransaction(tx, {
       eventId: params.eventId,
       groupId: event.groupId,
-      attendeeId: updated.id,
+      attendeeId: promoted.id,
       type: 'waitlist_promote',
       fromUserId: params.userId,
-      toUserId: promotedUserId,
+      toUserId: next.userId,
       amount: Number(event.slotCost),
-      notes: 'Auto-promoted from waitlist on release',
+      notes: 'Spot released and auto-promoted from bench',
     });
 
-    return { promotedUserId };
+    return { promotedUserId: next.userId };
   });
 }

@@ -128,7 +128,8 @@ export interface EventAttendee {
   offeredAt: string | null;     // ISO timestamp when offered
   assignedBy: string | null;    // Email of admin who assigned
   assignedAt: string;           // ISO timestamp when assigned
-  plusOne: boolean;             // true = this spot includes a +1 (Rider); counts as 2 toward capacity
+  parentAttendeeId: string | null; // null = primary spot; non-null = Rider row (FK to owner's primary)
+  isPlusOne: boolean;              // convenience: parentAttendeeId !== null
 }
 
 export type AttendeeStatus = 'confirmed' | 'offered';

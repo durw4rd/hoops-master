@@ -2,9 +2,13 @@
  * Offer Event Spot API
  *
  * POST /api/groups/[groupId]/events/[eventId]/offer
+ * Body (optional): { attendeeId: string }
  *
- * Marks the caller's spot as offered. Blocked if plusOne=true — drop the Rider
- * first. One row per user, so no attendeeId param needed.
+ * Marks a spot as offered to the marketplace. Providing attendeeId targets a
+ * specific row (e.g. a rider row); without it the caller's primary is targeted.
+ *
+ * Offering the primary is blocked while the rider row is still confirmed — offer
+ * or release the rider first.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -31,10 +35,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Cannot offer spots for past events' }, { status: 400 });
     }
 
-    const attendee = await offerSpot({ eventId, userId: ctx.user.id });
+    const body = await request.json().catch(() => ({}));
+    const attendeeId: string | undefined = body?.attendeeId;
+
+    const attendee = await offerSpot({ eventId, userId: ctx.user.id, attendeeId });
     return NextResponse.json({
       success: true,
-      message: 'Your spot is now available for others to claim',
+      message: 'Spot is now available for others to claim',
       data: { attendeeId: attendee.id },
     });
   } catch (error) {

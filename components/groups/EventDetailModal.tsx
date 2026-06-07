@@ -249,6 +249,46 @@ export default function EventDetailModal({
     }
   };
 
+  const handleOfferRider = async (riderAttendeeId: string) => {
+    setActionLoading('offer-rider');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/offer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendeeId: riderAttendeeId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to offer Rider');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRetractRiderOffer = async (riderAttendeeId: string) => {
+    setActionLoading('retract-rider');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/retract`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendeeId: riderAttendeeId }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error); return; }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to retract Rider offer');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleAdminAssignRider = async (targetUserEmail: string) => {
     setActionLoading(`assign-rider-${targetUserEmail}`);
     setError(null);
@@ -274,10 +314,14 @@ export default function EventDetailModal({
     setActionLoading('handover');
     setError(null);
     try {
+      // Explicitly target the primary attendeeId so rider-first selection doesn't interfere.
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/reassign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toUserEmail: handoverEmail }),
+        body: JSON.stringify({
+          toUserEmail: handoverEmail,
+          attendeeId: myAttendance?.attendeeId,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error); return; }
@@ -398,19 +442,31 @@ export default function EventDetailModal({
     return null;
   };
 
-  // Derived state — simplified with attribute model (one row per player)
+  // Derived state — two-row model (separate row per rider)
   const allAttendees = event?.attendees ?? [];
+  // Primary rows only (parentAttendeeId is null → isPlusOne is false)
+  const primaryAttendees = allAttendees.filter(a => !a.isPlusOne);
   const confirmedAttendees = allAttendees.filter(a => a.status === 'confirmed');
   const offeredSpots = allAttendees.filter(a => a.status === 'offered');
   const availableSpots = event?.availableSpots ?? 0;
   const isFull = availableSpots <= 0;
   const waitlist = event?.waitlist ?? [];
   const hasBench = waitlist.some(w => !w.forRider);
+  const hasRiderBench = waitlist.some(w => w.forRider);
 
+  // My primary attendance row (server already filters to primary: !isPlusOne)
   const myAttendance = event?.myAttendance ?? null;
   const isConfirmed = myAttendance?.status === 'confirmed';
   const isOffered = myAttendance?.status === 'offered';
-  const hasRider = myAttendance?.plusOne === true;
+
+  // My rider row (a separate attendee row with isPlusOne=true and matching email)
+  const myRiderAttendance = allAttendees.find(
+    a => a.isPlusOne && a.userEmail.toLowerCase() === userEmail.toLowerCase()
+  ) ?? null;
+  const hasRider = myRiderAttendance !== null;
+  const riderIsConfirmed = myRiderAttendance?.status === 'confirmed';
+  const riderIsOffered = myRiderAttendance?.status === 'offered';
+
   const onRiderBench = (event?.myRiderWaitlistPosition ?? null) !== null;
 
   // Signup window check
@@ -427,13 +483,13 @@ export default function EventDetailModal({
   const formatDate = (dateStr: string) =>
     new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  // Members available to be targets for assignment / reassignment (no spot yet)
+  // Members who hold no primary spot (targets for admin assign / self handover)
   const membersWithoutSpot = members.filter(
-    (m) => !allAttendees.some((a) => a.userEmail === m.userEmail)
+    (m) => !primaryAttendees.some((a) => a.userEmail === m.userEmail)
   );
 
-  // Total occupancy from attendees (1 per row + 1 for each plusOne)
-  const totalOccupancy = allAttendees.reduce((sum, a) => sum + 1 + (a.plusOne ? 1 : 0), 0);
+  // Each attendee row = 1 slot (both primary and rider rows count)
+  const totalOccupancy = allAttendees.length;
 
   return (
     <>
@@ -562,20 +618,53 @@ export default function EventDetailModal({
                 {isConfirmed && (
                   <div className="space-y-1.5">
 
-                    {/* Rider controls */}
-                    {hasRider ? (
-                      <button
-                        onClick={handleDropRider}
-                        disabled={actionLoading === 'drop-rider'}
-                        className="w-full bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        {actionLoading === 'drop-rider' ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
+                    {/* ── Rider controls ── */}
+                    {riderIsConfirmed ? (
+                      // Has confirmed rider: offer or release to bench
+                      <div className="flex gap-2">
+                        {hasRiderBench ? (
+                          <button
+                            onClick={handleDropRider}
+                            disabled={actionLoading === 'drop-rider'}
+                            title="Pass Rider slot to the next player on the Rider bench"
+                            className="flex-1 bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-4 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {actionLoading === 'drop-rider' ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <><UserMinus className="w-4 h-4" /><span>RELEASE RIDER</span></>
+                            )}
+                          </button>
                         ) : (
-                          <><UserMinus className="w-5 h-5" /><span>DROP RIDER</span></>
+                          <button
+                            onClick={() => handleOfferRider(myRiderAttendance!.attendeeId)}
+                            disabled={actionLoading === 'offer-rider'}
+                            title="Put your Rider slot on the marketplace for anyone to claim"
+                            className="flex-1 bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-4 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          >
+                            {actionLoading === 'offer-rider' ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <><Hand className="w-4 h-4" /><span>OFFER RIDER</span></>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    ) : riderIsOffered ? (
+                      // Rider is currently offered
+                      <button
+                        onClick={() => handleRetractRiderOffer(myRiderAttendance!.attendeeId)}
+                        disabled={actionLoading === 'retract-rider'}
+                        className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'retract-rider' ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <><Undo2 className="w-4 h-4" /><span>RETRACT RIDER OFFER</span></>
                         )}
                       </button>
                     ) : onRiderBench ? (
+                      // No rider, but rider is queued on bench
                       <div className="space-y-1">
                         <p className="text-xs text-asphalt/60 font-body text-center">
                           Your Rider is <span className="font-semibold">#{event.myRiderWaitlistPosition}</span> on the bench
@@ -593,6 +682,7 @@ export default function EventDetailModal({
                         </button>
                       </div>
                     ) : isSignupOpen ? (
+                      // No rider, none on bench — bring one or queue on bench
                       availableSpots > 0 ? (
                         <button
                           onClick={handleAddRider}
@@ -620,10 +710,10 @@ export default function EventDetailModal({
                       )
                     ) : null}
 
-                    {/* Primary give-up: blocked while rider is confirmed */}
-                    {hasRider ? (
+                    {/* ── Primary give-up: blocked while rider is confirmed ── */}
+                    {riderIsConfirmed ? (
                       <p className="text-xs text-asphalt/60 font-body text-center">
-                        Drop your Rider first before offering your own spot.
+                        Release or offer your Rider before offering your own spot.
                       </p>
                     ) : hasBench ? (
                       <button
@@ -653,14 +743,13 @@ export default function EventDetailModal({
                       </button>
                     )}
 
-                    {/* Direct handover — backend auto-drops rider if needed */}
-                    <div className="space-y-0.5">
-                      {hasRider && (
-                        <p className="text-[10px] text-asphalt/50 font-body text-center">
-                          Handing over drops your Rider automatically
-                        </p>
-                      )}
-                      <div className="flex gap-2">
+                    {/* Direct handover: targets primary row explicitly */}
+                    {riderIsConfirmed && (
+                      <p className="text-[10px] text-asphalt/50 font-body text-center">
+                        To hand over your spot, release or offer your Rider first.
+                      </p>
+                    )}
+                    <div className="flex gap-2">
                         <Select value={handoverEmail} onValueChange={setHandoverEmail}>
                           <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
                             <SelectValue placeholder="Hand it to…" />
@@ -681,7 +770,6 @@ export default function EventDetailModal({
                           {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND IT OVER'}
                         </button>
                       </div>
-                    </div>
                   </div>
                 )}
 
@@ -772,25 +860,42 @@ export default function EventDetailModal({
                   </button>
                   {manageSquadOpen && (
                     <div className="border-t-2 border-dashed border-asphalt/40 p-3 space-y-2">
-                      {allAttendees.map((attendee) => {
+                      {/* Show primary attendees first, then riders grouped below their owner */}
+                      {[...primaryAttendees, ...allAttendees.filter(a => a.isPlusOne)].map((attendee) => {
                         const busy =
                           actionLoading === `reassign-${attendee.attendeeId}` ||
                           actionLoading === `unassign-${attendee.attendeeId}`;
+                        const isRiderRow = attendee.isPlusOne;
+                        const displayName = isRiderRow
+                          ? `${attendee.userName}'s Rider`
+                          : attendee.userName;
+
+                        // Rider reassign: target must have primary but no rider yet
+                        const riderHolderEmails = new Set(
+                          allAttendees.filter(a => a.isPlusOne).map(a => a.userEmail)
+                        );
+                        const membersForRiderSwap = isRiderRow
+                          ? primaryAttendees
+                              .filter(a => a.userEmail !== attendee.userEmail && !riderHolderEmails.has(a.userEmail))
+                              .map(a => members.find(m => m.userEmail === a.userEmail))
+                              .filter(Boolean) as typeof members
+                          : membersWithoutSpot;
+
+                        // Show "+1" admin button only for non-rider primary holders without a rider
+                        const hasRiderAlready = isRiderRow
+                          ? false
+                          : allAttendees.some(a => a.isPlusOne && a.userEmail === attendee.userEmail);
+
                         return (
                           <div
                             key={attendee.attendeeId}
-                            className="bg-white border-2 border-asphalt p-2 space-y-2"
+                            className={`border-2 border-asphalt p-2 space-y-2 ${isRiderRow ? 'bg-dull-gold/10 ml-3' : 'bg-white'}`}
                           >
                             <span className="font-marker text-sm text-asphalt flex items-center gap-1.5 truncate">
-                              {attendee.userName}
+                              {displayName}
                               {attendee.status === 'offered' && (
                                 <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
                                   OFFERING
-                                </span>
-                              )}
-                              {attendee.plusOne && (
-                                <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1 py-0.5 leading-none shrink-0">
-                                  +1
                                 </span>
                               )}
                             </span>
@@ -805,7 +910,7 @@ export default function EventDetailModal({
                                   <SelectValue placeholder="Swap with…" />
                                 </SelectTrigger>
                                 <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                                  {membersWithoutSpot.map((m) => (
+                                  {membersForRiderSwap.map((m) => (
                                     <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
                                       {m.displayName}
                                     </SelectItem>
@@ -821,8 +926,8 @@ export default function EventDetailModal({
                                   <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : 'SWAP'}
                               </button>
-                              {/* Add Rider: only for players without a rider and when capacity allows */}
-                              {!attendee.plusOne && availableSpots > 0 && (
+                              {/* Add Rider: primary holders without a rider and capacity exists */}
+                              {!isRiderRow && !hasRiderAlready && availableSpots > 0 && (
                                 <button
                                   onClick={() => handleAdminAssignRider(attendee.userEmail)}
                                   disabled={!!actionLoading}
@@ -839,7 +944,7 @@ export default function EventDetailModal({
                               <button
                                 onClick={() => handleUnassign(attendee.attendeeId)}
                                 disabled={busy}
-                                title="Remove from game"
+                                title={isRiderRow ? 'Remove Rider from game' : 'Remove player from game'}
                                 className="bg-terracotta text-white border-2 border-asphalt py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                               >
                                 {actionLoading === `unassign-${attendee.attendeeId}` ? (
@@ -864,74 +969,98 @@ export default function EventDetailModal({
                     Available Spots ({offeredSpots.length})
                   </h3>
                   <div className="space-y-2">
-                    {offeredSpots.map((attendee, index) => (
-                      <div
-                        key={attendee.attendeeId}
-                        className="marker-card bg-terracotta/10 p-3 flex items-center justify-between"
-                        style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
-                      >
-                        <span className="font-marker text-terracotta flex items-center gap-1">
-                          {renderRoleIcon(attendee.userEmail)}
-                          {attendee.userName}&apos;s spot
-                        </span>
-                        {!event.isAttending && isSignupOpen && (
-                          <button
-                            onClick={() => handleClaim(attendee.attendeeId)}
-                            disabled={actionLoading === 'claim'}
-                            className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
-                          >
-                            {actionLoading === 'claim' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'CLAIM'}
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {offeredSpots.map((attendee, index) => {
+                      const isRiderSpot = attendee.isPlusOne;
+                      // A rider spot can be claimed by someone who has a primary but no rider
+                      const canClaimAsRider =
+                        isRiderSpot &&
+                        event.isAttending &&
+                        !myRiderAttendance &&
+                        isSignupOpen;
+                      const canClaimAsPrimary =
+                        !isRiderSpot && !event.isAttending && isSignupOpen;
+                      const canClaim = canClaimAsPrimary || canClaimAsRider;
+
+                      return (
+                        <div
+                          key={attendee.attendeeId}
+                          className="marker-card bg-terracotta/10 p-3 flex items-center justify-between"
+                          style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
+                        >
+                          <span className="font-marker text-terracotta flex items-center gap-1.5">
+                            {renderRoleIcon(attendee.userEmail)}
+                            {isRiderSpot ? `${attendee.userName}'s Rider` : `${attendee.userName}'s spot`}
+                          </span>
+                          {canClaim && (
+                            <button
+                              onClick={() => handleClaim(attendee.attendeeId)}
+                              disabled={actionLoading === 'claim'}
+                              className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
+                            >
+                              {actionLoading === 'claim' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'CLAIM'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {/* Playing section */}
               {(() => {
-                const displayList = [...confirmedAttendees, ...offeredSpots];
+                // Group riders under their primary owner for display order
+                const primaries = [...primaryAttendees];
+                const riderRows = allAttendees.filter(a => a.isPlusOne);
+                // Build ordered list: primary then their rider (if any)
+                const displayList: typeof allAttendees = [];
+                for (const p of primaries) {
+                  displayList.push(p);
+                  const rider = riderRows.find(r => r.userEmail === p.userEmail);
+                  if (rider) displayList.push(rider);
+                }
+                // Any offered-only primaries already included; also add orphan riders (shouldn't exist)
                 return (
                   <div className="space-y-2">
                     <h3 className="font-graffiti text-lg text-slate-blue">
                       Playing ({totalOccupancy}/{event.totalSpots})
                     </h3>
                     <div className="grid grid-cols-2 gap-2">
-                      {displayList.map((attendee, index) => (
-                        <div
-                          key={attendee.attendeeId}
-                          className={`marker-card p-2 ${
-                            attendee.userEmail === userEmail
-                              ? 'bg-moss-green border-asphalt'
-                              : 'bg-white'
-                          }`}
-                          style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
-                        >
-                          <span className="font-marker text-sm text-asphalt truncate flex flex-wrap items-center gap-1.5">
-                            <PlayerAvatar
-                              pieceUrl={pieceByEmail.get(attendee.userEmail)}
-                              name={attendee.userName}
-                              className="h-6 w-6 shrink-0"
-                            />
-                            {renderRoleIcon(attendee.userEmail)}
-                            <span className="truncate">{attendee.userName}</span>
-                            {attendee.plusOne && (
-                              <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1 py-0.5 leading-none shrink-0 border border-asphalt">
-                                +1
-                              </span>
-                            )}
-                            {attendee.userEmail === userEmail && (
-                              <span className="text-asphalt/60">(you)</span>
-                            )}
-                            {attendee.status === 'offered' && (
-                              <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
-                                OFFERING
-                              </span>
-                            )}
-                          </span>
-                        </div>
-                      ))}
+                      {displayList.map((attendee, index) => {
+                        const isMe = attendee.userEmail.toLowerCase() === userEmail.toLowerCase();
+                        const displayName = attendee.isPlusOne
+                          ? `${attendee.userName}'s Rider`
+                          : attendee.userName;
+                        return (
+                          <div
+                            key={attendee.attendeeId}
+                            className={`marker-card p-2 ${
+                              isMe ? 'bg-moss-green border-asphalt' : 'bg-white'
+                            } ${attendee.isPlusOne ? 'border-dull-gold/60' : ''}`}
+                            style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
+                          >
+                            <span className="font-marker text-sm text-asphalt truncate flex flex-wrap items-center gap-1.5">
+                              {!attendee.isPlusOne && (
+                                <PlayerAvatar
+                                  pieceUrl={pieceByEmail.get(attendee.userEmail)}
+                                  name={attendee.userName}
+                                  className="h-6 w-6 shrink-0"
+                                />
+                              )}
+                              {!attendee.isPlusOne && renderRoleIcon(attendee.userEmail)}
+                              <span className="truncate">{displayName}</span>
+                              {isMe && !attendee.isPlusOne && (
+                                <span className="text-asphalt/60">(you)</span>
+                              )}
+                              {attendee.status === 'offered' && (
+                                <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
+                                  OFFERING
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
 
                       {/* Empty spots */}
                       {Array.from({ length: availableSpots }).map((_, i) => (

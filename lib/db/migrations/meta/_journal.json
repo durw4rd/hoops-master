@@ -50,6 +50,13 @@
       "when": 1749325200000,
       "tag": "0006_plusone_attribute",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1749326400000,
+      "tag": "0007_revert_rider_rows",
+      "breakpoints": true
     }
   ]
 }
