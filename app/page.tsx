@@ -30,7 +30,12 @@ const shellProps = (
 const logoBannerProps = (
   session: ReturnType<typeof useSession>["data"],
   userProfile: UserProfile | null,
-  options?: { onOpenProfile?: () => void; onOpenBlackBook?: () => void; onOpenVocab?: () => void }
+  options?: {
+    onOpenProfile?: () => void;
+    onOpenBlackBook?: () => void;
+    onOpenVocab?: () => void;
+    onNotificationNavigate?: (groupId: string, eventId: string) => void;
+  }
 ) => ({
   session,
   userProfile,
@@ -39,6 +44,7 @@ const logoBannerProps = (
   onOpenProfile: options?.onOpenProfile,
   onOpenBlackBook: options?.onOpenBlackBook,
   onOpenVocab: options?.onOpenVocab,
+  onNotificationNavigate: options?.onNotificationNavigate,
 });
 
 export default function HoopsMaster() {
@@ -61,6 +67,7 @@ export default function HoopsMaster() {
   const [vocabModalOpen, setVocabModalOpen] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [chooseAccount, setChooseAccount] = useState(false);
+  const [pendingOpenEventId, setPendingOpenEventId] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -176,6 +183,17 @@ export default function HoopsMaster() {
     );
   };
 
+  const handleNotificationNavigate = useCallback(
+    (groupId: string, eventId: string) => {
+      const group = groups.find((g) => g.groupId === groupId);
+      if (group) {
+        setSelectedGroup(group);
+        setPendingOpenEventId(eventId);
+      }
+    },
+    [groups]
+  );
+
   const userEmail = session?.user?.email?.toLowerCase() || "";
   const canCreateCrew =
     userProfile?.globalRole === "admin" ||
@@ -250,7 +268,13 @@ export default function HoopsMaster() {
     return (
       <AppShell {...shellProps(session, userProfile)}>
         <div className="max-w-4xl mx-auto px-4 py-4 sm:py-6">
-          <LogoBanner {...logoBannerProps(session, userProfile, { onOpenProfile: () => setProfileModalOpen(true), onOpenVocab: () => setVocabModalOpen(true) })} />
+          <LogoBanner
+            {...logoBannerProps(session, userProfile, {
+              onOpenProfile: () => setProfileModalOpen(true),
+              onOpenVocab: () => setVocabModalOpen(true),
+              onNotificationNavigate: handleNotificationNavigate,
+            })}
+          />
           <OnboardingScreen
             defaultUsername={userProfile.displayName}
             onComplete={() => {
@@ -278,6 +302,9 @@ export default function HoopsMaster() {
           onOpenProfile={() => setProfileModalOpen(true)}
           onBackToGroups={handleBackToGroups}
           onGroupUpdated={handleGroupUpdated}
+          initialOpenEventId={pendingOpenEventId}
+          onInitialEventConsumed={() => setPendingOpenEventId(null)}
+          onNotificationNavigate={handleNotificationNavigate}
           onGroupDeleted={() => {
             setSelectedGroup(null);
             autoOpenedRef.current = true;
@@ -303,6 +330,7 @@ export default function HoopsMaster() {
               onOpenProfile: () => setProfileModalOpen(true),
               onOpenBlackBook: canCreateCrew ? () => setInviteModalOpen(true) : undefined,
               onOpenVocab: () => setVocabModalOpen(true),
+              onNotificationNavigate: handleNotificationNavigate,
             })}
           />
 

@@ -19,6 +19,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/lib/db';
 import { events, eventAttendees, eventWaitlist, users, groups, spotTransactions } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
+import { notifySpotChange } from './notifications';
 import { withEventLock, serializableTx, SpotError, type Tx, type EventRow } from './_tx';
 import { zonedToUtc, utcToZonedParts, ALWAYS_OPEN_SENTINEL } from '@/lib/datetime';
 import type {
@@ -555,6 +556,17 @@ export async function claimSpot(params: {
           amount: Number(event.slotCost),
           notes: 'Claimed offered Rider slot',
         });
+
+        if (previousHolder !== params.userId) {
+          await notifySpotChange(tx, {
+            holderUserId: previousHolder,
+            groupId: event.groupId,
+            eventId: params.eventId,
+            spotKind: 'plus_one',
+            transition: 'offered_claimed',
+            actorUserId: params.userId,
+          });
+        }
         return updated;
       }
 
@@ -577,6 +589,17 @@ export async function claimSpot(params: {
         toUserId: params.userId,
         amount: Number(event.slotCost),
       });
+
+      if (previousHolder !== params.userId) {
+        await notifySpotChange(tx, {
+          holderUserId: previousHolder,
+          groupId: event.groupId,
+          eventId: params.eventId,
+          spotKind: 'primary',
+          transition: 'offered_claimed',
+          actorUserId: params.userId,
+        });
+      }
       return updated;
     }
 
@@ -860,6 +883,14 @@ export async function releaseRiderSpot(params: {
       toUserId: riderBenchEntry.userId,
       amount: Number(event.slotCost),
       notes: 'Rider slot passed to rider bench',
+    });
+
+    await notifySpotChange(tx, {
+      holderUserId: riderBenchEntry.userId,
+      groupId: event.groupId,
+      eventId: params.eventId,
+      spotKind: 'plus_one',
+      transition: 'bench_promoted',
     });
   });
 }

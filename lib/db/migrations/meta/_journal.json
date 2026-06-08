@@ -57,6 +57,13 @@
       "when": 1749326400000,
       "tag": "0007_revert_rider_rows",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780934827078,
+      "tag": "0008_boring_legion",
+      "breakpoints": true
     }
   ]
 }

@@ -353,6 +353,23 @@ export type EventAttendeeRow = [string, string, string, string, string, string, 
 export type TransactionRow = [string, string, string, string, string, string, string, string, string, string];
 
 // =============================================================================
+// NOTIFICATIONS
+// =============================================================================
+
+export type NotificationType = 'spot_offered_claimed' | 'bench_promoted';
+
+export interface Notification {
+  id: string;
+  groupId: string;
+  eventId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+// =============================================================================
 // HELPER TYPES
 // =============================================================================
 

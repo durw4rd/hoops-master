@@ -235,6 +235,31 @@ export const payments = pgTable(
 );
 
 // =============================================================================
+// IN-APP NOTIFICATIONS
+// =============================================================================
+
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    groupId: uuid('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+    eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(), // 'spot_offered_claimed' | 'bench_promoted'
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userCreatedIdx: index('idx_notifications_user_created').on(t.userId, t.createdAt),
+    unreadIdx: index('idx_notifications_user_unread')
+      .on(t.userId)
+      .where(sql`${t.readAt} IS NULL`),
+  })
+);
+
+// =============================================================================
 // CREDIT BALANCE VIEW
 // =============================================================================
 // balance = paid - received(to_user) + given-up(from_user). No type filtering:

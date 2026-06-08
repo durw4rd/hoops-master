@@ -13,6 +13,7 @@ interface LogoBannerProps {
   onOpenProfile?: () => void;
   onOpenBlackBook?: () => void;
   onOpenVocab?: () => void;
+  onNotificationNavigate?: (groupId: string, eventId: string) => void;
 }
 
 /** Home mural — same chrome as crew banner (sticky profile row + framed hero). */
@@ -24,6 +25,7 @@ export default function LogoBanner({
   onOpenProfile,
   onOpenBlackBook,
   onOpenVocab,
+  onNotificationNavigate,
 }: LogoBannerProps) {
   return (
     <>
@@ -62,6 +64,7 @@ export default function LogoBanner({
           onSignIn={onSignIn}
           onSignOut={onSignOut}
           onOpenProfile={onOpenProfile}
+          onNotificationNavigate={onNotificationNavigate}
         />
       </div>
 

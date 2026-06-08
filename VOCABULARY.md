@@ -41,6 +41,11 @@ synonyms for the same concept.**
 | Display name / handle | **Tag** / **Your Tag** | Edit in the settings menu. |
 | Profile picture / avatar | **Piece** / **Your Piece** | A writer's signature artwork → a player's avatar. Stored in Vercel Blob. |
 | Logout (settings menu) | **Bounce** | |
+| In-app notification inbox (settings menu) | **Fresh tags** | Unread count badge on profile piece; graffiti-styled panel title. |
+| Mark all notifications read | **Clear the wall** | Button in the Fresh tags panel. |
+| Empty notification inbox | **All quiet — no fresh tags.** | |
+| Offered spot claimed (notification title) | **Spot got snatched** / **+1 ride claimed** | Primary vs Rider slot; body names the claimer and game. |
+| Bench promotion (notification title) | **You're up** / **Your Rider's up** | Off the bench into the lineup. |
 | Empty crew list | **No Crews Yet!** | |
 | Empty games list | **No Games Yet!** | |
 | Danger zone (delete crew) | **Burn It Down** | "buffed" = erased; deletion is permanent. |

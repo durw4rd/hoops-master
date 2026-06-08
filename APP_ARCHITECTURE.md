@@ -35,7 +35,8 @@ app/
 components/
   AppShell.tsx             # Concrete background + page content + Footer
   LogoBanner.tsx           # Full-width logo strip (authenticated views)
-  SettingsMenu.tsx         # Your Tag / Bounce / Black Book (when app-admin)
+  SettingsMenu.tsx         # Fresh tags (in-app notifications) / Your Tag / Bounce
+  NotificationsPanel.tsx # GraffitiDialog inbox — opened from SettingsMenu
   Footer.tsx               # Asphalt bar; Hoops Master + © year
   groups/
     CrewMuralHero.tsx      # Crew banner hero (or default wall placeholder)
@@ -54,7 +55,7 @@ lib/
   design-tokens.ts         # JS mirror of CSS palette (for non-Tailwind use)
   db/schema.ts             # Drizzle schema (source of truth for tables)
   db/index.ts              # Neon Pool + drizzle client
-  queries/                 # All DB access (events, groups, users, waitlist, credits, ...)
+  queries/                 # All DB access (events, groups, users, waitlist, credits, notifications, ...)
   apiGuards.ts             # requireAuth / requireMember / requireGroupAdmin / requireCrewManager
   auth.ts                  # NextAuth config (invite-only signIn callback)
   session.ts               # getSessionUser() — id/email/globalRole from JWT
@@ -79,6 +80,7 @@ scripts/
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
 | `spot_transactions` | Append-only credit ledger | `from_user_id` (nullable), `to_user_id`, `amount`, `type` (audit only) |
 | `payments` | Admin-recorded cash in | `user_id`, `amount`, `payment_date` |
+| `notifications` | In-app inbox (per user) | `user_id`, `group_id`, `event_id`, `type` (`spot_offered_claimed`/`bench_promoted`), `title`, `body`, `read_at`; partial index on unread |
 | `player_credit_balances` | **View** | `balance = paid − spent(to_user) + earned(from_user)` per active member |
 
 Notes for agents:
@@ -111,6 +113,14 @@ Notes for agents:
   (→ `event_attendees`, `event_waitlist`), and `round_robin_rosters`.
   `spot_transactions` and `payments` have **no** cascade FK — `deleteGroup()`
   removes them first inside a transaction.
+- **In-app notifications:** persisted rows in `notifications`, created inside spot
+  mutations via `notifySpotChange()` in `lib/queries/notifications.ts`. Triggers:
+  (1) someone claims your offered primary or Rider spot; (2) you (or your Rider
+  slot) are promoted off the bench via `releaseSpot` / `releaseRiderSpot`.
+  Recipient is always the primary account holder; copy differs by slot kind only.
+  No email/push — badge + **Fresh tags** panel in `SettingsMenu` (`hooks/useNotifications.ts`:
+  fetch on mount, window focus, 60s poll). Tapping a tag marks it read and deep-links
+  to the game (`app/page.tsx` → `GroupDashboard` → `EventDetailModal`).
 
 ## Authorization
 
@@ -201,6 +211,9 @@ GET    /api/user/profile                            # current user (incl. piece_
 PATCH  /api/user/profile                            # update handle/tag (display_name) and/or piece (pieceUrl)
 POST   /api/user/piece                              # upload your piece (avatar) to Blob (any signed-in user)
 POST   /api/user/onboard                            # set username (first login)
+GET    /api/user/notifications                      # inbox list + unreadCount
+PATCH  /api/user/notifications/[id]                 # mark one read
+POST   /api/user/notifications/read-all             # mark all read
 
 GET    /api/groups                                  # my crews (+ member/event counts)
 POST   /api/groups                                  # create crew (app-admin; accepts bannerUrl + bannerOrientation)

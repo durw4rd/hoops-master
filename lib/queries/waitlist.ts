@@ -20,6 +20,7 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { eventAttendees, eventWaitlist } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
+import { notifySpotChange } from './notifications';
 import { withEventLock, SpotError } from './_tx';
 
 // ---------------------------------------------------------------------------
@@ -193,6 +194,14 @@ export async function releaseSpot(params: {
       toUserId: next.userId,
       amount: Number(event.slotCost),
       notes: 'Spot released and auto-promoted from bench',
+    });
+
+    await notifySpotChange(tx, {
+      holderUserId: next.userId,
+      groupId: event.groupId,
+      eventId: params.eventId,
+      spotKind: 'primary',
+      transition: 'bench_promoted',
     });
 
     return { promotedUserId: next.userId };

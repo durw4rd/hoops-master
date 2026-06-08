@@ -49,6 +49,9 @@ interface GroupDashboardProps {
   onBackToGroups?: () => void;
   onGroupUpdated: (group: Group) => void;
   onGroupDeleted?: (groupId: string) => void;
+  initialOpenEventId?: string | null;
+  onInitialEventConsumed?: () => void;
+  onNotificationNavigate?: (groupId: string, eventId: string) => void;
 }
 
 interface EventWithCounts extends Event {
@@ -80,6 +83,9 @@ export default function GroupDashboard({
   onBackToGroups,
   onGroupUpdated,
   onGroupDeleted,
+  initialOpenEventId,
+  onInitialEventConsumed,
+  onNotificationNavigate,
 }: GroupDashboardProps) {
   const [events, setEvents] = useState<EventWithCounts[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -87,6 +93,14 @@ export default function GroupDashboard({
   const [membersLoading, setMembersLoading] = useState(true);
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialOpenEventId) {
+      setSelectedEventId(initialOpenEventId);
+      setActiveTab('events');
+      onInitialEventConsumed?.();
+    }
+  }, [initialOpenEventId, onInitialEventConsumed]);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [visibility, setVisibility] = useState(group.visibility);
   const [savingVisibility, setSavingVisibility] = useState(false);
@@ -310,6 +324,7 @@ export default function GroupDashboard({
             onSignIn={onSignIn}
             onSignOut={onSignOut}
             onOpenProfile={onOpenProfile}
+            onNotificationNavigate={onNotificationNavigate}
           />
         </div>
       )}
