@@ -103,6 +103,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    if (eventType === 'special' || eventType === 'tournament') {
+      return NextResponse.json(
+        { error: 'Special events can only be created one at a time via Drop It' },
+        { status: 400 }
+      );
+    }
+
     const inputs = blocks.map((b) => ({
       date: b.date,
       startTime: b.startTime,

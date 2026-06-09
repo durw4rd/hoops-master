@@ -16,8 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import Image from "next/image";
 import EditEventModal from "./EditEventModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import type { BannerOrientation, EventType } from "@/lib/types";
 import { 
   Clock, 
   MapPin, 
@@ -61,6 +63,9 @@ interface EventDetail {
   slotCost: number;
   location?: string;
   description?: string;
+  eventType?: EventType;
+  bannerUrl?: string | null;
+  bannerOrientation?: BannerOrientation;
   status: string;
   assignmentMode: string;
   signupOpensAt: string;
@@ -528,6 +533,24 @@ export default function EventDetailModal({
         ) : event ? (
           <>
             <div className="space-y-4 mt-2">
+              {event.eventType === "special" && event.bannerUrl && (
+                <div
+                  className={`relative -mx-2 overflow-hidden border-2 border-asphalt grain-overlay ${
+                    event.bannerOrientation === "portrait" ? "h-48 w-36 mx-auto" : "h-32 w-full"
+                  }`}
+                >
+                  <Image src={event.bannerUrl} alt="" fill className="object-cover" />
+                </div>
+              )}
+
+              {event.eventType === "special" && (
+                <span className="tag-label-orange text-[10px] inline-block">SPECIAL</span>
+              )}
+
+              {event.description && (
+                <p className="text-sm text-asphalt/70 font-body">{event.description}</p>
+              )}
+
               {/* Info Badges */}
               <div className="flex flex-wrap gap-2">
                 <span className="badge-blue flex items-center gap-1">
@@ -1148,6 +1171,9 @@ export default function EventDetailModal({
           slotCost: event.slotCost,
           location: event.location ?? '',
           description: event.description ?? '',
+          eventType: event.eventType ?? 'regular',
+          bannerUrl: event.bannerUrl,
+          bannerOrientation: event.bannerOrientation,
         }}
         onSaved={() => {
           setEditOpen(false);

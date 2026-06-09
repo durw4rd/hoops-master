@@ -10,7 +10,8 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { spotTransactions, events, users } from '@/lib/db/schema';
 import type { Tx } from './_tx';
-import type { CreditTransaction, TransactionType } from '@/lib/types';
+import type { CreditTransaction, GroupTransaction, TransactionType } from '@/lib/types';
+import { getUsersByIds } from './users';
 
 export interface RecordTransactionInput {
   eventId: string;
@@ -100,6 +101,26 @@ export async function getGroupTransactions(groupId: string) {
     .where(eq(spotTransactions.groupId, groupId))
     .orderBy(desc(spotTransactions.createdAt));
   return rows;
+}
+
+/** DTO for group spot ledger (UI + CSV). */
+export async function getGroupTransactionsDTO(groupId: string): Promise<GroupTransaction[]> {
+  const rows = await getGroupTransactions(groupId);
+  const fromIds = Array.from(
+    new Set(rows.map((r) => r.t.fromUserId).filter((id): id is string => !!id))
+  );
+  const fromMap = await getUsersByIds(fromIds);
+  return rows.map((r) => ({
+    transactionId: r.t.id,
+    eventId: r.t.eventId,
+    eventStartsAt: r.starts.toISOString(),
+    type: r.t.type as TransactionType,
+    fromUserEmail: r.t.fromUserId ? fromMap.get(r.t.fromUserId)?.email ?? null : null,
+    toUserEmail: r.toEmail,
+    amount: Number(r.t.amount),
+    createdAt: r.t.createdAt.toISOString(),
+    notes: r.t.notes ?? '',
+  }));
 }
 
 export { and };

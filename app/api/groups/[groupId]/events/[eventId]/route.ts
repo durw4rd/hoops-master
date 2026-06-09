@@ -99,6 +99,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       slotCost,
       location,
       description,
+      bannerUrl,
+      bannerOrientation,
+      eventType: rawEventType,
       assignmentMode,
       signupOpenType,
       signupOpenValue,
@@ -123,6 +126,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const eventType =
+      rawEventType === 'special' || rawEventType === 'tournament'
+        ? 'special'
+        : rawEventType === 'regular'
+          ? 'regular'
+          : undefined;
+    if (bannerOrientation && bannerOrientation !== 'landscape' && bannerOrientation !== 'portrait') {
+      return NextResponse.json({ error: 'bannerOrientation must be landscape or portrait' }, { status: 400 });
+    }
+
     const updated = await updateEvent(eventId, timezone, {
       date,
       startTime,
@@ -131,6 +144,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       slotCost,
       location,
       description,
+      bannerUrl: bannerUrl !== undefined ? bannerUrl : undefined,
+      bannerOrientation,
+      eventType,
       assignmentMode: assignmentMode as AssignmentMode | undefined,
       signupOpensAt,
     });

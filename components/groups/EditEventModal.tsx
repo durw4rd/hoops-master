@@ -10,8 +10,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
+import BannerUploadField from "./BannerUploadField";
+import type { EventType, BannerOrientation } from "@/lib/types";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, i) => {
   const h = String(Math.floor(i / 4)).padStart(2, "0");
@@ -28,6 +31,9 @@ interface EditableEvent {
   slotCost: number;
   location: string;
   description: string;
+  eventType?: EventType;
+  bannerUrl?: string | null;
+  bannerOrientation?: BannerOrientation;
 }
 
 interface EditEventModalProps {
@@ -51,10 +57,15 @@ export default function EditEventModal({
   const [totalSpots, setTotalSpots] = useState(String(event.totalSpots));
   const [slotCost, setSlotCost] = useState(String(event.slotCost));
   const [location, setLocation] = useState(event.location);
+  const [description, setDescription] = useState(event.description);
+  const [eventType, setEventType] = useState<EventType>(event.eventType ?? "regular");
+  const [bannerUrl, setBannerUrl] = useState<string | undefined>(event.bannerUrl ?? undefined);
+  const [bannerOrientation, setBannerOrientation] = useState<BannerOrientation>(
+    event.bannerOrientation ?? "landscape"
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Re-sync local state whenever a different event is opened.
   useEffect(() => {
     if (open) {
       setDate(event.date);
@@ -63,6 +74,10 @@ export default function EditEventModal({
       setTotalSpots(String(event.totalSpots));
       setSlotCost(String(event.slotCost));
       setLocation(event.location);
+      setDescription(event.description);
+      setEventType(event.eventType ?? "regular");
+      setBannerUrl(event.bannerUrl ?? undefined);
+      setBannerOrientation(event.bannerOrientation ?? "landscape");
       setError(null);
     }
   }, [open, event]);
@@ -82,6 +97,10 @@ export default function EditEventModal({
           totalSpots: parseInt(totalSpots) || event.totalSpots,
           slotCost: parseFloat(slotCost) || 0,
           location,
+          description,
+          eventType,
+          bannerUrl: eventType === "special" ? (bannerUrl ?? null) : null,
+          bannerOrientation: eventType === "special" ? bannerOrientation : "landscape",
         }),
       });
       const data = await res.json();
@@ -186,6 +205,59 @@ export default function EditEventModal({
               className="sketch-input"
             />
           </div>
+
+          <div className="space-y-2">
+            <Label className="font-graffiti text-asphalt">Game Type</Label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setEventType("regular")}
+                className={`flex-1 px-3 py-2 border-2 border-asphalt font-graffiti text-sm transition-colors ${
+                  eventType === "regular"
+                    ? "bg-slate-blue text-white"
+                    : "bg-white text-asphalt hover:bg-sticker-white"
+                }`}
+              >
+                Regular
+              </button>
+              <button
+                type="button"
+                onClick={() => setEventType("special")}
+                className={`flex-1 px-3 py-2 border-2 border-asphalt font-graffiti text-sm transition-colors ${
+                  eventType === "special"
+                    ? "bg-terracotta text-white"
+                    : "bg-white text-asphalt hover:bg-sticker-white"
+                }`}
+              >
+                Special
+              </button>
+            </div>
+          </div>
+
+          {eventType === "special" && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="edit-description" className="font-graffiti text-asphalt">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What's the vibe?"
+                  className="sketch-input min-h-[80px]"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="font-graffiti text-asphalt">Banner</Label>
+                <BannerUploadField
+                  value={bannerUrl}
+                  onChange={setBannerUrl}
+                  orientation={bannerOrientation}
+                  onOrientationChange={setBannerOrientation}
+                  uploadUrl={`/api/groups/${groupId}/events/banner`}
+                />
+              </div>
+            </>
+          )}
 
           {error && (
             <div className="p-2 bg-terracotta/10 border-2 border-terracotta">

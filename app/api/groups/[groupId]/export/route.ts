@@ -8,8 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireGroupAdmin } from '@/lib/apiGuards';
 import { getGroupBalances, getPayments } from '@/lib/queries/credits';
-import { getGroupTransactions } from '@/lib/queries/transactions';
-import { getUsersByIds } from '@/lib/queries/users';
+import { getGroupTransactionsDTO } from '@/lib/queries/transactions';
 
 interface RouteParams {
   params: Promise<{ groupId: string }>;
@@ -53,22 +52,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
       filename = 'payments.csv';
     } else if (type === 'transactions') {
-      const rows = await getGroupTransactions(groupId);
-      const fromIds = Array.from(
-        new Set(rows.map((r) => r.t.fromUserId).filter((id): id is string => !!id))
-      );
-      const fromMap = await getUsersByIds(fromIds);
+      const rows = await getGroupTransactionsDTO(groupId);
       csv = toCsv(
         ['transactionId', 'eventStartsAt', 'type', 'fromUserEmail', 'toUserEmail', 'amount', 'createdAt', 'notes'],
         rows.map((r) => [
-          r.t.id,
-          r.starts.toISOString(),
-          r.t.type,
-          r.t.fromUserId ? fromMap.get(r.t.fromUserId)?.email ?? '' : '',
-          r.toEmail,
-          r.t.amount,
-          r.t.createdAt.toISOString(),
-          r.t.notes ?? '',
+          r.transactionId,
+          r.eventStartsAt,
+          r.type,
+          r.fromUserEmail ?? '',
+          r.toUserEmail,
+          r.amount,
+          r.createdAt,
+          r.notes,
         ])
       );
       filename = 'transactions.csv';

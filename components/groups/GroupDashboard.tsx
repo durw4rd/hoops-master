@@ -7,9 +7,6 @@ import {
   Users, 
   Settings, 
   Plus, 
-  Clock,
-  MapPin,
-  ChevronRight,
   ChevronLeft,
   Copy,
   Check,
@@ -24,6 +21,7 @@ import {
 } from "lucide-react";
 import CreateEventModal from "./CreateEventModal";
 import EventDetailModal from "./EventDetailModal";
+import EventListCard from "./EventListCard";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
 import BannerUploadField from "./BannerUploadField";
@@ -136,7 +134,14 @@ export default function GroupDashboard({
   const canDeleteCrew = isCapo || isOwner;
 
   const myGameCount = events.filter((e) => e.isAttending || e.onWaitlist).length;
-  const visibleEvents = gameFilter === 'mine' ? events.filter((e) => e.isAttending || e.onWaitlist) : events;
+  const visibleEvents = (gameFilter === 'mine' ? events.filter((e) => e.isAttending || e.onWaitlist) : events)
+    .slice()
+    .sort((a, b) => {
+      const aSpecial = a.eventType === 'special' ? 0 : 1;
+      const bSpecial = b.eventType === 'special' ? 0 : 1;
+      if (aSpecial !== bSpecial) return aSpecial - bSpecial;
+      return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
+    });
 
   // Fetch events
   const fetchEvents = useCallback(async () => {
@@ -478,79 +483,12 @@ export default function GroupDashboard({
             ) : (
               <div className="space-y-3">
                 {visibleEvents.map((event, index) => (
-                  <div 
+                  <EventListCard
                     key={event.eventId}
-                    className={`marker-card p-4 hover:shadow-sticker-soft-lg transition-all cursor-pointer group ${
-                      event.isAttending ? 'border-l-[6px] border-l-moss-green' : event.onWaitlist ? 'border-l-[6px] border-l-slate-blue' : ''
-                    }`}
-                    style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
+                    event={event}
+                    index={index}
                     onClick={() => setSelectedEventId(event.eventId)}
-                  >
-                    <div className="flex items-center gap-3 sm:gap-4">
-                      {/* Date block */}
-                      <div className="w-14 h-14 sm:w-16 sm:h-16 bg-terracotta border-2 border-asphalt flex flex-col items-center justify-center flex-shrink-0 shadow-sticker-sm">
-                        <span className="text-[9px] sm:text-[10px] text-white font-graffiti uppercase">
-                          {new Date(event.date).toLocaleDateString('en-US', { weekday: 'short' })}
-                        </span>
-                        <span className="text-xl sm:text-2xl font-graffiti text-white">
-                          {new Date(event.date).getDate()}
-                        </span>
-                      </div>
-
-                      {/* Event info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 sm:gap-2 mb-1 flex-wrap">
-                          <Clock className="w-4 h-4 text-slate-blue" />
-                          <span className="font-graffiti text-asphalt text-base sm:text-lg">
-                            {event.startTime} - {event.endTime}
-                          </span>
-                          {event.isAttending && (
-                            <>
-                              <span className="badge-green text-[10px]">YOU&apos;RE IN</span>
-                              {event.hasRider && (
-                                <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1.5 py-0.5 border border-asphalt">+1</span>
-                              )}
-                            </>
-                          )}
-                          {!event.isAttending && event.onWaitlist && (
-                            <span className="badge-blue text-[10px]">ON THE BENCH</span>
-                          )}
-                          {event.eventType && event.eventType !== 'regular' && (
-                            <span className="tag-label-blue text-[10px] transform rotate-0 hidden sm:inline-block">
-                              {event.eventType.toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                        
-                        <div className="flex items-center gap-2 sm:gap-4 text-xs sm:text-sm text-asphalt/60 font-body">
-                          {event.location && (
-                            <span className="flex items-center gap-1 truncate max-w-[100px] sm:max-w-none">
-                              <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span className="truncate">{event.location}</span>
-                            </span>
-                          )}
-                          <span className="flex items-center gap-1 font-graffiti text-asphalt">
-                            <Users className="w-3.5 h-3.5" />
-                            {event.availableSpots <= 0 ? 'FULL' : `${event.attendeeCount}/${event.totalSpots}`}
-                          </span>
-                          {event.offeredCount > 0 && (
-                            <span className="badge-green text-[10px]">
-                              {event.offeredCount} OPEN
-                            </span>
-                          )}
-                          {event.availableSpots <= 0 && (event.waitlistCount ?? 0) > 0 && (
-                            <span className="badge-blue text-[10px]">
-                              {event.waitlistCount} ON THE BENCH
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="w-10 h-10 rounded-full bg-slate-blue border-2 border-asphalt flex items-center justify-center group-hover:bg-terracotta transition-colors flex-shrink-0 shadow-sticker-sm">
-                        <ChevronRight className="w-5 h-5 text-white" />
-                      </div>
-                    </div>
-                  </div>
+                  />
                 ))}
               </div>
             )}

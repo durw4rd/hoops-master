@@ -31,6 +31,7 @@ import type {
   AttendeeStatus,
   TransactionType,
   WaitlistEntry,
+  BannerOrientation,
 } from '@/lib/types';
 
 type AttendeeRow = typeof eventAttendees.$inferSelect;
@@ -54,7 +55,9 @@ export function toEventDTO(row: EventRow, timezone: string): Event {
     slotCost: Number(row.slotCost),
     location: row.location ?? '',
     description: row.description ?? '',
-    eventType: row.eventType as EventType,
+    bannerUrl: row.bannerUrl ?? null,
+    bannerOrientation: (row.bannerOrientation === 'portrait' ? 'portrait' : 'landscape') as BannerOrientation,
+    eventType: (row.eventType === 'tournament' ? 'special' : row.eventType) as EventType,
     assignmentMode: row.assignmentMode as AssignmentMode,
     roundRobinOffset: row.roundRobinOffset,
     status: row.status as EventStatus,
@@ -226,6 +229,8 @@ export interface CreateEventInput {
   slotCost: number;
   location?: string;
   description?: string;
+  bannerUrl?: string | null;
+  bannerOrientation?: BannerOrientation;
   eventType?: EventType;
   assignmentMode?: AssignmentMode;
   signupOpensAt?: string | null;
@@ -259,6 +264,8 @@ export async function createEvent(
       slotCost: String(input.slotCost),
       location: input.location ?? '',
       description: input.description ?? '',
+      bannerUrl: input.bannerUrl ?? null,
+      bannerOrientation: input.bannerOrientation ?? 'landscape',
       eventType: (input.eventType ?? 'regular') as EventType,
       assignmentMode: (input.assignmentMode ?? 'admin_assign') as AssignmentMode,
       signupOpensAt: resolveSignupOpensAt(input.signupOpensAt),
@@ -288,7 +295,9 @@ export async function bulkCreateEvents(
       slotCost: String(input.slotCost),
       location: input.location ?? '',
       description: input.description ?? '',
-      eventType: (input.eventType ?? 'regular') as EventType,
+      bannerUrl: null,
+      bannerOrientation: 'landscape',
+      eventType: 'regular' as EventType,
       assignmentMode: (input.assignmentMode ?? 'admin_assign') as AssignmentMode,
       signupOpensAt: resolveSignupOpensAt(input.signupOpensAt),
       createdBy: creatorId,
@@ -313,6 +322,9 @@ export interface UpdateEventInput {
   slotCost?: number;
   location?: string;
   description?: string;
+  bannerUrl?: string | null;
+  bannerOrientation?: BannerOrientation;
+  eventType?: EventType;
   assignmentMode?: AssignmentMode;
   signupOpensAt?: string | null;
 }
@@ -342,6 +354,9 @@ export async function updateEvent(
   if (input.slotCost !== undefined) patch.slotCost = String(input.slotCost);
   if (input.location !== undefined) patch.location = input.location;
   if (input.description !== undefined) patch.description = input.description;
+  if (input.bannerUrl !== undefined) patch.bannerUrl = input.bannerUrl;
+  if (input.bannerOrientation !== undefined) patch.bannerOrientation = input.bannerOrientation;
+  if (input.eventType !== undefined) patch.eventType = input.eventType;
   if (input.assignmentMode !== undefined) patch.assignmentMode = input.assignmentMode;
   if (input.signupOpensAt !== undefined) patch.signupOpensAt = resolveSignupOpensAt(input.signupOpensAt);
 

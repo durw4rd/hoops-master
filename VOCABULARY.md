@@ -24,7 +24,8 @@ synonyms for the same concept.**
 | App admin | **Admin** | DB `global_role = 'admin'`. |
 | Event / session | **Game** | "Drop a Game" to create. |
 | Create single game (button) | **Drop It** / **Drop a Game** | |
-| Create recurring series (button) | **Lock the Season** | |
+| Special / standout game | **Special** / **Burner** | `event_type = 'special'`; poster card on crew wall; Drop It tab only. |
+| Create recurring series (button) | **Lock the Season** | Always creates regular games. |
 | Waitlist | **The Bench** | "GET ON THE BENCH" / "OFF THE BENCH" / "#N on the bench". |
 | Join waitlist | **Get on the Bench** | |
 | Leave waitlist | **Off the Bench** | |
@@ -68,7 +69,7 @@ Pull from here when adding new copy so the voice stays consistent. Adopt selecti
 - **On Lock** — a fully-rostered, locked game (an outline becomes locked). _("Piece" is now the player avatar — see the canonical map.)_
 - **Buffed** — cancelled/erased (MTA "buffed" graffiti off trains).
 - **The Yard / The Spot** — the court / location; the player pool.
-- **A Burner** — a standout special event or tournament.
+- **A Burner** — adopted as **Special** games (`event_type = 'special'`); tournaments map here.
 - **Going All City** — a multi-crew / inter-crew event.
 - **The Bench** — the waitlist (149th St Grand Concourse bench). **Adopted.**
 - **My Blackbook** — a user's own profile/memberships.

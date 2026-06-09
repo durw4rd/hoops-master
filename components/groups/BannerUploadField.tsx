@@ -15,6 +15,8 @@ interface BannerUploadFieldProps {
   onOrientationChange?: (o: Orientation) => void;
   /** When editing an existing crew, gates the upload to Capo/King. */
   groupId?: string;
+  /** Upload endpoint (defaults to crew banner route). */
+  uploadUrl?: string;
 }
 
 /**
@@ -29,6 +31,7 @@ export default function BannerUploadField({
   orientation = "landscape",
   onOrientationChange,
   groupId,
+  uploadUrl = "/api/groups/banner",
 }: BannerUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -48,7 +51,7 @@ export default function BannerUploadField({
       formData.append("file", file);
       if (groupId) formData.append("groupId", groupId);
 
-      const res = await fetch("/api/groups/banner", { method: "POST", body: formData });
+      const res = await fetch(uploadUrl, { method: "POST", body: formData });
       const data = await res.json();
 
       if (!res.ok) {

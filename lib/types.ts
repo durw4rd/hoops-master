@@ -96,6 +96,8 @@ export interface Event {
   slotCost: number;          // Cost per slot
   location: string;          // Venue name/address
   description: string;       // Event notes
+  bannerUrl?: string | null;
+  bannerOrientation?: BannerOrientation;
   eventType: EventType;
   assignmentMode: AssignmentMode;
   roundRobinOffset?: number | null;
@@ -105,7 +107,7 @@ export interface Event {
   createdAt: string;         // ISO timestamp
 }
 
-export type EventType = 'regular' | 'tournament' | 'special';
+export type EventType = 'regular' | 'special';
 export type EventStatus = 'scheduled' | 'cancelled' | 'completed';
 export type AssignmentMode = 'admin_assign' | 'player_signup' | 'round_robin';
 
@@ -212,6 +214,19 @@ export interface CreditTransaction {
   notes: string;
 }
 
+/** Group-wide spot ledger row (UI + CSV export). */
+export interface GroupTransaction {
+  transactionId: string;
+  eventId: string;
+  eventStartsAt: string;
+  type: TransactionType;
+  fromUserEmail: string | null;
+  toUserEmail: string;
+  amount: number;
+  createdAt: string;
+  notes: string;
+}
+
 // =============================================================================
 // API REQUEST/RESPONSE TYPES
 // =============================================================================
@@ -260,6 +275,8 @@ export interface CreateEventRequest {
   slotCost: number;
   location?: string;
   description?: string;
+  bannerUrl?: string | null;
+  bannerOrientation?: BannerOrientation;
   eventType?: EventType;
   assignmentMode?: AssignmentMode;
   assignedUsers?: string[];  // Emails of users to pre-assign (admin_assign)

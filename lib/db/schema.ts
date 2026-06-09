@@ -99,7 +99,9 @@ export const events = pgTable(
     slotCost: numeric('slot_cost', { precision: 10, scale: 2 }).notNull(),
     location: text('location').default(''),
     description: text('description').default(''),
-    eventType: text('event_type').notNull().default('regular'), // 'regular' | 'tournament' | 'special'
+    bannerUrl: text('banner_url'),
+    bannerOrientation: text('banner_orientation').default('landscape'), // 'landscape' | 'portrait'
+    eventType: text('event_type').notNull().default('regular'), // 'regular' | 'special'
     assignmentMode: text('assignment_mode').notNull().default('admin_assign'), // 'admin_assign' | 'player_signup' | 'round_robin'
     signupOpensAt: timestamp('signup_opens_at', { withTimezone: true }),
     roundRobinOffset: integer('round_robin_offset'),

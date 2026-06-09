@@ -10,11 +10,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar, Repeat, Loader2, Shuffle, Eye } from "lucide-react";
 import WeeklyScheduleBuilder from "./WeeklyScheduleBuilder";
 import LineupEditor from "./LineupEditor";
+import BannerUploadField from "./BannerUploadField";
 import { expandWeeklySchedule, type ScheduleSlot } from "@/lib/schedule";
+import type { EventType, BannerOrientation } from "@/lib/types";
 
 type AssignmentMode = "player_signup" | "admin_assign" | "round_robin";
 
@@ -80,6 +83,10 @@ export default function CreateEventModal({
   const [totalSpots, setTotalSpots] = useState(String(defaultSpots));
   const [slotCost, setSlotCost] = useState(String(defaultCost));
   const [location, setLocation] = useState("");
+  const [eventType, setEventType] = useState<EventType>("regular");
+  const [description, setDescription] = useState("");
+  const [bannerUrl, setBannerUrl] = useState<string | undefined>();
+  const [bannerOrientation, setBannerOrientation] = useState<BannerOrientation>("landscape");
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>("player_signup");
 
   const [startDate, setStartDate] = useState("");
@@ -137,6 +144,10 @@ export default function CreateEventModal({
           totalSpots: parseInt(totalSpots) || defaultSpots,
           slotCost: parseFloat(slotCost) || 0,
           location: location || undefined,
+          eventType,
+          description: eventType === "special" ? (description || undefined) : undefined,
+          bannerUrl: eventType === "special" ? (bannerUrl ?? null) : null,
+          bannerOrientation: eventType === "special" ? bannerOrientation : undefined,
           assignmentMode,
           ...getSignupPayload(),
         }),
@@ -280,6 +291,10 @@ export default function CreateEventModal({
     setTotalSpots(String(defaultSpots));
     setSlotCost(String(defaultCost));
     setLocation("");
+    setEventType("regular");
+    setDescription("");
+    setBannerUrl(undefined);
+    setBannerOrientation("landscape");
     setSlots([{ dayOfWeek: 1, startTime: "18:00", endTime: "20:00" }]);
     setBlockMinutes(0);
     setAssignmentMode("player_signup");
@@ -487,6 +502,60 @@ export default function CreateEventModal({
                 className="sketch-input"
               />
             </div>
+
+            <div className="space-y-2">
+              <Label className="font-graffiti text-asphalt">Game Type</Label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEventType("regular")}
+                  className={`flex-1 px-3 py-2 border-2 border-asphalt font-graffiti text-sm transition-colors ${
+                    eventType === "regular"
+                      ? "bg-slate-blue text-white"
+                      : "bg-white text-asphalt hover:bg-sticker-white"
+                  }`}
+                >
+                  Regular
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEventType("special")}
+                  className={`flex-1 px-3 py-2 border-2 border-asphalt font-graffiti text-sm transition-colors ${
+                    eventType === "special"
+                      ? "bg-terracotta text-white"
+                      : "bg-white text-asphalt hover:bg-sticker-white"
+                  }`}
+                >
+                  Special
+                </button>
+              </div>
+            </div>
+
+            {eventType === "special" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="description" className="font-graffiti text-asphalt">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="What's the vibe? Tournament, showcase, one-off burner..."
+                    className="sketch-input min-h-[80px]"
+                  />
+                  <p className="text-xs text-asphalt/40 font-body">Burner games get a poster card on the crew wall.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-graffiti text-asphalt">Banner</Label>
+                  <BannerUploadField
+                    value={bannerUrl}
+                    onChange={setBannerUrl}
+                    orientation={bannerOrientation}
+                    onOrientationChange={setBannerOrientation}
+                    uploadUrl={`/api/groups/${groupId}/events/banner`}
+                  />
+                </div>
+              </>
+            )}
 
             {renderAssignmentMode(false)}
 

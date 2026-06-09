@@ -84,7 +84,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       slotCost,
       location,
       description,
-      eventType,
+      bannerUrl,
+      bannerOrientation,
+      eventType: rawEventType,
       assignmentMode = 'admin_assign',
       assignedUsers,
       signupOpenType = 'immediate',
@@ -103,6 +105,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const signupOpensAt = computeSignupOpensAt(timezone, date, startTime, signupOpenType, signupOpenValue);
 
+    const eventType =
+      rawEventType === 'special' || rawEventType === 'tournament'
+        ? 'special'
+        : rawEventType === 'regular'
+          ? 'regular'
+          : 'regular';
+    if (bannerOrientation && bannerOrientation !== 'landscape' && bannerOrientation !== 'portrait') {
+      return NextResponse.json({ error: 'bannerOrientation must be landscape or portrait' }, { status: 400 });
+    }
+
     const event = await createEvent(
       groupId,
       timezone,
@@ -114,6 +126,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         slotCost: slotCost ?? Number(ctx.group.defaultSlotCost),
         location,
         description,
+        bannerUrl: eventType === 'special' ? (bannerUrl ?? null) : null,
+        bannerOrientation: eventType === 'special' ? (bannerOrientation ?? 'landscape') : 'landscape',
         eventType,
         assignmentMode: assignmentMode as AssignmentMode,
         signupOpensAt,

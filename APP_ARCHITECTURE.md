@@ -42,6 +42,7 @@ components/
     CrewMuralHero.tsx      # Crew banner hero (or default wall placeholder)
     GroupDashboard.tsx     # Crew tabs, mural, games, settings (sticky back + settings row)
     GroupList.tsx          # Poster-frame crew cards
+    EventListCard.tsx      # Game list cards — poster-frame for special/burner games, marker-card for regular
     ...                    # Modals, LineupEditor, CreditDashboard, BannerUploadField, etc.
   ui/GraffitiDialog.tsx    # Shared modal chrome for graffiti-styled dialogs
   Header.tsx               # Legacy header (superseded by LogoBanner + in-dashboard nav)
@@ -74,7 +75,7 @@ scripts/
 | `users` | App users / invite allowlist | `email` unique, `display_name`, `piece_url` (optional avatar, Vercel Blob), `global_role` (`owner`/`admin`/`user`), `onboarded` |
 | `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide`, `banner_url` (optional Vercel Blob image), `banner_orientation` (`landscape`/`portrait`) |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
-| `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
+| `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `event_type` (`regular`/`special`; legacy `tournament` migrated to `special`), `description`, `banner_url`, `banner_orientation` (`landscape`/`portrait`), `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
 | `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
 | `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user)` |
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
@@ -160,6 +161,19 @@ The **Players tab** in `GroupDashboard.tsx` exposes all member admin actions:
 
 `removeGroupMember()` in `lib/queries/groups.ts` queries `event_attendees JOIN events` to find upcoming confirmed spots before setting `group_members.status = 'inactive'`. The check is intentionally conservative (any upcoming event, not just active-status events) to prevent orphaned credit rows.
 
+## Balances tab (`CreditDashboard.tsx`)
+
+The **Balances** crew tab shows collapsible ledger sections (all collapsed by default):
+
+| Section | Who | Lazy-loaded on expand |
+|---|---|---|
+| Square Up | Capo/King | Payment form only (no prefetch) |
+| Payments | Capo/King | `GET .../payments` |
+| Spot Ledger | Capo/King | `GET .../transactions` |
+| Balances | All members | `GET .../credits` |
+
+CSV export buttons (Balances / Transactions / Payments) remain in the admin card header. Recording a payment refreshes balances and the payments list when those sections have already been loaded.
+
 ## Auth flow (invite-only)
 
 1. Google OAuth via NextAuth. The `signIn` callback allows login **only if a
@@ -231,7 +245,8 @@ DELETE /api/groups/[id]/members                     # remove member (Capo; block
 GET    /api/groups/[id]/members/available           # addable player profiles
 
 GET    /api/groups/[id]/events                      # list games
-POST   /api/groups/[id]/events                      # create game (Capo/King)
+POST   /api/groups/[id]/events                      # create game (Capo/King); accepts eventType, description, bannerUrl, bannerOrientation
+POST   /api/groups/[id]/events/banner               # upload event banner to Blob (Capo/King)
 GET    /api/groups/[id]/events/[eventId]            # game detail
 PATCH  /api/groups/[id]/events/[eventId]            # edit game (Capo/King)
 DELETE /api/groups/[id]/events/[eventId]            # delete game (Capo/King)
@@ -247,8 +262,9 @@ PUT    /api/groups/[id]/roster                      # set/reorder roster (Capo/K
 
 GET    /api/groups/[id]/credits                     # balances (view)
 GET    /api/groups/[id]/credits/[userId]/transactions
-POST   /api/groups/[id]/payments                    # record payment (Capo); accepts userEmail or userEmails[] for batch
-GET    /api/groups/[id]/export                      # CSV export
+GET    /api/groups/[id]/transactions                # group spot ledger JSON (Capo/King)
+POST   /api/groups/[id]/payments                    # record payment (Capo/King); GET lists payments (members)
+GET    /api/groups/[id]/export                      # CSV export (balances / transactions / payments)
 
 GET    /api/admin/invite  POST /api/admin/invite    # Black Book invites (app-admin)
 PATCH  /api/admin/role                              # change app role (app-admin)
