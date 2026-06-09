@@ -133,7 +133,8 @@ export default function GroupDashboard({
   const isOwner = userProfile?.globalRole === 'owner';
   const canDeleteCrew = isCapo || isOwner;
 
-  const myGameCount = events.filter((e) => e.isAttending || e.onWaitlist).length;
+  const myInCount = events.filter((e) => e.isAttending).length;
+  const myBenchCount = events.filter((e) => e.onWaitlist).length;
   const visibleEvents = (gameFilter === 'mine' ? events.filter((e) => e.isAttending || e.onWaitlist) : events)
     .slice()
     .sort((a, b) => {
@@ -429,7 +430,7 @@ export default function GroupDashboard({
                           : 'bg-white text-asphalt hover:bg-sticker-white'
                       }`}
                     >
-                      My Games ({myGameCount})
+                      My Games ({myInCount}+{myBenchCount})
                     </button>
                   </>
                 )}
