@@ -103,24 +103,35 @@ export async function getGroupTransactions(groupId: string) {
   return rows;
 }
 
-/** DTO for group spot ledger (UI + CSV). */
+/**
+ * Spot-ledger rows that affect `player_credit_balances` — debits (to_user) or
+ * credits (from_user). Marketplace offer/retract rows use amount 0 and are
+ * excluded; the subsequent claim (or a release/bench promote) records the move.
+ */
+export function transactionHasCreditMovement(amount: number): boolean {
+  return amount > 0;
+}
+
+/** DTO for group spot ledger (UI + CSV) — credit-moving rows only. */
 export async function getGroupTransactionsDTO(groupId: string): Promise<GroupTransaction[]> {
   const rows = await getGroupTransactions(groupId);
   const fromIds = Array.from(
     new Set(rows.map((r) => r.t.fromUserId).filter((id): id is string => !!id))
   );
   const fromMap = await getUsersByIds(fromIds);
-  return rows.map((r) => ({
-    transactionId: r.t.id,
-    eventId: r.t.eventId,
-    eventStartsAt: r.starts.toISOString(),
-    type: r.t.type as TransactionType,
-    fromUserEmail: r.t.fromUserId ? fromMap.get(r.t.fromUserId)?.email ?? null : null,
-    toUserEmail: r.toEmail,
-    amount: Number(r.t.amount),
-    createdAt: r.t.createdAt.toISOString(),
-    notes: r.t.notes ?? '',
-  }));
+  return rows
+    .filter((r) => transactionHasCreditMovement(Number(r.t.amount)))
+    .map((r) => ({
+      transactionId: r.t.id,
+      eventId: r.t.eventId,
+      eventStartsAt: r.starts.toISOString(),
+      type: r.t.type as TransactionType,
+      fromUserEmail: r.t.fromUserId ? fromMap.get(r.t.fromUserId)?.email ?? null : null,
+      toUserEmail: r.toEmail,
+      amount: Number(r.t.amount),
+      createdAt: r.t.createdAt.toISOString(),
+      notes: r.t.notes ?? '',
+    }));
 }
 
 export { and };

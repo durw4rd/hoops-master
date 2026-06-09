@@ -169,7 +169,7 @@ The **Balances** crew tab shows collapsible ledger sections (all collapsed by de
 |---|---|---|
 | Square Up | Capo/King | Payment form only (no prefetch) |
 | Payments | Capo/King | `GET .../payments` |
-| Spot Ledger | Capo/King | `GET .../transactions` |
+| Spot Ledger | Capo/King | `GET .../transactions` (credit-moving rows only — excludes offer/retract audit entries) |
 | Balances | All members | `GET .../credits` |
 
 CSV export buttons (Balances / Transactions / Payments) remain in the admin card header. Recording a payment refreshes balances and the payments list when those sections have already been loaded.
