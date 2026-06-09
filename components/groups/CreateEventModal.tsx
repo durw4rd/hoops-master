@@ -84,6 +84,7 @@ export default function CreateEventModal({
   const [slotCost, setSlotCost] = useState(String(defaultCost));
   const [location, setLocation] = useState("");
   const [eventType, setEventType] = useState<EventType>("regular");
+  const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [bannerUrl, setBannerUrl] = useState<string | undefined>();
   const [bannerOrientation, setBannerOrientation] = useState<BannerOrientation>("landscape");
@@ -145,6 +146,7 @@ export default function CreateEventModal({
           slotCost: parseFloat(slotCost) || 0,
           location: location || undefined,
           eventType,
+          name: eventType === "special" ? (name || undefined) : undefined,
           description: eventType === "special" ? (description || undefined) : undefined,
           bannerUrl: eventType === "special" ? (bannerUrl ?? null) : null,
           bannerOrientation: eventType === "special" ? bannerOrientation : undefined,
@@ -292,6 +294,7 @@ export default function CreateEventModal({
     setSlotCost(String(defaultCost));
     setLocation("");
     setEventType("regular");
+    setName("");
     setDescription("");
     setBannerUrl(undefined);
     setBannerOrientation("landscape");
@@ -533,6 +536,16 @@ export default function CreateEventModal({
 
             {eventType === "special" && (
               <>
+                <div className="space-y-2">
+                  <Label htmlFor="event-name" className="font-graffiti text-asphalt">Name</Label>
+                  <Input
+                    id="event-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., Summer Showcase"
+                    className="sketch-input"
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="description" className="font-graffiti text-asphalt">Description</Label>
                   <Textarea

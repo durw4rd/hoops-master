@@ -98,6 +98,7 @@ export const events = pgTable(
     totalSpots: integer('total_spots').notNull(),
     slotCost: numeric('slot_cost', { precision: 10, scale: 2 }).notNull(),
     location: text('location').default(''),
+    name: text('name').default(''), // display title for special/burner games
     description: text('description').default(''),
     bannerUrl: text('banner_url'),
     bannerOrientation: text('banner_orientation').default('landscape'), // 'landscape' | 'portrait'

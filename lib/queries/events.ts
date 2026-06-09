@@ -54,6 +54,7 @@ export function toEventDTO(row: EventRow, timezone: string): Event {
     totalSpots: row.totalSpots,
     slotCost: Number(row.slotCost),
     location: row.location ?? '',
+    name: row.name ?? '',
     description: row.description ?? '',
     bannerUrl: row.bannerUrl ?? null,
     bannerOrientation: (row.bannerOrientation === 'portrait' ? 'portrait' : 'landscape') as BannerOrientation,
@@ -228,6 +229,7 @@ export interface CreateEventInput {
   totalSpots: number;
   slotCost: number;
   location?: string;
+  name?: string;
   description?: string;
   bannerUrl?: string | null;
   bannerOrientation?: BannerOrientation;
@@ -263,6 +265,7 @@ export async function createEvent(
       totalSpots: input.totalSpots,
       slotCost: String(input.slotCost),
       location: input.location ?? '',
+      name: input.name ?? '',
       description: input.description ?? '',
       bannerUrl: input.bannerUrl ?? null,
       bannerOrientation: input.bannerOrientation ?? 'landscape',
@@ -294,6 +297,7 @@ export async function bulkCreateEvents(
       totalSpots: input.totalSpots,
       slotCost: String(input.slotCost),
       location: input.location ?? '',
+      name: '',
       description: input.description ?? '',
       bannerUrl: null,
       bannerOrientation: 'landscape',
@@ -321,6 +325,7 @@ export interface UpdateEventInput {
   totalSpots?: number;
   slotCost?: number;
   location?: string;
+  name?: string;
   description?: string;
   bannerUrl?: string | null;
   bannerOrientation?: BannerOrientation;
@@ -353,6 +358,7 @@ export async function updateEvent(
   if (input.totalSpots !== undefined) patch.totalSpots = input.totalSpots;
   if (input.slotCost !== undefined) patch.slotCost = String(input.slotCost);
   if (input.location !== undefined) patch.location = input.location;
+  if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
   if (input.bannerUrl !== undefined) patch.bannerUrl = input.bannerUrl;
   if (input.bannerOrientation !== undefined) patch.bannerOrientation = input.bannerOrientation;

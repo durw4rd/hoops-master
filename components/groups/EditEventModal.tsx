@@ -30,6 +30,7 @@ interface EditableEvent {
   totalSpots: number;
   slotCost: number;
   location: string;
+  name: string;
   description: string;
   eventType?: EventType;
   bannerUrl?: string | null;
@@ -57,6 +58,7 @@ export default function EditEventModal({
   const [totalSpots, setTotalSpots] = useState(String(event.totalSpots));
   const [slotCost, setSlotCost] = useState(String(event.slotCost));
   const [location, setLocation] = useState(event.location);
+  const [name, setName] = useState(event.name);
   const [description, setDescription] = useState(event.description);
   const [eventType, setEventType] = useState<EventType>(event.eventType ?? "regular");
   const [bannerUrl, setBannerUrl] = useState<string | undefined>(event.bannerUrl ?? undefined);
@@ -74,6 +76,7 @@ export default function EditEventModal({
       setTotalSpots(String(event.totalSpots));
       setSlotCost(String(event.slotCost));
       setLocation(event.location);
+      setName(event.name);
       setDescription(event.description);
       setEventType(event.eventType ?? "regular");
       setBannerUrl(event.bannerUrl ?? undefined);
@@ -97,6 +100,7 @@ export default function EditEventModal({
           totalSpots: parseInt(totalSpots) || event.totalSpots,
           slotCost: parseFloat(slotCost) || 0,
           location,
+          name: eventType === "special" ? name : "",
           description,
           eventType,
           bannerUrl: eventType === "special" ? (bannerUrl ?? null) : null,
@@ -236,6 +240,16 @@ export default function EditEventModal({
 
           {eventType === "special" && (
             <>
+              <div className="space-y-2">
+                <Label htmlFor="edit-name" className="font-graffiti text-asphalt">Name</Label>
+                <Input
+                  id="edit-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Summer Showcase"
+                  className="sketch-input"
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-description" className="font-graffiti text-asphalt">Description</Label>
                 <Textarea

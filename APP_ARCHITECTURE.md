@@ -75,7 +75,7 @@ scripts/
 | `users` | App users / invite allowlist | `email` unique, `display_name`, `piece_url` (optional avatar, Vercel Blob), `global_role` (`owner`/`admin`/`user`), `onboarded` |
 | `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide`, `banner_url` (optional Vercel Blob image), `banner_orientation` (`landscape`/`portrait`) |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
-| `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `event_type` (`regular`/`special`; legacy `tournament` migrated to `special`), `description`, `banner_url`, `banner_orientation` (`landscape`/`portrait`), `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
+| `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `event_type` (`regular`/`special`; legacy `tournament` migrated to `special`), `name` (special/burner title), `description`, `banner_url`, `banner_orientation` (`landscape`/`portrait`), `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
 | `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
 | `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user)` |
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |

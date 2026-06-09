@@ -95,6 +95,7 @@ export interface Event {
   totalSpots: number;        // Maximum players
   slotCost: number;          // Cost per slot
   location: string;          // Venue name/address
+  name: string;              // Display title (special/burner games)
   description: string;       // Event notes
   bannerUrl?: string | null;
   bannerOrientation?: BannerOrientation;
@@ -274,6 +275,7 @@ export interface CreateEventRequest {
   totalSpots: number;
   slotCost: number;
   location?: string;
+  name?: string;
   description?: string;
   bannerUrl?: string | null;
   bannerOrientation?: BannerOrientation;

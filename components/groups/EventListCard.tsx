@@ -10,6 +10,7 @@ export interface EventListCardData {
   startTime: string;
   endTime: string;
   location?: string;
+  name?: string;
   description?: string;
   eventType?: EventType;
   bannerUrl?: string | null;
@@ -68,7 +69,12 @@ function EventDetails({ event }: { event: EventListCardData }) {
           )}
         </div>
 
-        {event.description && (
+        {event.eventType === "special" && event.name && (
+          <p className="font-graffiti text-asphalt text-base line-clamp-2 break-words mb-1">
+            {event.name}
+          </p>
+        )}
+        {event.eventType !== "special" && event.description && (
           <p className="text-sm text-asphalt/60 line-clamp-2 break-words font-body mb-1">
             {event.description}
           </p>

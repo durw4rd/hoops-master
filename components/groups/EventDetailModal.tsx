@@ -62,6 +62,7 @@ interface EventDetail {
   totalSpots: number;
   slotCost: number;
   location?: string;
+  name?: string;
   description?: string;
   eventType?: EventType;
   bannerUrl?: string | null;
@@ -511,7 +512,13 @@ export default function EventDetailModal({
       <DialogContent className="graffiti-dialog max-w-lg max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto rounded-none shadow-sticker-lg">
         <DialogHeader>
           <DialogTitle className="graffiti-dialog-title">
-            {loading ? 'Loading...' : event ? formatDate(event.date) : 'Game Details'}
+            {loading
+              ? 'Loading...'
+              : event
+                ? event.eventType === 'special' && event.name
+                  ? event.name
+                  : formatDate(event.date)
+                : 'Game Details'}
           </DialogTitle>
           <DialogDescription className="sr-only">
             Game details and attendance management
@@ -545,6 +552,10 @@ export default function EventDetailModal({
 
               {event.eventType === "special" && (
                 <span className="tag-label-orange text-[10px] inline-block">SPECIAL</span>
+              )}
+
+              {event.eventType === "special" && event.name && (
+                <p className="font-graffiti text-asphalt/70 text-sm">{formatDate(event.date)}</p>
               )}
 
               {event.description && (
@@ -1170,6 +1181,7 @@ export default function EventDetailModal({
           totalSpots: event.totalSpots,
           slotCost: event.slotCost,
           location: event.location ?? '',
+          name: event.name ?? '',
           description: event.description ?? '',
           eventType: event.eventType ?? 'regular',
           bannerUrl: event.bannerUrl,

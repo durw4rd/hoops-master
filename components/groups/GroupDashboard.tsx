@@ -137,12 +137,7 @@ export default function GroupDashboard({
   const myBenchCount = events.filter((e) => e.onWaitlist).length;
   const visibleEvents = (gameFilter === 'mine' ? events.filter((e) => e.isAttending || e.onWaitlist) : events)
     .slice()
-    .sort((a, b) => {
-      const aSpecial = a.eventType === 'special' ? 0 : 1;
-      const bSpecial = b.eventType === 'special' ? 0 : 1;
-      if (aSpecial !== bSpecial) return aSpecial - bSpecial;
-      return new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime();
-    });
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 
   // Fetch events
   const fetchEvents = useCallback(async () => {
