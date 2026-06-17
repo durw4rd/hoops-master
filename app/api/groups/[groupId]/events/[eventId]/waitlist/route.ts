@@ -39,13 +39,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = await request.json().catch(() => ({}));
     const forRider = body?.forRider === true;
 
-    const position = await joinWaitlist({ eventId, userId: ctx.user.id, forRider });
+    const result = await joinWaitlist({ eventId, userId: ctx.user.id, forRider });
+    if (result.claimed) {
+      return NextResponse.json({
+        success: true,
+        message: 'Spot claimed — you\'re in!',
+        data: { position: 0, claimed: true },
+      });
+    }
     return NextResponse.json({
       success: true,
-      message: forRider
-        ? `Your Rider is #${position} on the bench`
-        : `You are #${position} on the waitlist`,
-      data: { position },
+      message: `You are #${result.position} on the bench`,
+      data: { position: result.position, claimed: false },
     });
   } catch (error) {
     if (error instanceof SpotError) {

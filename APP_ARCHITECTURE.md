@@ -85,21 +85,18 @@ scripts/
 | `player_credit_balances` | **View** | `balance = paid − spent(to_user) + earned(from_user)` per active member |
 
 Notes for agents:
-- **Rider (plus-one) spots:** `parent_attendee_id` is non-null for Rider rows. A
-  user may hold at most one primary + one Rider spot per event. `claimRiderSpot`
-  requires a confirmed primary; `dropRiderSpot` deletes the row + its transactions
-  (reversing the debit, same pattern as `adminUnassignSpot`). Offering/releasing
-  the primary is blocked while the Rider is confirmed — the Rider must be offered
-  or dropped first (both can be simultaneously on the market). `releaseSpot`
-  checks for a confirmed Rider and throws if one exists. Rider spots are
-  shown inline after their owner in the Playing grid as *"Name's Rider"*.
-- **Offer vs Release:** `offerSpot` (primary) includes a server-side guard: if any
-  `forRider=false` entry exists on the waitlist, it throws 400 and instructs the
-  player to use Release instead. This prevents the stale-UI race condition where
-  the offer button appears when there are bench players awaiting a direct handover.
-  The `EventDetailModal` additionally re-fetches event data on `window` focus to
-  keep button states fresh. `offerSpot` also auto-cancels the caller's own
-  `forRider=true` bench entry when offering the primary.
+- **Rider (+1) spots:** `parent_attendee_id` is non-null for +1 rows. A user may hold
+  at most one primary + one +1 per event. Offering/releasing the primary is blocked
+  while the +1 is confirmed — handle the +1 first. +1 rows show inline as *"Name's +1"*.
+- **Unified bench:** One FIFO queue (`event_waitlist` ordered by `joinedAt`). Primary
+  and +1 waiters share the same line and global `#N` position. When any spot opens
+  (offer, release, or join triggering a match), **bench #1 always receives it** —
+  the backend morphs the row shape (primary vs +1) invisibly. `offerSpot` auto-matches
+  to bench #1 when the bench is non-empty; otherwise the spot stays on the marketplace
+  until claimed (bench empty) or someone joins the bench. Direct claims bypass nobody:
+  if the bench is non-empty and the claimer is not #1, the API returns 409. Logic lives
+  in `lib/queries/benchMatching.ts` (`assignOpeningToBenchHead`, `transferOpeningToUser`).
+  `EventDetailModal` re-fetches on window focus to keep button states fresh.
 - **Self-reassign (non-admin):** Non-admin players can hand over their own spot via
   "Hand It Over" in `EventDetailModal`. The reassign route previously blocked any
   `attendeeId` param for non-admins; it now allows it and instead `reassignSpot`

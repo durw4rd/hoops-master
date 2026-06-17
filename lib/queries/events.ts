@@ -20,6 +20,12 @@ import { db } from '@/lib/db';
 import { events, eventAttendees, eventWaitlist, users, groups, spotTransactions } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
 import { notifySpotChange } from './notifications';
+import {
+  assignOpeningToBenchHead,
+  getUnifiedBench,
+  removeUserFromBench,
+  transferOpeningToUser,
+} from './benchMatching';
 import { withEventLock, serializableTx, SpotError, type Tx, type EventRow } from './_tx';
 import { zonedToUtc, utcToZonedParts, ALWAYS_OPEN_SENTINEL } from '@/lib/datetime';
 import type {
@@ -545,82 +551,29 @@ export async function claimSpot(params: {
       if (!offered) throw new SpotError('Offered spot not found', 404);
       if (offered.status !== 'offered') throw new SpotError('That spot is no longer available', 409);
 
-      const isRiderRow = offered.parentAttendeeId !== null;
-      const previousHolder = offered.userId;
-
-      if (isRiderRow) {
-        // Claimer must have a confirmed primary and no rider yet.
-        const claimerPrimary = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
-        if (!claimerPrimary || claimerPrimary.status !== 'confirmed')
-          throw new SpotError('You need a confirmed spot in this game before claiming a Rider slot', 400);
-        const claimerRider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
-        if (claimerRider) throw new SpotError('You already have a Rider spot in this game', 409);
-
-        const [updated] = await tx
-          .update(eventAttendees)
-          .set({
-            userId: params.userId,
-            status: 'confirmed',
-            offeredAt: null,
-            parentAttendeeId: claimerPrimary.id,
-          })
-          .where(eq(eventAttendees.id, offered.id))
-          .returning();
-
-        await recordTransaction(tx, {
-          eventId: params.eventId,
-          groupId: event.groupId,
-          attendeeId: updated.id,
-          type: 'claim',
-          fromUserId: previousHolder,
-          toUserId: params.userId,
-          amount: Number(event.slotCost),
-          notes: 'Claimed offered Rider slot',
-        });
-
-        if (previousHolder !== params.userId) {
-          await notifySpotChange(tx, {
-            holderUserId: previousHolder,
-            groupId: event.groupId,
-            eventId: params.eventId,
-            spotKind: 'plus_one',
-            transition: 'offered_claimed',
-            actorUserId: params.userId,
-          });
+      const bench = await getUnifiedBench(tx, params.eventId);
+      if (bench.length > 0) {
+        const headId = bench[0].userId;
+        if (headId !== params.userId) {
+          throw new SpotError('Someone is ahead of you on the bench', 409);
         }
-        return updated;
-      }
-
-      // Primary offered spot: claimer must not already have any primary.
-      const already = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
-      if (already) throw new SpotError('You already have a spot for this event', 409);
-
-      const [updated] = await tx
-        .update(eventAttendees)
-        .set({ userId: params.userId, status: 'confirmed', offeredAt: null })
-        .where(eq(eventAttendees.id, offered.id))
-        .returning();
-
-      await recordTransaction(tx, {
-        eventId: params.eventId,
-        groupId: event.groupId,
-        attendeeId: updated.id,
-        type: 'claim',
-        fromUserId: previousHolder,
-        toUserId: params.userId,
-        amount: Number(event.slotCost),
-      });
-
-      if (previousHolder !== params.userId) {
-        await notifySpotChange(tx, {
-          holderUserId: previousHolder,
-          groupId: event.groupId,
-          eventId: params.eventId,
-          spotKind: 'primary',
-          transition: 'offered_claimed',
-          actorUserId: params.userId,
+        const result = await assignOpeningToBenchHead(tx, event, offered, {
+          fromUserId: offered.userId,
+          transactionType: 'claim',
+          notes: 'Claimed offered spot from bench',
+          notifyPreviousHolder: true,
         });
+        await removeUserFromBench(tx, params.eventId, params.userId);
+        return result.attendee!;
       }
+
+      const updated = await transferOpeningToUser(tx, event, offered, params.userId, {
+        fromUserId: offered.userId,
+        transactionType: 'claim',
+        notes: 'Claimed offered spot',
+        notifyPreviousHolder: true,
+      });
+      await removeUserFromBench(tx, params.eventId, params.userId);
       return updated;
     }
 
@@ -682,35 +635,11 @@ export async function offerSpot(params: {
       // Guard: cannot offer primary while rider row is still confirmed.
       const rider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
       if (rider && rider.status === 'confirmed') {
-        throw new SpotError('Offer or release your Rider first before offering your own spot', 400);
+        throw new SpotError('Offer or release your +1 first before offering your own spot', 400);
       }
 
-      // Guard: if someone is on the primary bench they should receive the spot
-      // directly via Release, not have it sit as an offer in the marketplace.
-      const [benchEntry] = await tx
-        .select({ id: eventWaitlist.id })
-        .from(eventWaitlist)
-        .where(and(
-          eq(eventWaitlist.eventId, params.eventId),
-          eq(eventWaitlist.forRider, false),
-        ))
-        .limit(1);
-      if (benchEntry) {
-        throw new SpotError(
-          'Someone is on the bench — use Release instead to pass your spot directly',
-          400
-        );
-      }
-
-      // Auto-cancel your own forRider=true bench entry: offering your primary
-      // makes a rider slot irrelevant until you're back in the event.
-      await tx
-        .delete(eventWaitlist)
-        .where(and(
-          eq(eventWaitlist.eventId, params.eventId),
-          eq(eventWaitlist.userId, params.userId),
-          eq(eventWaitlist.forRider, true),
-        ));
+      // Auto-cancel own bench entry when offering primary (leaving the event flow).
+      await removeUserFromBench(tx, params.eventId, params.userId);
     }
     if (!attendee) throw new SpotError('Spot not found', 404);
     if (attendee.userId !== params.userId) throw new SpotError('Not your spot', 403);
@@ -722,6 +651,17 @@ export async function offerSpot(params: {
       .where(eq(eventAttendees.id, attendee.id))
       .returning();
 
+    const match = await assignOpeningToBenchHead(tx, event, updated, {
+      fromUserId: params.userId,
+      transactionType: 'claim',
+      notes: params.attendeeId ? 'Offered +1 auto-matched to bench' : 'Offered spot auto-matched to bench',
+      notifyPreviousHolder: true,
+    });
+
+    if (match.matched && match.attendee) {
+      return match.attendee;
+    }
+
     await recordTransaction(tx, {
       eventId: params.eventId,
       groupId: event.groupId,
@@ -730,7 +670,7 @@ export async function offerSpot(params: {
       fromUserId: params.userId,
       toUserId: params.userId,
       amount: 0,
-      notes: params.attendeeId ? 'Offered Rider slot to marketplace' : 'Offered spot to marketplace',
+      notes: params.attendeeId ? 'Offered +1 to marketplace' : 'Offered spot to marketplace',
     });
     return updated;
   });
@@ -843,75 +783,23 @@ export async function releaseRiderSpot(params: {
 }): Promise<void> {
   await withEventLock(params.eventId, async (tx, event) => {
     const rider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
-    if (!rider) throw new SpotError('You do not have a Rider in this game', 404);
-    if (rider.status !== 'confirmed') throw new SpotError('Only a confirmed Rider can be released to the bench', 400);
+    if (!rider) throw new SpotError('You do not have a +1 in this game', 404);
+    if (rider.status !== 'confirmed') throw new SpotError('Only a confirmed +1 can be released to the bench', 400);
 
-    // Find the first forRider=true bench entry (excluding the departing player themselves).
-    const [riderBenchEntry] = await tx
-      .select()
-      .from(eventWaitlist)
-      .where(and(
-        eq(eventWaitlist.eventId, params.eventId),
-        eq(eventWaitlist.forRider, true),
-      ))
-      .orderBy(asc(eventWaitlist.joinedAt))
-      .limit(10);
-
-    if (!riderBenchEntry || riderBenchEntry.userId === params.userId) {
+    const bench = await getUnifiedBench(tx, params.eventId);
+    if (bench.filter((e) => e.userId !== params.userId).length === 0) {
       throw new SpotError(
-        'No one is on the Rider bench — offer your Rider slot instead so it can be claimed',
+        'No one is on the bench — offer your +1 instead so it can be claimed',
         400
       );
     }
 
-    const [targetPrimary] = await tx
-      .select({ id: eventAttendees.id })
-      .from(eventAttendees)
-      .where(and(
-        eq(eventAttendees.eventId, params.eventId),
-        eq(eventAttendees.userId, riderBenchEntry.userId),
-        isNull(eventAttendees.parentAttendeeId),
-      ))
-      .limit(1);
-
-    if (!targetPrimary) {
-      // Stale bench entry — clean up and surface the issue.
-      await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, riderBenchEntry.id));
-      throw new SpotError('The next Rider on the bench no longer has a primary spot — try again', 409);
-    }
-
-    const [updated] = await tx
-      .update(eventAttendees)
-      .set({
-        userId: riderBenchEntry.userId,
-        originalUserId: riderBenchEntry.userId,
-        status: 'confirmed',
-        offeredAt: null,
-        assignedBy: null,
-        parentAttendeeId: targetPrimary.id,
-      })
-      .where(eq(eventAttendees.id, rider.id))
-      .returning();
-
-    await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, riderBenchEntry.id));
-
-    await recordTransaction(tx, {
-      eventId: params.eventId,
-      groupId: event.groupId,
-      attendeeId: updated.id,
-      type: 'waitlist_promote',
+    await assignOpeningToBenchHead(tx, event, rider, {
       fromUserId: params.userId,
-      toUserId: riderBenchEntry.userId,
-      amount: Number(event.slotCost),
-      notes: 'Rider slot passed to rider bench',
-    });
-
-    await notifySpotChange(tx, {
-      holderUserId: riderBenchEntry.userId,
-      groupId: event.groupId,
-      eventId: params.eventId,
-      spotKind: 'plus_one',
-      transition: 'bench_promoted',
+      transactionType: 'waitlist_promote',
+      notes: '+1 released to bench',
+      notifyPreviousHolder: false,
+      excludeUserId: params.userId,
     });
   });
 }
@@ -961,18 +849,85 @@ export async function reassignSpot(params: {
       const previousHolder = source.userId;
 
       if (isRiderSource) {
-        // Target must have a confirmed primary and no rider.
+        // Second-spot row → assignee gets a primary spot (spot is a spot).
         const targetPrimary = await getPrimaryAttendeeInTx(tx, params.eventId, params.toUserId);
-        if (!targetPrimary) throw new SpotError('Recipient does not have a primary spot in this game', 400);
         const targetRider = await getRiderAttendeeInTx(tx, params.eventId, params.toUserId);
-        if (targetRider) throw new SpotError('Recipient already has a Rider in this game', 409);
+        if (targetPrimary || targetRider) {
+          throw new SpotError('Recipient already has a spot in this event', 409);
+        }
 
         const [updated] = await tx
           .update(eventAttendees)
           .set({
             userId: params.toUserId,
+            originalUserId: params.toUserId,
             status: 'confirmed',
             offeredAt: null,
+            assignedBy: null,
+            parentAttendeeId: null,
+          })
+          .where(eq(eventAttendees.id, source.id))
+          .returning();
+        await recordTransaction(tx, {
+          eventId: params.eventId,
+          groupId: event.groupId,
+          attendeeId: updated.id,
+          type,
+          fromUserId: previousHolder,
+          toUserId: params.toUserId,
+          amount: Number(event.slotCost),
+          notes: 'Second spot reassigned as primary',
+        });
+        return updated;
+      }
+
+      // Primary reassign: source must not have a confirmed second spot (handle it first).
+      const sourceRider = await getRiderAttendeeInTx(tx, params.eventId, source.userId);
+      if (sourceRider && sourceRider.status === 'confirmed') {
+        throw new SpotError('Hand over or offer your 2nd spot first, then reassign your main spot', 400);
+      }
+
+      // Primary reassign: morph to primary or (admin) to recipient's +1.
+      const targetPrimary = await getPrimaryAttendeeInTx(tx, params.eventId, params.toUserId);
+      const targetRider = await getRiderAttendeeInTx(tx, params.eventId, params.toUserId);
+
+      if (!targetPrimary) {
+        const [updated] = await tx
+          .update(eventAttendees)
+          .set({
+            userId: params.toUserId,
+            originalUserId: params.toUserId,
+            status: 'confirmed',
+            offeredAt: null,
+            assignedBy: null,
+            parentAttendeeId: null,
+          })
+          .where(eq(eventAttendees.id, source.id))
+          .returning();
+        await recordTransaction(tx, {
+          eventId: params.eventId,
+          groupId: event.groupId,
+          attendeeId: updated.id,
+          type,
+          fromUserId: previousHolder,
+          toUserId: params.toUserId,
+          amount: Number(event.slotCost),
+        });
+        return updated;
+      }
+
+      if (params.isAdmin && !targetRider) {
+        if (targetPrimary.id === source.id || targetPrimary.userId === source.userId) {
+          throw new SpotError('Cannot assign this spot as a +1 to the same player', 400);
+        }
+        const [updated] = await tx
+          .update(eventAttendees)
+          .set({
+            userId: params.toUserId,
+            originalUserId: params.toUserId,
+            status: 'confirmed',
+            offeredAt: null,
+            assignedBy: null,
             parentAttendeeId: targetPrimary.id,
           })
           .where(eq(eventAttendees.id, source.id))
@@ -985,36 +940,12 @@ export async function reassignSpot(params: {
           fromUserId: previousHolder,
           toUserId: params.toUserId,
           amount: Number(event.slotCost),
-          notes: 'Rider slot reassigned',
+          notes: 'Reassigned as second spot',
         });
         return updated;
       }
 
-      // Primary reassign: source must not have a confirmed rider (handle rider first).
-      const sourceRider = await getRiderAttendeeInTx(tx, params.eventId, source.userId);
-      if (sourceRider && sourceRider.status === 'confirmed') {
-        throw new SpotError('Reassign or offer the Rider spot first, then reassign the primary', 400);
-      }
-
-      // Target must not already have a primary spot.
-      const targetPrimary = await getPrimaryAttendeeInTx(tx, params.eventId, params.toUserId);
-      if (targetPrimary) throw new SpotError('Recipient already has a spot in this event', 409);
-
-      const [updated] = await tx
-        .update(eventAttendees)
-        .set({ userId: params.toUserId, status: 'confirmed', offeredAt: null, parentAttendeeId: null })
-        .where(eq(eventAttendees.id, source.id))
-        .returning();
-      await recordTransaction(tx, {
-        eventId: params.eventId,
-        groupId: event.groupId,
-        attendeeId: updated.id,
-        type,
-        fromUserId: previousHolder,
-        toUserId: params.toUserId,
-        amount: Number(event.slotCost),
-      });
-      return updated;
+      throw new SpotError('Recipient already has a spot in this event', 409);
     }
 
     // No source → fill a fresh primary slot.

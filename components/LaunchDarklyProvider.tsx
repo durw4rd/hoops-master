@@ -5,8 +5,8 @@ import Observability from '@launchdarkly/observability';
 import SessionReplay from '@launchdarkly/session-replay';
 import { ReactNode, useEffect, useState } from 'react';
 import { getDeviceType, getBrowserName, getOrCreateSessionId, detectBrowser, shouldOptimizeForPerformance } from '@/lib/utils';
+import { ldApplicationMetadata } from '@/lib/appVersion';
 import LDIdentify from './LDIdentify';
-import packageJson from '../package.json';
 
 interface LaunchDarklyProviderProps {
   children: ReactNode;
@@ -46,10 +46,7 @@ function LaunchDarklyProviderContent({ children }: LaunchDarklyProviderProps) {
           clientSideID: process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID!,
           context,
           options: {
-            application: {
-                id: packageJson.name,
-                version: packageJson.version,
-            },
+            application: ldApplicationMetadata,
             plugins: [
                 new Observability({
                   networkRecording: {

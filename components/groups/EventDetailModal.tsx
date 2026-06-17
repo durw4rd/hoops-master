@@ -94,7 +94,8 @@ export default function EventDetailModal({
   const [error, setError] = useState<string | null>(null);
   const [members, setMembers] = useState<{ userEmail: string; displayName: string; groupRole: string; pieceUrl?: string }[]>([]);
   const [assignEmail, setAssignEmail] = useState("");
-  const [handoverEmail, setHandoverEmail] = useState("");
+  const [handoverPrimaryEmail, setHandoverPrimaryEmail] = useState("");
+  const [handoverSecondSpotEmail, setHandoverSecondSpotEmail] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<Record<string, string>>({});
@@ -324,23 +325,23 @@ export default function EventDetailModal({
     }
   };
 
-  const handleSelfHandover = async () => {
-    if (!handoverEmail) return;
+  const handleSelfHandover = async (attendeeId: string, toUserEmail: string) => {
+    if (!toUserEmail) return;
     setActionLoading('handover');
     setError(null);
     try {
-      // Explicitly target the primary attendeeId so rider-first selection doesn't interfere.
       const res = await fetch(`/api/groups/${groupId}/events/${eventId}/reassign`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toUserEmail: handoverEmail,
-          attendeeId: myAttendance?.attendeeId,
+          toUserEmail,
+          attendeeId,
         }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error); return; }
-      setHandoverEmail('');
+      setHandoverPrimaryEmail('');
+      setHandoverSecondSpotEmail('');
       fetchEvent();
       onEventUpdated();
     } catch {
@@ -466,8 +467,12 @@ export default function EventDetailModal({
   const availableSpots = event?.availableSpots ?? 0;
   const isFull = availableSpots <= 0;
   const waitlist = event?.waitlist ?? [];
-  const hasBench = waitlist.some(w => !w.forRider);
-  const hasRiderBench = waitlist.some(w => w.forRider);
+  const hasBench = waitlist.length > 0;
+  const onBench = (event?.myWaitlistPosition ?? null) !== null;
+  const isBenchHead = event?.myWaitlistPosition === 1;
+  const earliestOffered = [...offeredSpots].sort(
+    (a, b) => new Date(a.offeredAt ?? 0).getTime() - new Date(b.offeredAt ?? 0).getTime()
+  )[0] ?? null;
 
   // My primary attendance row (server already filters to primary: !isPlusOne)
   const myAttendance = event?.myAttendance ?? null;
@@ -482,8 +487,6 @@ export default function EventDetailModal({
   const riderIsConfirmed = myRiderAttendance?.status === 'confirmed';
   const riderIsOffered = myRiderAttendance?.status === 'offered';
 
-  const onRiderBench = (event?.myRiderWaitlistPosition ?? null) !== null;
-
   // Signup window check
   const getSignupStatus = () => {
     if (!event?.signupOpensAt || event.signupOpensAt.trim() === '') return { isOpen: true, opensAt: null };
@@ -492,6 +495,12 @@ export default function EventDetailModal({
     return { isOpen: d <= new Date(), opensAt: d };
   };
   const { isOpen: isSignupOpen, opensAt: signupOpensAt } = getSignupStatus();
+  const canClaimOfferedSpot =
+    isSignupOpen &&
+    !!earliestOffered &&
+    (waitlist.length === 0 || isBenchHead);
+  const wantsSecondSpot = isConfirmed && !myRiderAttendance;
+  const claimCtaLabel = wantsSecondSpot ? 'CLAIM 2ND SPOT' : 'CLAIM SPOT';
   const formatSignupTime = (d: Date | null) =>
     d ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
 
@@ -502,6 +511,14 @@ export default function EventDetailModal({
   const membersWithoutSpot = members.filter(
     (m) => !primaryAttendees.some((a) => a.userEmail === m.userEmail)
   );
+
+  const riderHolderEmails = new Set(
+    allAttendees.filter((a) => a.isPlusOne).map((a) => a.userEmail)
+  );
+  const membersWithRoomForPlusOne = primaryAttendees
+    .filter((a) => !riderHolderEmails.has(a.userEmail))
+    .map((a) => members.find((m) => m.userEmail === a.userEmail))
+    .filter(Boolean) as typeof members;
 
   // Each attendee row = 1 slot (both primary and rider rows count)
   const totalOccupancy = allAttendees.length;
@@ -616,33 +633,56 @@ export default function EventDetailModal({
                   </button>
                 )}
 
-                {/* Not attending, event full → GET ON THE BENCH (auto-claims offered spot if any) */}
-                {!event.isAttending && isFull && isSignupOpen && event.myWaitlistPosition === null && (
-                  <button
-                    onClick={() => {
-                      const earliest = [...offeredSpots].sort(
-                        (a, b) => new Date(a.offeredAt ?? 0).getTime() - new Date(b.offeredAt ?? 0).getTime()
-                      )[0];
-                      if (earliest) handleClaim(earliest.attendeeId);
-                      else handleJoinWaitlist();
-                    }}
-                    disabled={actionLoading === 'waitlist' || actionLoading === 'claim'}
-                    className="w-full bg-slate-blue text-white border-[3px] border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {actionLoading === 'waitlist' || actionLoading === 'claim' ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <><ListPlus className="w-5 h-5" /><span>GET ON THE BENCH</span></>
-                    )}
-                  </button>
+                {/* Not attending, event full → claim offered spot or join bench */}
+                {!event.isAttending && isFull && isSignupOpen && !onBench && (
+                  canClaimOfferedSpot ? (
+                    <button
+                      onClick={() => handleClaim(earliestOffered!.attendeeId)}
+                      disabled={actionLoading === 'claim'}
+                      className="w-full bg-moss-green text-asphalt border-4 border-asphalt font-graffiti text-xl py-4 px-6 shadow-[6px_6px_0_var(--asphalt-black)] hover:shadow-sticker-lg hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                    >
+                      {actionLoading === 'claim' ? (
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                      ) : (
+                        <><span className="text-2xl">🏀</span><span>CLAIM SPOT</span><Check className="w-6 h-6" /></>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleJoinWaitlist()}
+                      disabled={actionLoading === 'waitlist'}
+                      className="w-full bg-slate-blue text-white border-[3px] border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {actionLoading === 'waitlist' ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <><ListPlus className="w-5 h-5" /><span>GET ON THE BENCH</span></>
+                      )}
+                    </button>
+                  )
                 )}
 
                 {/* On the bench */}
-                {event.myWaitlistPosition !== null && (
+                {onBench && (
                   <div className="space-y-1.5">
                     <div className="bg-slate-blue/10 border-2 border-slate-blue p-3 text-center font-graffiti text-slate-blue">
-                      You&apos;re #{event.myWaitlistPosition} on the bench
+                      {isConfirmed
+                        ? <>Your +1 is #{event.myWaitlistPosition} on the bench</>
+                        : <>You&apos;re #{event.myWaitlistPosition} on the bench</>}
                     </div>
+                    {canClaimOfferedSpot && (
+                      <button
+                        onClick={() => handleClaim(earliestOffered!.attendeeId)}
+                        disabled={actionLoading === 'claim'}
+                        className="w-full bg-moss-green text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      >
+                        {actionLoading === 'claim' ? (
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                        ) : (
+                          <><Check className="w-5 h-5" /><span>{claimCtaLabel}</span></>
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={handleLeaveWaitlist}
                       disabled={actionLoading === 'waitlist'}
@@ -651,7 +691,7 @@ export default function EventDetailModal({
                       {actionLoading === 'waitlist' ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
                       ) : (
-                        <><LogOut className="w-5 h-5" /><span>OFF THE BENCH</span></>
+                        <><LogOut className="w-5 h-5" /><span>{isConfirmed ? 'TAKE +1 OFF THE BENCH' : 'OFF THE BENCH'}</span></>
                       )}
                     </button>
                   </div>
@@ -663,38 +703,36 @@ export default function EventDetailModal({
 
                     {/* ── Rider controls ── */}
                     {riderIsConfirmed ? (
-                      // Has confirmed rider: offer or release to bench
                       <div className="flex gap-2">
-                        {hasRiderBench ? (
+                        {hasBench ? (
                           <button
                             onClick={handleDropRider}
                             disabled={actionLoading === 'drop-rider'}
-                            title="Pass Rider slot to the next player on the Rider bench"
+                            title="Pass your +1 to the next player on the bench"
                             className="flex-1 bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-4 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                           >
                             {actionLoading === 'drop-rider' ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                              <><UserMinus className="w-4 h-4" /><span>RELEASE RIDER</span></>
+                              <><UserMinus className="w-4 h-4" /><span>RELEASE +1</span></>
                             )}
                           </button>
                         ) : (
                           <button
                             onClick={() => handleOfferRider(myRiderAttendance!.attendeeId)}
                             disabled={actionLoading === 'offer-rider'}
-                            title="Put your Rider slot on the marketplace for anyone to claim"
+                            title="Offer your +1 for the next person on the bench"
                             className="flex-1 bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-4 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                           >
                             {actionLoading === 'offer-rider' ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
-                              <><Hand className="w-4 h-4" /><span>OFFER RIDER</span></>
+                              <><Hand className="w-4 h-4" /><span>OFFER +1</span></>
                             )}
                           </button>
                         )}
                       </div>
                     ) : riderIsOffered ? (
-                      // Rider is currently offered
                       <button
                         onClick={() => handleRetractRiderOffer(myRiderAttendance!.attendeeId)}
                         disabled={actionLoading === 'retract-rider'}
@@ -703,29 +741,10 @@ export default function EventDetailModal({
                         {actionLoading === 'retract-rider' ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
                         ) : (
-                          <><Undo2 className="w-4 h-4" /><span>RETRACT RIDER OFFER</span></>
+                          <><Undo2 className="w-4 h-4" /><span>RETRACT OFFER</span></>
                         )}
                       </button>
-                    ) : onRiderBench ? (
-                      // No rider, but rider is queued on bench
-                      <div className="space-y-1">
-                        <p className="text-xs text-asphalt/60 font-body text-center">
-                          Your Rider is <span className="font-semibold">#{event.myRiderWaitlistPosition}</span> on the bench
-                        </p>
-                        <button
-                          onClick={handleLeaveRiderWaitlist}
-                          disabled={actionLoading === 'rider-waitlist-leave'}
-                          className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                        >
-                          {actionLoading === 'rider-waitlist-leave' ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <><UserMinus className="w-4 h-4" /><span>TAKE RIDER OFF BENCH</span></>
-                          )}
-                        </button>
-                      </div>
-                    ) : isSignupOpen ? (
-                      // No rider, none on bench — bring one or queue on bench
+                    ) : isSignupOpen && !onBench ? (
                       availableSpots > 0 ? (
                         <button
                           onClick={handleAddRider}
@@ -735,28 +754,39 @@ export default function EventDetailModal({
                           {actionLoading === 'add-rider' ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
                           ) : (
-                            <><UserPlus className="w-5 h-5" /><span>BRING A RIDER</span></>
+                            <><UserPlus className="w-5 h-5" /><span>{claimCtaLabel}</span></>
+                          )}
+                        </button>
+                      ) : canClaimOfferedSpot ? (
+                        <button
+                          onClick={() => handleClaim(earliestOffered!.attendeeId)}
+                          disabled={actionLoading === 'claim'}
+                          className="w-full bg-moss-green text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          {actionLoading === 'claim' ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <><Check className="w-5 h-5" /><span>{claimCtaLabel}</span></>
                           )}
                         </button>
                       ) : (
                         <button
                           onClick={handleJoinRiderWaitlist}
                           disabled={actionLoading === 'rider-waitlist-join'}
-                          className="w-full bg-dull-gold/60 text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                          className="w-full bg-slate-blue text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
                           {actionLoading === 'rider-waitlist-join' ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
                           ) : (
-                            <><UserPlus className="w-5 h-5" /><span>PUT RIDER ON BENCH</span></>
+                            <><ListPlus className="w-5 h-5" /><span>{wantsSecondSpot ? 'GET MY +1 ON THE BENCH' : 'GET ON THE BENCH'}</span></>
                           )}
                         </button>
                       )
                     ) : null}
 
-                    {/* ── Primary give-up: blocked while rider is confirmed ── */}
                     {riderIsConfirmed ? (
                       <p className="text-xs text-asphalt/60 font-body text-center">
-                        Release or offer your Rider before offering your own spot.
+                        Release or offer your +1 before offering your own spot.
                       </p>
                     ) : hasBench ? (
                       <button
@@ -786,33 +816,64 @@ export default function EventDetailModal({
                       </button>
                     )}
 
-                    {/* Direct handover: targets primary row explicitly */}
-                    {riderIsConfirmed && (
-                      <p className="text-[10px] text-asphalt/50 font-body text-center">
-                        To hand over your spot, release or offer your Rider first.
-                      </p>
-                    )}
-                    <div className="flex gap-2">
-                        <Select value={handoverEmail} onValueChange={setHandoverEmail}>
-                          <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
-                            <SelectValue placeholder="Hand it to…" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                            {membersWithoutSpot.map((m) => (
-                              <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
-                                {m.displayName}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <button
-                          onClick={handleSelfHandover}
-                          disabled={!handoverEmail || actionLoading === 'handover'}
-                          className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
-                        >
-                          {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND IT OVER'}
-                        </button>
+                    {riderIsConfirmed && myRiderAttendance ? (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-asphalt/70 font-body">
+                          Hand over your <span className="font-graffiti">2nd spot</span>
+                        </p>
+                        <div className="flex gap-2">
+                          <Select value={handoverSecondSpotEmail} onValueChange={setHandoverSecondSpotEmail}>
+                            <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
+                              <SelectValue placeholder="Hand it to…" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                              {membersWithoutSpot.map((m) => (
+                                <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                                  {m.displayName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <button
+                            onClick={() => handleSelfHandover(myRiderAttendance.attendeeId, handoverSecondSpotEmail)}
+                            disabled={!handoverSecondSpotEmail || actionLoading === 'handover'}
+                            className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND OVER 2ND SPOT'}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-asphalt/50 font-body text-center">
+                          Hand over your main spot after you&apos;ve handed off your 2nd spot.
+                        </p>
                       </div>
+                    ) : isConfirmed && myAttendance ? (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-asphalt/70 font-body">
+                          Hand over your <span className="font-graffiti">spot</span>
+                        </p>
+                        <div className="flex gap-2">
+                          <Select value={handoverPrimaryEmail} onValueChange={setHandoverPrimaryEmail}>
+                            <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-9 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
+                              <SelectValue placeholder="Hand it to…" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                              {membersWithoutSpot.map((m) => (
+                                <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                                  {m.displayName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <button
+                            onClick={() => handleSelfHandover(myAttendance.attendeeId, handoverPrimaryEmail)}
+                            disabled={!handoverPrimaryEmail || actionLoading === 'handover'}
+                            className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {actionLoading === 'handover' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'HAND OVER SPOT'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 )}
 
@@ -910,24 +971,21 @@ export default function EventDetailModal({
                           actionLoading === `unassign-${attendee.attendeeId}`;
                         const isRiderRow = attendee.isPlusOne;
                         const displayName = isRiderRow
-                          ? `${attendee.userName}'s Rider`
+                          ? `${attendee.userName}'s +1`
                           : attendee.userName;
 
-                        // Rider reassign: target must have primary but no rider yet
-                        const riderHolderEmails = new Set(
-                          allAttendees.filter(a => a.isPlusOne).map(a => a.userEmail)
-                        );
-                        const membersForRiderSwap = isRiderRow
-                          ? primaryAttendees
-                              .filter(a => a.userEmail !== attendee.userEmail && !riderHolderEmails.has(a.userEmail))
-                              .map(a => members.find(m => m.userEmail === a.userEmail))
-                              .filter(Boolean) as typeof members
-                          : membersWithoutSpot;
-
-                        // Show "+1" admin button only for non-rider primary holders without a rider
                         const hasRiderAlready = isRiderRow
                           ? false
                           : allAttendees.some(a => a.isPlusOne && a.userEmail === attendee.userEmail);
+
+                        const reassignTargets = isRiderRow
+                          ? membersWithoutSpot.map((m) => ({ member: m, asPlusOne: false }))
+                          : [
+                              ...membersWithoutSpot.map((m) => ({ member: m, asPlusOne: false })),
+                              ...membersWithRoomForPlusOne
+                                .filter((m) => m.userEmail !== attendee.userEmail)
+                                .map((m) => ({ member: m, asPlusOne: true })),
+                            ];
 
                         return (
                           <div
@@ -942,6 +1000,15 @@ export default function EventDetailModal({
                                 </span>
                               )}
                             </span>
+                            {isRiderRow ? (
+                              <p className="text-[10px] text-asphalt/50 font-body">
+                                Second slot — assign to any player not in the game
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-asphalt/50 font-body">
+                                Assign as primary (not in game) or as +1 (already playing)
+                              </p>
+                            )}
                             <div className="flex gap-2">
                               <Select
                                 value={reassignTarget[attendee.attendeeId] ?? ''}
@@ -950,12 +1017,12 @@ export default function EventDetailModal({
                                 }
                               >
                                 <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-xs h-8 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
-                                  <SelectValue placeholder="Swap with…" />
+                                  <SelectValue placeholder={isRiderRow ? 'Assign to…' : 'Swap with…'} />
                                 </SelectTrigger>
                                 <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
-                                  {membersForRiderSwap.map((m) => (
-                                    <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
-                                      {m.displayName}
+                                  {reassignTargets.map(({ member: m, asPlusOne }) => (
+                                    <SelectItem key={`${m.userEmail}-${asPlusOne}`} value={m.userEmail} className="font-body">
+                                      {asPlusOne ? `${m.displayName} (as +1)` : m.displayName}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -967,7 +1034,7 @@ export default function EventDetailModal({
                               >
                                 {actionLoading === `reassign-${attendee.attendeeId}` ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : 'SWAP'}
+                                ) : isRiderRow ? 'ASSIGN' : 'SWAP'}
                               </button>
                               {/* Add Rider: primary holders without a rider and capacity exists */}
                               {!isRiderRow && !hasRiderAlready && availableSpots > 0 && (
@@ -987,7 +1054,7 @@ export default function EventDetailModal({
                               <button
                                 onClick={() => handleUnassign(attendee.attendeeId)}
                                 disabled={busy}
-                                title={isRiderRow ? 'Remove Rider from game' : 'Remove player from game'}
+                                title={isRiderRow ? 'Remove +1 from game' : 'Remove player from game'}
                                 className="bg-terracotta text-white border-2 border-asphalt py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                               >
                                 {actionLoading === `unassign-${attendee.attendeeId}` ? (
@@ -1013,16 +1080,9 @@ export default function EventDetailModal({
                   </h3>
                   <div className="space-y-2">
                     {offeredSpots.map((attendee, index) => {
-                      const isRiderSpot = attendee.isPlusOne;
-                      // A rider spot can be claimed by someone who has a primary but no rider
-                      const canClaimAsRider =
-                        isRiderSpot &&
-                        event.isAttending &&
-                        !myRiderAttendance &&
-                        isSignupOpen;
-                      const canClaimAsPrimary =
-                        !isRiderSpot && !event.isAttending && isSignupOpen;
-                      const canClaim = canClaimAsPrimary || canClaimAsRider;
+                      const isOwnOffer =
+                        attendee.userEmail.toLowerCase() === userEmail.toLowerCase();
+                      const canClaim = canClaimOfferedSpot && !isOwnOffer;
 
                       return (
                         <div
@@ -1032,17 +1092,35 @@ export default function EventDetailModal({
                         >
                           <span className="font-marker text-terracotta flex items-center gap-1.5">
                             {renderRoleIcon(attendee.userEmail)}
-                            {isRiderSpot ? `${attendee.userName}'s Rider` : `${attendee.userName}'s spot`}
+                            {attendee.isPlusOne ? `${attendee.userName}'s +1` : `${attendee.userName}'s spot`}
                           </span>
-                          {canClaim && (
+                          {isOwnOffer ? (
+                            <button
+                              onClick={() =>
+                                attendee.isPlusOne
+                                  ? handleRetractRiderOffer(attendee.attendeeId)
+                                  : handleRetract()
+                              }
+                              disabled={
+                                actionLoading === 'retract' || actionLoading === 'retract-rider'
+                              }
+                              className="bg-white text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              {actionLoading === 'retract' || actionLoading === 'retract-rider' ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <><Undo2 className="w-4 h-4" /><span>RETRACT OFFER</span></>
+                              )}
+                            </button>
+                          ) : canClaim ? (
                             <button
                               onClick={() => handleClaim(attendee.attendeeId)}
                               disabled={actionLoading === 'claim'}
                               className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                             >
-                              {actionLoading === 'claim' ? <Loader2 className="w-4 h-4 animate-spin" /> : 'CLAIM'}
+                              {actionLoading === 'claim' ? <Loader2 className="w-4 h-4 animate-spin" /> : (isConfirmed ? claimCtaLabel : 'CLAIM')}
                             </button>
-                          )}
+                          ) : null}
                         </div>
                       );
                     })}
@@ -1072,7 +1150,7 @@ export default function EventDetailModal({
                       {displayList.map((attendee, index) => {
                         const isMe = attendee.userEmail.toLowerCase() === userEmail.toLowerCase();
                         const displayName = attendee.isPlusOne
-                          ? `${attendee.userName}'s Rider`
+                          ? `${attendee.userName}'s +1`
                           : attendee.userName;
                         return (
                           <div
@@ -1143,14 +1221,9 @@ export default function EventDetailModal({
                         />
                         {renderRoleIcon(entry.userEmail)}
                         <span className="font-marker text-sm text-asphalt truncate flex items-center gap-1.5">
-                          {entry.displayName}
+                          {entry.forRider ? `${entry.displayName}'s +1` : entry.displayName}
                           {entry.userEmail === userEmail && (
                             <span className="text-asphalt/60">(you)</span>
-                          )}
-                          {entry.forRider && (
-                            <span className="text-[10px] font-graffiti bg-dull-gold text-asphalt px-1 py-0.5 leading-none shrink-0">
-                              +1
-                            </span>
                           )}
                         </span>
                       </div>

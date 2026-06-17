@@ -15,6 +15,7 @@
 
 import { init, type LDClient } from '@launchdarkly/vercel-server-sdk';
 import { createClient, type EdgeConfigClient } from '@vercel/edge-config';
+import { ldApplicationMetadata } from '@/lib/appVersion';
 
 const APP_ADMINS_FLAG = 'app-admins';
 
@@ -35,7 +36,9 @@ function getClient(): LDClient | null {
 
   try {
     edgeConfigClient = edgeConfigClient ?? createClient(edgeConfigConnection);
-    ldClient = init(clientSideId, edgeConfigClient);
+    ldClient = init(clientSideId, edgeConfigClient, {
+      application: ldApplicationMetadata,
+    } as Parameters<typeof init>[2]);
     return ldClient;
   } catch (err) {
     console.warn('[launchdarkly] failed to init server client:', err);

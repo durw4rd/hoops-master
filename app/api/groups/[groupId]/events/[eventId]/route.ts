@@ -44,11 +44,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const userAttendance = attendees.find(
       (a) => a.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && !a.isPlusOne
     );
-    const myWaitlist = waitlist.find(
-      (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && !w.forRider
-    );
-    const myRiderWaitlist = waitlist.find(
-      (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && w.forRider
+    const myBenchEntry = waitlist.find(
+      (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase()
     );
 
     // Occupancy = one slot per attendee row (each rider row is a separate row).
@@ -65,8 +62,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         availableSpots,
         isAttending: !!userAttendance,
         myAttendance: userAttendance || null,
-        myWaitlistPosition: myWaitlist ? myWaitlist.position : null,
-        myRiderWaitlistPosition: myRiderWaitlist ? myRiderWaitlist.position : null,
+        myWaitlistPosition: myBenchEntry ? myBenchEntry.position : null,
+        myRiderWaitlistPosition: null,
       },
     });
   } catch (error) {
