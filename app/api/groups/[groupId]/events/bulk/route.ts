@@ -110,12 +110,27 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    const pricingMode =
+      body.pricingMode === 'split_total' || body.pricingMode === 'per_spot'
+        ? body.pricingMode
+        : ctx.group.defaultPricingMode === 'split_total'
+          ? 'split_total'
+          : 'per_spot';
+
     const inputs = blocks.map((b) => ({
       date: b.date,
       startTime: b.startTime,
       endTime: b.endTime,
       totalSpots: totalSpots || ctx.group.defaultEventSpots,
-      slotCost: slotCost ?? Number(ctx.group.defaultSlotCost),
+      pricingMode,
+      slotCost:
+        pricingMode === 'per_spot'
+          ? (slotCost ?? Number(ctx.group.defaultSlotCost))
+          : 0,
+      totalCost:
+        pricingMode === 'split_total'
+          ? (body.totalCost ?? Number(ctx.group.defaultTotalCost))
+          : 0,
       location,
       description,
       eventType: eventType as EventType,

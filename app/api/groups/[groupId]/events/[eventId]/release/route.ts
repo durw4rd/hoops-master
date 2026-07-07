@@ -12,7 +12,7 @@ import { requireMember } from '@/lib/apiGuards';
 import { getEventRowById } from '@/lib/queries/events';
 import { releaseSpot } from '@/lib/queries/waitlist';
 import { SpotError } from '@/lib/queries/_tx';
-import { isPastEvent } from '@/lib/eventRules';
+import { spotMutationBlockedMessage } from '@/lib/eventRules';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -28,8 +28,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!eventRow || eventRow.groupId !== groupId) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-    if (isPastEvent(eventRow)) {
-      return NextResponse.json({ error: 'Cannot release spots for past events' }, { status: 400 });
+    const blocked = spotMutationBlockedMessage(eventRow);
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 });
     }
 
     const result = await releaseSpot({ eventId, userId: ctx.user.id });

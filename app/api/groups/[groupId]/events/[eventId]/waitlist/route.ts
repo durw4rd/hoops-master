@@ -13,7 +13,7 @@ import { requireMember } from '@/lib/apiGuards';
 import { getEventRowById } from '@/lib/queries/events';
 import { joinWaitlist, leaveWaitlist } from '@/lib/queries/waitlist';
 import { SpotError } from '@/lib/queries/_tx';
-import { isPastEvent } from '@/lib/eventRules';
+import { spotMutationBlockedMessage } from '@/lib/eventRules';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -32,8 +32,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (eventRow.status === 'cancelled') {
       return NextResponse.json({ error: 'This event has been cancelled' }, { status: 400 });
     }
-    if (isPastEvent(eventRow)) {
-      return NextResponse.json({ error: 'Cannot join the waitlist for past events' }, { status: 400 });
+    const blocked = spotMutationBlockedMessage(eventRow);
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 });
     }
 
     const body = await request.json().catch(() => ({}));

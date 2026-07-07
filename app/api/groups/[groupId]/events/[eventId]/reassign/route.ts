@@ -13,7 +13,7 @@ import { requireMember } from '@/lib/apiGuards';
 import { getEventRowById, reassignSpot } from '@/lib/queries/events';
 import { getActiveMembersWithUsers } from '@/lib/queries/groups';
 import { SpotError } from '@/lib/queries/_tx';
-import { isPastEvent } from '@/lib/eventRules';
+import { spotMutationBlockedMessage } from '@/lib/eventRules';
 import { isCrewManager } from '@/lib/roles';
 
 interface RouteParams {
@@ -30,8 +30,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!eventRow || eventRow.groupId !== groupId) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-    if (isPastEvent(eventRow)) {
-      return NextResponse.json({ error: 'Cannot reassign spots for past events' }, { status: 400 });
+    const blocked = spotMutationBlockedMessage(eventRow);
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 });
     }
 
     const body = await request.json();

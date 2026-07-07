@@ -6,6 +6,7 @@
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { eventAttendees, eventWaitlist } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
+import { getSpotChargeAmount } from './pricing';
 import { notifySpotChange } from './notifications';
 import type { Tx, EventRow } from './_tx';
 import { SpotError } from './_tx';
@@ -122,7 +123,7 @@ export async function transferOpeningToUser(
     type: options.transactionType,
     fromUserId: options.fromUserId,
     toUserId,
-    amount: Number(event.slotCost),
+    amount: getSpotChargeAmount(event),
     notes: options.notes,
   });
 

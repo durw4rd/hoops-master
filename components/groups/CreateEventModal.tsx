@@ -17,7 +17,8 @@ import WeeklyScheduleBuilder from "./WeeklyScheduleBuilder";
 import LineupEditor from "./LineupEditor";
 import BannerUploadField from "./BannerUploadField";
 import { expandWeeklySchedule, type ScheduleSlot } from "@/lib/schedule";
-import type { EventType, BannerOrientation } from "@/lib/types";
+import type { EventType, BannerOrientation, PricingMode } from "@/lib/types";
+import PricingFields from "./PricingFields";
 
 type AssignmentMode = "player_signup" | "admin_assign" | "round_robin";
 
@@ -34,6 +35,8 @@ interface CreateEventModalProps {
   groupId: string;
   defaultSpots: number;
   defaultCost: number;
+  defaultPricingMode?: PricingMode;
+  defaultTotalCost?: number;
   /** Used to show display names in the rotation preview. */
   members?: { userEmail: string; displayName: string }[];
   roundRobinSlide?: number;
@@ -73,6 +76,8 @@ export default function CreateEventModal({
   groupId,
   defaultSpots,
   defaultCost,
+  defaultPricingMode = "per_spot",
+  defaultTotalCost = 0,
   members = [],
   roundRobinSlide = 1,
   onEventCreated,
@@ -82,6 +87,8 @@ export default function CreateEventModal({
   const [endTime, setEndTime] = useState("21:00");
   const [totalSpots, setTotalSpots] = useState(String(defaultSpots));
   const [slotCost, setSlotCost] = useState(String(defaultCost));
+  const [pricingMode, setPricingMode] = useState<PricingMode>(defaultPricingMode);
+  const [totalCost, setTotalCost] = useState(String(defaultTotalCost));
   const [location, setLocation] = useState("");
   const [eventType, setEventType] = useState<EventType>("regular");
   const [name, setName] = useState("");
@@ -129,6 +136,12 @@ export default function CreateEventModal({
     return { signupOpenType: "immediate" };
   };
 
+  const getPricingPayload = () => ({
+    pricingMode,
+    slotCost: pricingMode === "per_spot" ? parseFloat(slotCost) || 0 : 0,
+    totalCost: pricingMode === "split_total" ? parseFloat(totalCost) || 0 : 0,
+  });
+
   const handleCreateSingle = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -143,7 +156,7 @@ export default function CreateEventModal({
           startTime,
           endTime,
           totalSpots: parseInt(totalSpots) || defaultSpots,
-          slotCost: parseFloat(slotCost) || 0,
+          ...getPricingPayload(),
           location: location || undefined,
           eventType,
           name: eventType === "special" ? (name || undefined) : undefined,
@@ -178,7 +191,7 @@ export default function CreateEventModal({
       startTime: b.startTime,
       endTime: b.endTime,
       totalSpots: parseInt(totalSpots) || defaultSpots,
-      slotCost: parseFloat(slotCost) || 0,
+      ...getPricingPayload(),
       location: location || undefined,
     }));
 
@@ -261,7 +274,7 @@ export default function CreateEventModal({
         body: JSON.stringify({
           events: blocks,
           totalSpots: parseInt(totalSpots) || defaultSpots,
-          slotCost: parseFloat(slotCost) || 0,
+          ...getPricingPayload(),
           location: location || undefined,
           assignmentMode,
           ...getSignupPayload(),
@@ -292,6 +305,8 @@ export default function CreateEventModal({
     setEndTime("21:00");
     setTotalSpots(String(defaultSpots));
     setSlotCost(String(defaultCost));
+    setPricingMode(defaultPricingMode);
+    setTotalCost(String(defaultTotalCost));
     setLocation("");
     setEventType("regular");
     setName("");
@@ -468,7 +483,7 @@ export default function CreateEventModal({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="spots" className="font-graffiti text-asphalt">Spots</Label>
                 <Input
@@ -481,16 +496,15 @@ export default function CreateEventModal({
                   className="sketch-input"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="cost" className="font-graffiti text-asphalt">Cost (€)</Label>
-                <Input
-                  id="cost"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={slotCost}
-                  onChange={(e) => setSlotCost(e.target.value)}
-                  className="sketch-input"
+              <div className="sm:col-span-1">
+                <PricingFields
+                  idPrefix="single"
+                  pricingMode={pricingMode}
+                  onPricingModeChange={setPricingMode}
+                  slotCost={slotCost}
+                  onSlotCostChange={setSlotCost}
+                  totalCost={totalCost}
+                  onTotalCostChange={setTotalCost}
                 />
               </div>
             </div>
@@ -632,7 +646,7 @@ export default function CreateEventModal({
               onBlockMinutesChange={setBlockMinutes}
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="rSpots" className="font-graffiti text-asphalt">Spots</Label>
                 <Input
@@ -645,16 +659,15 @@ export default function CreateEventModal({
                   className="sketch-input"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="rCost" className="font-graffiti text-asphalt">Cost (€)</Label>
-                <Input
-                  id="rCost"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={slotCost}
-                  onChange={(e) => setSlotCost(e.target.value)}
-                  className="sketch-input"
+              <div className="sm:col-span-1">
+                <PricingFields
+                  idPrefix="recurring"
+                  pricingMode={pricingMode}
+                  onPricingModeChange={setPricingMode}
+                  slotCost={slotCost}
+                  onSlotCostChange={setSlotCost}
+                  totalCost={totalCost}
+                  onTotalCostChange={setTotalCost}
                 />
               </div>
             </div>

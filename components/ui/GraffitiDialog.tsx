@@ -36,7 +36,7 @@ export function GraffitiDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          "graffiti-dialog max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto",
+          "graffiti-dialog max-h-[85vh] overflow-y-auto overflow-x-hidden mx-2 sm:mx-auto min-w-0",
           className
         )}
       >

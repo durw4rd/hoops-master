@@ -73,9 +73,9 @@ scripts/
 | Table | Purpose | Key columns / notes |
 |---|---|---|
 | `users` | App users / invite allowlist | `email` unique, `display_name`, `piece_url` (optional avatar, Vercel Blob), `global_role` (`owner`/`admin`/`user`), `onboarded` |
-| `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `round_robin_slide`, `banner_url` (optional Vercel Blob image), `banner_orientation` (`landscape`/`portrait`) |
+| `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `default_pricing_mode` (`per_spot`/`split_total`), `default_total_cost`, `round_robin_slide`, `banner_url`, `banner_orientation` |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
-| `events` | Games | `starts_at`/`ends_at` (timestamptz), `total_spots`, `slot_cost`, `event_type` (`regular`/`special`; legacy `tournament` migrated to `special`), `name` (special/burner title), `description`, `banner_url`, `banner_orientation` (`landscape`/`portrait`), `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
+| `events` | Games | `starts_at`/`ends_at`, `total_spots`, `slot_cost` (per-spot mode), `pricing_mode`, `total_cost` (split-total mode), `pricing_finalized_at`, `finalized_per_share`, `remainder_policy`, `effective_total_cost`, plus `event_type`, `name`, `description`, `banner_*`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
 | `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
 | `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user)` |
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
@@ -107,6 +107,14 @@ Notes for agents:
   `type`; `type` is display/audit only. Claiming/being assigned a spot debits
   `to_user`; giving up a spot credits `from_user`. Initial admin/round-robin/waitlist
   assignments are all recorded the same way (`from_user` may be NULL).
+- **Pricing modes:** `per_spot` charges `slot_cost` on each spot mutation (existing).
+  `split_total` defers all charges until the Capo/King **finalizes** the roster via
+  `POST .../finalize-pricing`; each occupied attendee row (including +1 rows, debited
+  to the primary holder's account) gets a `split_settle` row at `round(total_cost /
+  occupancy, 1)`. Remainder handling: `ignore`, `admin_absorb_surplus`, or
+  `adjust_total_deficit`. After finalize, spot mutations are blocked. Per-spot
+  `slot_cost` edits on existing rosters append `price_adjustment` correction rows.
+  Logic in `lib/queries/pricing.ts`.
 - **Cascades:** deleting a `group` cascades `group_members`, `events`
   (→ `event_attendees`, `event_waitlist`), and `round_robin_rosters`.
   `spot_transactions` and `payments` have **no** cascade FK — `deleteGroup()`
@@ -289,14 +297,89 @@ pnpm install
 pnpm dev                       # local dev on port 3000 (reads .env.local)
 pnpm db:generate               # generate migration from schema changes
 pnpm db:push                   # push schema to DB (dev)
-pnpm db:migrate                # apply migrations
+pnpm db:migrate                # apply migrations (see Database migrations below)
 pnpm tsx scripts/seedPlayers.ts        # seed/allowlist players (idempotent)
 EMAIL=x@y.com ROLE=owner pnpm tsx scripts/setRole.ts
 npx tsc --noEmit && pnpm build # verify before commit
 ```
 
+## Database migrations
+
+Drizzle tracks schema in `lib/db/schema.ts` and versioned SQL under
+`lib/db/migrations/`. The migration **journal** (`lib/db/migrations/meta/_journal.json`)
+is the list of migrations `drizzle-kit migrate` actually runs — a `.sql` file on disk
+that is not in the journal is **skipped silently**.
+
+### Workflow (required for shipped schema changes)
+
+1. Edit `lib/db/schema.ts`.
+2. `pnpm db:generate` — produces `NNNN_*.sql` plus journal + snapshot updates. **Do not**
+   hand-write SQL without this step (or equivalent manual journal/snapshot edits).
+3. Review the generated migration.
+4. Load `DATABASE_URL` and apply (see below).
+5. Verify columns/tables exist before assuming the app will work.
+
+### `DATABASE_URL` and drizzle-kit
+
+`drizzle.config.ts` reads `process.env.DATABASE_URL` only; it does **not** load
+`.env.local`. Next.js dev (`pnpm dev`) loads `.env.local` automatically — migration
+commands do not.
+
+```bash
+export $(grep -E '^DATABASE_URL=' .env.local | xargs)
+pnpm db:migrate
+```
+
+Use the Neon **pooled** connection string (same as in `.env.local`).
+
+### `db:push` vs `db:migrate`
+
+| Command | Use when |
+|---|---|
+| `pnpm db:push` | One-off local sync; no migration file. Interactive prompt. |
+| `pnpm db:migrate` | Shared DBs and production; applies journal-tracked migrations. **Default for features.** |
+
+Feature work that adds/changes columns: **generate + migrate**, commit the SQL and
+`meta/` changes together with the code that depends on them.
+
+### Success and failure signals
+
+`drizzle-kit migrate` prints config and a Neon websocket driver warning first — that
+warning is expected. A successful run ends with:
+
+```text
+[✓] migrations applied successfully!
+```
+
+If migrate “succeeds” but the app 500s with `column "…" does not exist`, the migration
+was likely never registered or never applied. Check the journal and query
+`information_schema.columns` (or the affected API) before debugging application code.
+
+### Verify after migrate
+
+```bash
+export $(grep -E '^DATABASE_URL=' .env.local | xargs)
+node -e "
+const { neon } = require('@neondatabase/serverless');
+const sql = neon(process.env.DATABASE_URL);
+sql\`SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'your_table' AND column_name = 'your_column'\`
+  .then(r => console.log(r.length ? 'OK — column exists' : 'MISSING — migration not applied'));
+"
+```
+
+### Emergency manual apply
+
+If SQL was applied directly to Neon (bypassing drizzle-kit), also add the migration tag
+to `meta/_journal.json` and insert into `drizzle.__drizzle_migrations` so future
+`db:migrate` runs do not double-apply. Prefer regenerating from a clean schema diff
+when possible.
+
 ## Conventions for agents
 
+- **Schema changes:** follow **Database migrations** above (`db:generate` → `db:migrate`,
+  load `DATABASE_URL`, verify columns). Never ship code that references new columns
+  without a registered, applied migration.
 - All DB access goes through `lib/queries/*` — don't query Drizzle directly from
   route handlers or components.
 - Use the `apiGuards` helpers for authz; don't re-implement role checks inline.

@@ -25,6 +25,7 @@ import EventListCard from "./EventListCard";
 import CreditDashboard from "./CreditDashboard";
 import AddMemberModal from "./AddMemberModal";
 import BannerUploadField from "./BannerUploadField";
+import PricingFields from "./PricingFields";
 import CrewMuralHero from "./CrewMuralHero";
 import SettingsMenu from "@/components/SettingsMenu";
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -118,6 +119,10 @@ export default function GroupDashboard({
   const [editDescription, setEditDescription] = useState(group.description ?? '');
   const [editSpots, setEditSpots] = useState(String(group.defaultEventSpots ?? 10));
   const [editCost, setEditCost] = useState(String(group.defaultSlotCost ?? 0));
+  const [editPricingMode, setEditPricingMode] = useState<'per_spot' | 'split_total'>(
+    group.defaultPricingMode ?? 'per_spot'
+  );
+  const [editTotalCost, setEditTotalCost] = useState(String(group.defaultTotalCost ?? 0));
   const [editBannerUrl, setEditBannerUrl] = useState<string | undefined>(group.bannerUrl);
   const [editBannerOrientation, setEditBannerOrientation] = useState<'landscape' | 'portrait'>(
     group.bannerOrientation === 'portrait' ? 'portrait' : 'landscape'
@@ -181,6 +186,8 @@ export default function GroupDashboard({
     setEditDescription(group.description ?? "");
     setEditSpots(String(group.defaultEventSpots ?? 10));
     setEditCost(String(group.defaultSlotCost ?? 0));
+    setEditPricingMode(group.defaultPricingMode ?? 'per_spot');
+    setEditTotalCost(String(group.defaultTotalCost ?? 0));
     setEditBannerUrl(group.bannerUrl);
     setEditBannerOrientation(group.bannerOrientation === "portrait" ? "portrait" : "landscape");
     setVisibility(group.visibility);
@@ -246,6 +253,8 @@ export default function GroupDashboard({
           description: editDescription,
           defaultEventSpots: parseInt(editSpots) || group.defaultEventSpots,
           defaultSlotCost: parseFloat(editCost) || 0,
+          defaultPricingMode: editPricingMode,
+          defaultTotalCost: parseFloat(editTotalCost) || 0,
           bannerUrl: editBannerUrl ?? null,
           bannerOrientation: editBannerOrientation,
         }),
@@ -706,7 +715,7 @@ export default function GroupDashboard({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="crew-spots" className="font-graffiti text-asphalt">
                     Default Spots
@@ -721,18 +730,15 @@ export default function GroupDashboard({
                     className="sketch-input"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="crew-cost" className="font-graffiti text-asphalt">
-                    Default Cost
-                  </Label>
-                  <Input
-                    id="crew-cost"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editCost}
-                    onChange={(e) => setEditCost(e.target.value)}
-                    className="sketch-input"
+                <div>
+                  <PricingFields
+                    idPrefix="crew"
+                    pricingMode={editPricingMode}
+                    onPricingModeChange={setEditPricingMode}
+                    slotCost={editCost}
+                    onSlotCostChange={setEditCost}
+                    totalCost={editTotalCost}
+                    onTotalCostChange={setEditTotalCost}
                   />
                 </div>
               </div>
@@ -807,6 +813,8 @@ export default function GroupDashboard({
         groupId={group.groupId}
         defaultSpots={group.defaultEventSpots}
         defaultCost={group.defaultSlotCost}
+        defaultPricingMode={group.defaultPricingMode}
+        defaultTotalCost={group.defaultTotalCost}
         members={members.map((m) => ({ userEmail: m.userEmail, displayName: m.displayName }))}
         roundRobinSlide={group.roundRobinSlide}
         onEventCreated={() => {

@@ -19,7 +19,8 @@ import {
 import Image from "next/image";
 import EditEventModal from "./EditEventModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import type { BannerOrientation, EventType } from "@/lib/types";
+import { GraffitiDialog } from "@/components/ui/GraffitiDialog";
+import type { BannerOrientation, EventType, RemainderPolicy } from "@/lib/types";
 import { 
   Clock, 
   MapPin, 
@@ -61,6 +62,20 @@ interface EventDetail {
   endTime: string;
   totalSpots: number;
   slotCost: number;
+  pricingMode?: 'per_spot' | 'split_total';
+  totalCost?: number;
+  pricingFinalizedAt?: string | null;
+  finalizedPerShare?: number | null;
+  occupancy?: number;
+  splitPreview?: {
+    baseShare: number;
+    roundedSum: number;
+    remainder: number;
+    occupancy: number;
+    totalCost: number;
+    isSurplus: boolean;
+    isDeficit: boolean;
+  } | null;
   location?: string;
   name?: string;
   description?: string;
@@ -100,6 +115,9 @@ export default function EventDetailModal({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [reassignTarget, setReassignTarget] = useState<Record<string, string>>({});
   const [manageSquadOpen, setManageSquadOpen] = useState(false);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [remainderPolicy, setRemainderPolicy] = useState<RemainderPolicy>('ignore');
+  const [finalizeLoading, setFinalizeLoading] = useState(false);
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -151,6 +169,51 @@ export default function EventDetailModal({
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [open, fetchEvent]);
+
+  const handleFinalizePricing = async () => {
+    setFinalizeLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/finalize-pricing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remainderPolicy }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to finalize cost split');
+        return;
+      }
+      setFinalizeOpen(false);
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to finalize cost split');
+    } finally {
+      setFinalizeLoading(false);
+    }
+  };
+
+  const handleUnfinalizePricing = async () => {
+    setActionLoading('unfinalize');
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/unfinalize-pricing`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to undo finalize');
+        return;
+      }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to undo finalize');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const handleDelete = async () => {
     setActionLoading('delete');
@@ -495,8 +558,13 @@ export default function EventDetailModal({
     return { isOpen: d <= new Date(), opensAt: d };
   };
   const { isOpen: isSignupOpen, opensAt: signupOpensAt } = getSignupStatus();
+  const isSplitPricing = event?.pricingMode === 'split_total';
+  const isPricingFinalized = !!event?.pricingFinalizedAt;
+  const spotsLocked = isSplitPricing && isPricingFinalized;
+  const canModifySpots = isSignupOpen && !spotsLocked;
+  const splitPreview = event?.splitPreview ?? null;
   const canClaimOfferedSpot =
-    isSignupOpen &&
+    canModifySpots &&
     !!earliestOffered &&
     (waitlist.length === 0 || isBenchHead);
   const wantsSecondSpot = isConfirmed && !myRiderAttendance;
@@ -595,13 +663,38 @@ export default function EventDetailModal({
                   <Users className="w-3 h-3" />
                   {totalOccupancy}/{event.totalSpots}
                 </span>
-                {event.slotCost > 0 && (
+                {isSplitPricing ? (
+                  isPricingFinalized ? (
+                    <span className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti px-2 py-0.5 text-xs flex items-center gap-1">
+                      <Euro className="w-3 h-3" />
+                      €{(event.finalizedPerShare ?? 0).toFixed(1)}/slot (finalized)
+                    </span>
+                  ) : splitPreview ? (
+                    <span className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti px-2 py-0.5 text-xs flex items-center gap-1">
+                      <Euro className="w-3 h-3" />
+                      €{event.totalCost?.toFixed(1)} total · ~€{splitPreview.baseShare.toFixed(1)}/slot
+                    </span>
+                  ) : event.totalCost && event.totalCost > 0 ? (
+                    <span className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti px-2 py-0.5 text-xs flex items-center gap-1">
+                      <Euro className="w-3 h-3" />
+                      €{event.totalCost.toFixed(1)} total
+                    </span>
+                  ) : null
+                ) : event.slotCost > 0 ? (
                   <span className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti px-2 py-0.5 text-xs flex items-center gap-1">
                     <Euro className="w-3 h-3" />
-                    {event.slotCost.toFixed(2)}
+                    {event.slotCost.toFixed(2)}/spot
                   </span>
-                )}
+                ) : null}
               </div>
+
+              {spotsLocked && (
+                <div className="bg-asphalt border-2 border-asphalt p-3 text-center">
+                  <p className="font-graffiti text-sticker-white text-sm">
+                    Roster cost finalized — spot changes are locked
+                  </p>
+                </div>
+              )}
 
               {/* Signup locked banner */}
               {!isSignupOpen && signupOpensAt && formatSignupTime(signupOpensAt) && (
@@ -619,7 +712,7 @@ export default function EventDetailModal({
               <div className="space-y-2">
 
                 {/* Not attending → CLAIM SPOT */}
-                {!event.isAttending && availableSpots > 0 && isSignupOpen && (
+                {!event.isAttending && availableSpots > 0 && canModifySpots && (
                   <button
                     onClick={() => handleClaim()}
                     disabled={actionLoading === 'claim'}
@@ -634,7 +727,7 @@ export default function EventDetailModal({
                 )}
 
                 {/* Not attending, event full → claim offered spot or join bench */}
-                {!event.isAttending && isFull && isSignupOpen && !onBench && (
+                {!event.isAttending && isFull && canModifySpots && !onBench && (
                   canClaimOfferedSpot ? (
                     <button
                       onClick={() => handleClaim(earliestOffered!.attendeeId)}
@@ -744,7 +837,7 @@ export default function EventDetailModal({
                           <><Undo2 className="w-4 h-4" /><span>RETRACT OFFER</span></>
                         )}
                       </button>
-                    ) : isSignupOpen && !onBench ? (
+                    ) : canModifySpots && !onBench ? (
                       availableSpots > 0 ? (
                         <button
                           onClick={handleAddRider}
@@ -897,6 +990,30 @@ export default function EventDetailModal({
                 <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
                   <p className="text-sm text-terracotta font-body">{error}</p>
                 </div>
+              )}
+
+              {/* Manager: finalize split pricing */}
+              {canManage && isSplitPricing && !isPricingFinalized && totalOccupancy > 0 && (
+                <button
+                  onClick={() => setFinalizeOpen(true)}
+                  className="w-full bg-moss-green text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-4 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] transition-all flex items-center justify-center gap-2"
+                >
+                  <Euro className="w-4 h-4" />
+                  FINALIZE COST SPLIT
+                </button>
+              )}
+              {canManage && isSplitPricing && isPricingFinalized && (
+                <button
+                  onClick={handleUnfinalizePricing}
+                  disabled={actionLoading === 'unfinalize'}
+                  className="w-full bg-white text-asphalt border-2 border-dashed border-asphalt font-graffiti text-sm py-2 px-4 hover:bg-sticker-white transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {actionLoading === 'unfinalize' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>Undo finalize</>
+                  )}
+                </button>
               )}
 
               {/* Manager: edit / delete */}
@@ -1253,6 +1370,9 @@ export default function EventDetailModal({
           endTime: event.endTime,
           totalSpots: event.totalSpots,
           slotCost: event.slotCost,
+          pricingMode: event.pricingMode,
+          totalCost: event.totalCost,
+          pricingFinalizedAt: event.pricingFinalizedAt,
           location: event.location ?? '',
           name: event.name ?? '',
           description: event.description ?? '',
@@ -1267,6 +1387,76 @@ export default function EventDetailModal({
         }}
       />
     )}
+
+    <GraffitiDialog
+      open={finalizeOpen}
+      onOpenChange={setFinalizeOpen}
+      title="Finalize Cost Split"
+      description="Players will be charged their share. This locks the roster."
+      className="max-w-md"
+    >
+      {splitPreview && (
+        <div className="space-y-3 font-body text-sm">
+          <p>
+            <span className="font-graffiti text-asphalt">€{splitPreview.baseShare.toFixed(1)}</span>
+            {' '}per occupied slot × {splitPreview.occupancy} slots = €{splitPreview.roundedSum.toFixed(1)}
+          </p>
+          {splitPreview.remainder !== 0 && (
+            <p className="text-asphalt/70">
+              Rounding remainder: €{Math.abs(splitPreview.remainder).toFixed(1)}
+              {splitPreview.isSurplus ? ' surplus' : ' deficit'}
+            </p>
+          )}
+          {splitPreview.remainder !== 0 && (
+            <div className="space-y-2">
+              <p className="font-graffiti text-asphalt text-sm">Handle remainder</p>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="remainderPolicy"
+                    checked={remainderPolicy === 'ignore'}
+                    onChange={() => setRemainderPolicy('ignore')}
+                  />
+                  Ignore (collected total may differ slightly)
+                </label>
+                {splitPreview.isSurplus && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="remainderPolicy"
+                      checked={remainderPolicy === 'admin_absorb_surplus'}
+                      onChange={() => setRemainderPolicy('admin_absorb_surplus')}
+                    />
+                    I absorb the surplus
+                  </label>
+                )}
+                {splitPreview.isDeficit && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="remainderPolicy"
+                      checked={remainderPolicy === 'adjust_total_deficit'}
+                      onChange={() => setRemainderPolicy('adjust_total_deficit')}
+                    />
+                    Use rounded total (€{splitPreview.roundedSum.toFixed(1)})
+                  </label>
+                )}
+              </div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleFinalizePricing}
+            disabled={finalizeLoading}
+            className="sticker-btn-green w-full flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {finalizeLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Confirm &amp; charge players
+          </button>
+        </div>
+      )}
+    </GraffitiDialog>
 
     <ConfirmDialog
       open={confirmDeleteOpen}

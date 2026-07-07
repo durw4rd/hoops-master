@@ -19,6 +19,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/lib/db';
 import { events, eventAttendees, eventWaitlist, users, groups, spotTransactions } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
+import { getSpotChargeAmount, applySlotCostAdjustment, isSplitTotal } from './pricing';
 import { notifySpotChange } from './notifications';
 import {
   assignOpeningToBenchHead,
@@ -38,6 +39,8 @@ import type {
   TransactionType,
   WaitlistEntry,
   BannerOrientation,
+  PricingMode,
+  RemainderPolicy,
 } from '@/lib/types';
 
 type AttendeeRow = typeof eventAttendees.$inferSelect;
@@ -59,6 +62,12 @@ export function toEventDTO(row: EventRow, timezone: string): Event {
     endsAt: row.endsAt.toISOString(),
     totalSpots: row.totalSpots,
     slotCost: Number(row.slotCost),
+    pricingMode: (row.pricingMode === 'split_total' ? 'split_total' : 'per_spot') as PricingMode,
+    totalCost: Number(row.totalCost ?? 0),
+    pricingFinalizedAt: row.pricingFinalizedAt ? row.pricingFinalizedAt.toISOString() : null,
+    finalizedPerShare: row.finalizedPerShare != null ? Number(row.finalizedPerShare) : null,
+    remainderPolicy: (row.remainderPolicy as RemainderPolicy | null) ?? null,
+    effectiveTotalCost: row.effectiveTotalCost != null ? Number(row.effectiveTotalCost) : null,
     location: row.location ?? '',
     name: row.name ?? '',
     description: row.description ?? '',
@@ -233,7 +242,9 @@ export interface CreateEventInput {
   startTime: string;
   endTime: string;
   totalSpots: number;
-  slotCost: number;
+  slotCost?: number;
+  pricingMode?: PricingMode;
+  totalCost?: number;
   location?: string;
   name?: string;
   description?: string;
@@ -262,6 +273,10 @@ export async function createEvent(
   let endsAt = zonedToUtc(input.date, input.endTime, timezone);
   if (endsAt <= startsAt) endsAt = new Date(endsAt.getTime() + 24 * 60 * 60 * 1000);
 
+  const pricingMode = input.pricingMode ?? 'per_spot';
+  const slotCost = pricingMode === 'split_total' ? 0 : (input.slotCost ?? 0);
+  const totalCost = pricingMode === 'split_total' ? (input.totalCost ?? 0) : 0;
+
   const [row] = await db
     .insert(events)
     .values({
@@ -269,7 +284,9 @@ export async function createEvent(
       startsAt,
       endsAt,
       totalSpots: input.totalSpots,
-      slotCost: String(input.slotCost),
+      slotCost: String(slotCost),
+      pricingMode,
+      totalCost: String(totalCost),
       location: input.location ?? '',
       name: input.name ?? '',
       description: input.description ?? '',
@@ -296,12 +313,17 @@ export async function bulkCreateEvents(
     const startsAt = zonedToUtc(input.date, input.startTime, timezone);
     let endsAt = zonedToUtc(input.date, input.endTime, timezone);
     if (endsAt <= startsAt) endsAt = new Date(endsAt.getTime() + 24 * 60 * 60 * 1000);
+    const pricingMode = input.pricingMode ?? 'per_spot';
+    const slotCost = pricingMode === 'split_total' ? 0 : (input.slotCost ?? 0);
+    const totalCost = pricingMode === 'split_total' ? (input.totalCost ?? 0) : 0;
     return {
       groupId,
       startsAt,
       endsAt,
       totalSpots: input.totalSpots,
-      slotCost: String(input.slotCost),
+      slotCost: String(slotCost),
+      pricingMode,
+      totalCost: String(totalCost),
       location: input.location ?? '',
       name: '',
       description: input.description ?? '',
@@ -330,6 +352,8 @@ export interface UpdateEventInput {
   endTime?: string;
   totalSpots?: number;
   slotCost?: number;
+  pricingMode?: PricingMode;
+  totalCost?: number;
   location?: string;
   name?: string;
   description?: string;
@@ -348,6 +372,43 @@ export async function updateEvent(
   const current = await getEventRowById(eventId);
   if (!current) return null;
 
+  const oldSlotCost = Number(current.slotCost);
+  const slotCostChanging =
+    input.slotCost !== undefined &&
+    input.slotCost !== oldSlotCost &&
+    current.pricingMode === 'per_spot';
+
+  if (slotCostChanging) {
+    return serializableTx(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(events)
+        .where(eq(events.id, eventId))
+        .for('update')
+        .limit(1);
+      if (!locked) return null;
+
+      await applySlotCostAdjustment(tx, locked, oldSlotCost, input.slotCost!);
+
+      const patch = buildEventPatch(locked, timezone, input);
+      if (input.slotCost !== undefined) patch.slotCost = String(input.slotCost);
+
+      const [row] = await tx.update(events).set(patch).where(eq(events.id, eventId)).returning();
+      return row ? toEventDTO(row, timezone) : null;
+    });
+  }
+
+  const patch = buildEventPatch(current, timezone, input);
+  if (Object.keys(patch).length === 0) return toEventDTO(current, timezone);
+  const [row] = await db.update(events).set(patch).where(eq(events.id, eventId)).returning();
+  return row ? toEventDTO(row, timezone) : null;
+}
+
+function buildEventPatch(
+  current: EventRow,
+  timezone: string,
+  input: UpdateEventInput
+): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (input.date || input.startTime || input.endTime) {
     const cur = utcToZonedParts(current.startsAt, timezone);
@@ -362,7 +423,11 @@ export async function updateEvent(
     patch.endsAt = endsAt;
   }
   if (input.totalSpots !== undefined) patch.totalSpots = input.totalSpots;
-  if (input.slotCost !== undefined) patch.slotCost = String(input.slotCost);
+  if (input.slotCost !== undefined && !isSplitTotal(current)) patch.slotCost = String(input.slotCost);
+  if (input.pricingMode !== undefined) patch.pricingMode = input.pricingMode;
+  if (input.totalCost !== undefined && isSplitTotal(current) && !current.pricingFinalizedAt) {
+    patch.totalCost = String(input.totalCost);
+  }
   if (input.location !== undefined) patch.location = input.location;
   if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
@@ -371,10 +436,7 @@ export async function updateEvent(
   if (input.eventType !== undefined) patch.eventType = input.eventType;
   if (input.assignmentMode !== undefined) patch.assignmentMode = input.assignmentMode;
   if (input.signupOpensAt !== undefined) patch.signupOpensAt = resolveSignupOpensAt(input.signupOpensAt);
-
-  if (Object.keys(patch).length === 0) return toEventDTO(current, timezone);
-  const [row] = await db.update(events).set(patch).where(eq(events.id, eventId)).returning();
-  return row ? toEventDTO(row, timezone) : null;
+  return patch;
 }
 
 export async function deleteEvent(eventId: string): Promise<void> {
@@ -464,7 +526,7 @@ export async function fillSpot(params: {
       type: params.type,
       fromUserId: null,
       toUserId: params.toUserId,
-      amount: Number(event.slotCost),
+      amount: getSpotChargeAmount(event),
       notes: params.notes,
     });
 
@@ -517,7 +579,7 @@ export async function fillSpots(params: {
         type: params.type,
         fromUserId: null,
         toUserId: userId,
-        amount: Number(event.slotCost),
+        amount: getSpotChargeAmount(event),
         notes: params.notes,
       });
       held.add(userId);
@@ -602,7 +664,7 @@ export async function claimSpot(params: {
       type: 'signup',
       fromUserId: null,
       toUserId: params.userId,
-      amount: Number(event.slotCost),
+      amount: getSpotChargeAmount(event),
     });
     return attendee;
   });
@@ -763,7 +825,7 @@ export async function claimRiderSpot(params: {
       type: 'signup',
       fromUserId: null,
       toUserId: params.userId,
-      amount: Number(event.slotCost),
+      amount: getSpotChargeAmount(event),
       notes: params.byUserId ? 'Rider assigned by admin' : 'Rider claimed',
     });
     return attendee;
@@ -875,7 +937,7 @@ export async function reassignSpot(params: {
           type,
           fromUserId: previousHolder,
           toUserId: params.toUserId,
-          amount: Number(event.slotCost),
+          amount: getSpotChargeAmount(event),
           notes: 'Second spot reassigned as primary',
         });
         return updated;
@@ -911,7 +973,7 @@ export async function reassignSpot(params: {
           type,
           fromUserId: previousHolder,
           toUserId: params.toUserId,
-          amount: Number(event.slotCost),
+          amount: getSpotChargeAmount(event),
         });
         return updated;
       }
@@ -939,7 +1001,7 @@ export async function reassignSpot(params: {
           type,
           fromUserId: previousHolder,
           toUserId: params.toUserId,
-          amount: Number(event.slotCost),
+          amount: getSpotChargeAmount(event),
           notes: 'Reassigned as second spot',
         });
         return updated;
@@ -970,7 +1032,7 @@ export async function reassignSpot(params: {
       type,
       fromUserId: null,
       toUserId: params.toUserId,
-      amount: Number(event.slotCost),
+      amount: getSpotChargeAmount(event),
     });
     return attendee;
   });

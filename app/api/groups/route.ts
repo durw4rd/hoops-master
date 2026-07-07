@@ -46,6 +46,8 @@ export async function POST(request: NextRequest) {
       visibility,
       defaultEventSpots,
       defaultSlotCost,
+      defaultPricingMode,
+      defaultTotalCost,
       timezone,
       roundRobinSlide,
     } = body;
@@ -63,6 +65,9 @@ export async function POST(request: NextRequest) {
         visibility: visibility || 'private',
         defaultEventSpots: defaultEventSpots || 10,
         defaultSlotCost: defaultSlotCost ?? 0,
+        defaultPricingMode:
+          defaultPricingMode === 'split_total' ? 'split_total' : 'per_spot',
+        defaultTotalCost: defaultTotalCost ?? 0,
         timezone: timezone || undefined,
         roundRobinSlide: roundRobinSlide ?? 1,
       },

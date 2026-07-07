@@ -40,7 +40,9 @@ export interface Group {
   spreadsheetId?: string;    // Legacy (Google Sheets) — optional, no longer used
   timezone: string;          // IANA timezone for event date/time logic
   defaultEventSpots: number; // Default spots per event
-  defaultSlotCost: number;   // Default cost per spot
+  defaultSlotCost: number;   // Default cost per spot (per_spot mode)
+  defaultPricingMode: PricingMode;
+  defaultTotalCost: number;  // Default total event cost (split_total mode)
   roundRobinSlide: number;   // Positions to shift per event in round-robin mode
   createdBy: string;         // Email of creator
   createdAt: string;         // ISO timestamp
@@ -53,6 +55,8 @@ export interface Group {
 export type GroupVisibility = 'public' | 'private';
 export type GroupStatus = 'active' | 'archived';
 export type BannerOrientation = 'landscape' | 'portrait';
+export type PricingMode = 'per_spot' | 'split_total';
+export type RemainderPolicy = 'ignore' | 'admin_absorb_surplus' | 'adjust_total_deficit';
 
 /**
  * GroupMembers Sheet - User-Group relationships
@@ -93,7 +97,13 @@ export interface Event {
   startsAt: string;          // ISO timestamp (absolute, authoritative)
   endsAt: string;            // ISO timestamp (absolute, authoritative)
   totalSpots: number;        // Maximum players
-  slotCost: number;          // Cost per slot
+  slotCost: number;          // Cost per slot (per_spot mode)
+  pricingMode: PricingMode;
+  totalCost: number;         // Total event cost (split_total mode)
+  pricingFinalizedAt: string | null;
+  finalizedPerShare: number | null;
+  remainderPolicy: RemainderPolicy | null;
+  effectiveTotalCost: number | null;
   location: string;          // Venue name/address
   name: string;              // Display title (special/burner games)
   description: string;       // Event notes
@@ -164,7 +174,10 @@ export type TransactionType =
   | 'reassign'
   | 'admin_reassign'
   | 'release'
-  | 'waitlist_promote';
+  | 'waitlist_promote'
+  | 'split_settle'
+  | 'split_remainder'
+  | 'price_adjustment';
 
 // =============================================================================
 // WAITLIST / ROSTER / CREDIT TYPES
@@ -273,7 +286,9 @@ export interface CreateEventRequest {
   startTime: string;         // HH:MM
   endTime: string;           // HH:MM
   totalSpots: number;
-  slotCost: number;
+  slotCost?: number;
+  pricingMode?: PricingMode;
+  totalCost?: number;
   location?: string;
   name?: string;
   description?: string;
@@ -294,7 +309,9 @@ export interface BulkCreateEventsRequest {
   startTime: string;         // HH:MM
   endTime: string;           // HH:MM
   totalSpots: number;
-  slotCost: number;
+  slotCost?: number;
+  pricingMode?: PricingMode;
+  totalCost?: number;
   location?: string;
   description?: string;
   eventType?: EventType;

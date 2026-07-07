@@ -13,7 +13,7 @@ import { requireMember } from '@/lib/apiGuards';
 import { getEventRowById, claimRiderSpot } from '@/lib/queries/events';
 import { getUserRowByEmail } from '@/lib/queries/users';
 import { SpotError } from '@/lib/queries/_tx';
-import { isPastEvent, isSignupOpen } from '@/lib/eventRules';
+import { spotMutationBlockedMessage, isSignupOpen } from '@/lib/eventRules';
 import { isCrewManager } from '@/lib/roles';
 
 interface RouteParams {
@@ -36,8 +36,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (eventRow.status === 'cancelled') {
       return NextResponse.json({ error: 'This event has been cancelled' }, { status: 400 });
     }
-    if (isPastEvent(eventRow)) {
-      return NextResponse.json({ error: 'Cannot assign Rider spots for past events' }, { status: 400 });
+    const blocked = spotMutationBlockedMessage(eventRow);
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 });
     }
 
     if (targetUserEmail) {

@@ -195,42 +195,85 @@ export default function JoinGroupModal({
                 <p className="text-asphalt/50 text-sm font-body mt-1">Check back later</p>
               </div>
             ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {availableGroups.map((group, index) => (
-                  <div
-                    key={group.groupId}
-                    className="poster-frame p-0 overflow-hidden"
-                    style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
-                  >
-                    {group.bannerUrl && (
-                      <div className="relative h-16 border-b-2 border-asphalt grain-overlay">
-                        <Image src={group.bannerUrl} alt={group.name} fill className="object-cover" />
-                      </div>
-                    )}
-                    <div className="p-3 flex items-center justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-graffiti text-asphalt truncate">{group.name}</h4>
+              <div className="space-y-3 max-h-64 overflow-y-auto overflow-x-hidden pr-0.5">
+                {availableGroups.map((group, index) => {
+                  const isPortrait =
+                    !!group.bannerUrl && group.bannerOrientation === "portrait";
+                  const rotation = `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)`;
+
+                  const joinButton = (
+                    <button
+                      onClick={() => handleJoinPublic(group.groupId)}
+                      disabled={joiningGroupId === group.groupId}
+                      className="sticker-btn-green text-sm py-2 px-3 flex items-center justify-center gap-1 w-full sm:w-auto sm:self-start"
+                    >
+                      {joiningGroupId === group.groupId ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          Join
+                        </>
+                      )}
+                    </button>
+                  );
+
+                  const details = (
+                    <div className="min-w-0 space-y-2">
+                      <div className="min-w-0">
+                        <h4 className="font-graffiti text-asphalt line-clamp-2 break-words">
+                          {group.name}
+                        </h4>
                         {group.description && (
-                          <p className="text-xs text-asphalt/50 truncate font-body">{group.description}</p>
+                          <p className="text-xs text-asphalt/50 line-clamp-2 break-words font-body mt-1">
+                            {group.description}
+                          </p>
                         )}
                       </div>
-                      <button
-                        onClick={() => handleJoinPublic(group.groupId)}
-                        disabled={joiningGroupId === group.groupId}
-                        className="sticker-btn-green text-sm py-2 px-3 flex items-center gap-1"
-                      >
-                        {joiningGroupId === group.groupId ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <>
-                            <Check className="w-4 h-4" />
-                            Join
-                          </>
-                        )}
-                      </button>
+                      {joinButton}
                     </div>
-                  </div>
-                ))}
+                  );
+
+                  if (isPortrait) {
+                    return (
+                      <div
+                        key={group.groupId}
+                        className="poster-frame p-0 overflow-hidden w-full min-w-0 flex"
+                        style={{ transform: rotation }}
+                      >
+                        <div className="relative w-20 shrink-0 self-stretch border-r-2 border-asphalt overflow-hidden">
+                          <Image
+                            src={group.bannerUrl!}
+                            alt={group.name}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0 p-3">{details}</div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={group.groupId}
+                      className="poster-frame p-0 overflow-hidden w-full min-w-0"
+                      style={{ transform: rotation }}
+                    >
+                      {group.bannerUrl && (
+                        <div className="relative h-20 w-full overflow-hidden border-b-2 border-asphalt grain-overlay">
+                          <Image
+                            src={group.bannerUrl}
+                            alt={group.name}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
+                      )}
+                      <div className="p-3">{details}</div>
+                    </div>
+                  );
+                })}
               </div>
             )}
             

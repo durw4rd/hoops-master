@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireMember } from '@/lib/apiGuards';
 import { getEventRowById, claimSpot } from '@/lib/queries/events';
 import { SpotError } from '@/lib/queries/_tx';
-import { isPastEvent, isSignupOpen } from '@/lib/eventRules';
+import { spotMutationBlockedMessage, isSignupOpen } from '@/lib/eventRules';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -30,8 +30,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (eventRow.status === 'cancelled') {
       return NextResponse.json({ error: 'This event has been cancelled' }, { status: 400 });
     }
-    if (isPastEvent(eventRow)) {
-      return NextResponse.json({ error: 'Cannot claim spots for past events' }, { status: 400 });
+    const blocked = spotMutationBlockedMessage(eventRow);
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 });
     }
     if (!isSignupOpen(eventRow)) {
       return NextResponse.json(

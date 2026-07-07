@@ -57,6 +57,8 @@ export const groups = pgTable('groups', {
   timezone: text('timezone').notNull().default('Europe/Prague'),
   defaultEventSpots: integer('default_event_spots').notNull().default(10),
   defaultSlotCost: numeric('default_slot_cost', { precision: 10, scale: 2 }).notNull().default('0'),
+  defaultPricingMode: text('default_pricing_mode').notNull().default('per_spot'), // 'per_spot' | 'split_total'
+  defaultTotalCost: numeric('default_total_cost', { precision: 10, scale: 1 }).notNull().default('0'),
   roundRobinSlide: integer('round_robin_slide').notNull().default(1),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -97,6 +99,12 @@ export const events = pgTable(
     endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
     totalSpots: integer('total_spots').notNull(),
     slotCost: numeric('slot_cost', { precision: 10, scale: 2 }).notNull(),
+    pricingMode: text('pricing_mode').notNull().default('per_spot'), // 'per_spot' | 'split_total'
+    totalCost: numeric('total_cost', { precision: 10, scale: 1 }).notNull().default('0'),
+    pricingFinalizedAt: timestamp('pricing_finalized_at', { withTimezone: true }),
+    finalizedPerShare: numeric('finalized_per_share', { precision: 10, scale: 1 }),
+    remainderPolicy: text('remainder_policy'), // 'ignore' | 'admin_absorb_surplus' | 'adjust_total_deficit'
+    effectiveTotalCost: numeric('effective_total_cost', { precision: 10, scale: 1 }),
     location: text('location').default(''),
     name: text('name').default(''), // display title for special/burner games
     description: text('description').default(''),

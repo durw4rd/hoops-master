@@ -17,7 +17,8 @@ import {
   deleteEvent,
 } from '@/lib/queries/events';
 import { computeSignupOpensAt } from '@/lib/eventTiming';
-import type { AssignmentMode } from '@/lib/types';
+import type { AssignmentMode, RemainderPolicy } from '@/lib/types';
+import { computeSplitFinalize } from '@/lib/queries/pricing';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -52,6 +53,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Offered spots still count toward occupancy (held until claimed).
     const occupancy = attendees.length;
     const availableSpots = Math.max(0, dto.totalSpots - occupancy);
+    const splitPreview =
+      dto.pricingMode === 'split_total' && !dto.pricingFinalizedAt
+        ? computeSplitFinalize(eventRow, occupancy)
+        : null;
 
     return NextResponse.json({
       success: true,
@@ -60,6 +65,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         attendees,
         waitlist,
         availableSpots,
+        occupancy,
+        splitPreview,
         isAttending: !!userAttendance,
         myAttendance: userAttendance || null,
         myWaitlistPosition: myBenchEntry ? myBenchEntry.position : null,
@@ -94,6 +101,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       endTime,
       totalSpots,
       slotCost,
+      pricingMode,
+      totalCost,
       location,
       name,
       description,
@@ -140,6 +149,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       endTime,
       totalSpots,
       slotCost,
+      pricingMode,
+      totalCost,
       location,
       ...(eventType === 'regular' ? { name: '' } : name !== undefined ? { name } : {}),
       description,

@@ -1,0 +1,85 @@
+---
+description: Drizzle/Neon database migration workflow — follow when changing lib/db/schema.ts or migrations
+globs: lib/db/**,drizzle.config.ts
+alwaysApply: false
+---
+
+# Database migrations (Drizzle + Neon)
+
+Schema source of truth: `lib/db/schema.ts`. Migrations live in `lib/db/migrations/`.
+
+## Required workflow
+
+1. Edit `lib/db/schema.ts`.
+2. Run `pnpm db:generate` — creates the `.sql` file **and** updates `meta/_journal.json` + `meta/*_snapshot.json`.
+3. Review the generated SQL under `lib/db/migrations/`.
+4. Apply with `pnpm db:migrate` (see env vars below).
+5. **Verify** the change landed (see verification below). Do not assume success from startup output alone.
+
+Never hand-write a migration `.sql` file without also registering it via `db:generate`. Drizzle only runs migrations listed in `meta/_journal.json`. A file on disk that is missing from the journal is silently skipped — the app will 500 on missing columns while `db:migrate` appears to succeed.
+
+## `DATABASE_URL` is not auto-loaded
+
+`drizzle.config.ts` reads `process.env.DATABASE_URL` only. It does **not** load `.env.local` (unlike `pnpm dev`).
+
+Before `db:migrate`, `db:push`, or `db:studio`:
+
+```bash
+export $(grep -E '^DATABASE_URL=' .env.local | xargs)
+pnpm db:migrate
+```
+
+Use the **Neon pooled** connection string from `.env.local` or the Neon dashboard.
+
+## `db:push` vs `db:migrate`
+
+| Command | When to use |
+|---|---|
+| `pnpm db:push` | Local greenfield / quick schema sync. No migration file. Interactive. |
+| `pnpm db:migrate` | Tracked migrations for shared dev DB, staging, production. **Preferred for feature work.** |
+
+For any schema change that ships with code, use **generate + migrate**, not push alone.
+
+## What success looks like
+
+`drizzle-kit migrate` always prints config/driver warnings first. A successful run ends with:
+
+```text
+[✓] migrations applied successfully!
+```
+
+The Neon websocket warning (`@neondatabase/serverless` can only connect…`) is **normal**, not a failure.
+
+If you only see config loading and no success line, the command may have exited early or applied zero pending migrations.
+
+## Verify after migrate
+
+Do not rely on exit code alone. Confirm columns/tables exist:
+
+```bash
+export $(grep -E '^DATABASE_URL=' .env.local | xargs)
+node -e "
+const { neon } = require('@neondatabase/serverless');
+const sql = neon(process.env.DATABASE_URL);
+sql\`SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'groups' AND column_name = 'your_new_column'\`
+  .then(r => console.log(r.length ? 'OK' : 'MISSING'));
+"
+```
+
+Or hit the affected API route / reload the UI. Symptom of a skipped migration: Postgres `column "…" does not exist` while migration tooling reported no errors.
+
+## If a migration was applied out-of-band
+
+If SQL was run manually (emergency fix), also:
+
+1. Add the entry to `lib/db/migrations/meta/_journal.json` (match the `.sql` filename tag).
+2. Insert a row into `drizzle.__drizzle_migrations` so `db:migrate` does not re-apply it.
+
+Prefer `pnpm db:generate` on a clean schema diff instead of manual journal edits.
+
+## Other conventions
+
+- All runtime DB access goes through `lib/queries/*` — not route handlers or components.
+- Driver is `@neondatabase/serverless` WebSocket `Pool` (`lib/db/index.ts`); supports transactions.
+- See `APP_ARCHITECTURE.md` → **Database migrations** for the full reference.

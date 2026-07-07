@@ -30,6 +30,8 @@ interface RREventInput {
   endTime: string;
   totalSpots?: number;
   slotCost?: number;
+  pricingMode?: 'per_spot' | 'split_total';
+  totalCost?: number;
   location?: string;
   description?: string;
 }
@@ -107,6 +109,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Persist: create each event then fill its window.
     const created = [];
     for (const p of planned) {
+      const pricingMode =
+        p.input.pricingMode ??
+        (ctx.group.defaultPricingMode === 'split_total' ? 'split_total' : 'per_spot');
       const event = await createEvent(
         groupId,
         timezone,
@@ -115,7 +120,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           startTime: p.input.startTime,
           endTime: p.input.endTime,
           totalSpots: p.input.totalSpots ?? ctx.group.defaultEventSpots,
-          slotCost: p.input.slotCost ?? Number(ctx.group.defaultSlotCost),
+          pricingMode,
+          slotCost:
+            pricingMode === 'per_spot'
+              ? (p.input.slotCost ?? Number(ctx.group.defaultSlotCost))
+              : 0,
+          totalCost:
+            pricingMode === 'split_total'
+              ? (p.input.totalCost ?? Number(ctx.group.defaultTotalCost))
+              : 0,
           location: p.input.location,
           description: p.input.description,
           assignmentMode: 'round_robin',

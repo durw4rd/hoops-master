@@ -23,6 +23,9 @@ function transactionTypeLabel(type: TransactionType): string {
     admin_reassign: "Admin reassigned",
     release: "Released",
     waitlist_promote: "Bench promo",
+    split_settle: "Split cost",
+    split_remainder: "Split remainder",
+    price_adjustment: "Price adjustment",
   };
   return labels[type] ?? type;
 }

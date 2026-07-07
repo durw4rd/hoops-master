@@ -14,7 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import BannerUploadField from "./BannerUploadField";
-import type { EventType, BannerOrientation } from "@/lib/types";
+import type { EventType, BannerOrientation, PricingMode, RemainderPolicy } from "@/lib/types";
+import PricingFields from "./PricingFields";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, i) => {
   const h = String(Math.floor(i / 4)).padStart(2, "0");
@@ -29,6 +30,9 @@ interface EditableEvent {
   endTime: string;
   totalSpots: number;
   slotCost: number;
+  pricingMode?: PricingMode;
+  totalCost?: number;
+  pricingFinalizedAt?: string | null;
   location: string;
   name: string;
   description: string;
@@ -57,6 +61,8 @@ export default function EditEventModal({
   const [endTime, setEndTime] = useState(event.endTime);
   const [totalSpots, setTotalSpots] = useState(String(event.totalSpots));
   const [slotCost, setSlotCost] = useState(String(event.slotCost));
+  const [pricingMode, setPricingMode] = useState<PricingMode>(event.pricingMode ?? "per_spot");
+  const [totalCost, setTotalCost] = useState(String(event.totalCost ?? 0));
   const [location, setLocation] = useState(event.location);
   const [name, setName] = useState(event.name);
   const [description, setDescription] = useState(event.description);
@@ -75,6 +81,8 @@ export default function EditEventModal({
       setEndTime(event.endTime);
       setTotalSpots(String(event.totalSpots));
       setSlotCost(String(event.slotCost));
+      setPricingMode(event.pricingMode ?? "per_spot");
+      setTotalCost(String(event.totalCost ?? 0));
       setLocation(event.location);
       setName(event.name);
       setDescription(event.description);
@@ -98,7 +106,9 @@ export default function EditEventModal({
           startTime,
           endTime,
           totalSpots: parseInt(totalSpots) || event.totalSpots,
-          slotCost: parseFloat(slotCost) || 0,
+          pricingMode,
+          slotCost: pricingMode === "per_spot" ? parseFloat(slotCost) || 0 : 0,
+          totalCost: pricingMode === "split_total" ? parseFloat(totalCost) || 0 : 0,
           location,
           name: eventType === "special" ? name : "",
           description,
@@ -172,7 +182,7 @@ export default function EditEventModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="edit-spots" className="font-graffiti text-asphalt">Spots</Label>
               <Input
@@ -185,17 +195,23 @@ export default function EditEventModal({
                 className="sketch-input"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-cost" className="font-graffiti text-asphalt">Cost (€)</Label>
-              <Input
-                id="edit-cost"
-                type="number"
-                min="0"
-                step="0.01"
-                value={slotCost}
-                onChange={(e) => setSlotCost(e.target.value)}
-                className="sketch-input"
+            <div>
+              <PricingFields
+                idPrefix="edit"
+                pricingMode={pricingMode}
+                onPricingModeChange={setPricingMode}
+                slotCost={slotCost}
+                onSlotCostChange={setSlotCost}
+                totalCost={totalCost}
+                onTotalCostChange={setTotalCost}
+                disabled={!!event.pricingFinalizedAt}
               />
+              {pricingMode === "per_spot" &&
+                parseFloat(slotCost) !== event.slotCost && (
+                  <p className="text-xs text-terracotta font-body mt-2">
+                    Saving will adjust player balances for anyone already on the roster.
+                  </p>
+                )}
             </div>
           </div>
 

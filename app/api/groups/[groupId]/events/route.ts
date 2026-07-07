@@ -116,6 +116,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'bannerOrientation must be landscape or portrait' }, { status: 400 });
     }
 
+    const pricingMode =
+      body.pricingMode === 'split_total' || body.pricingMode === 'per_spot'
+        ? body.pricingMode
+        : ctx.group.defaultPricingMode === 'split_total'
+          ? 'split_total'
+          : 'per_spot';
+
     const event = await createEvent(
       groupId,
       timezone,
@@ -124,7 +131,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         startTime,
         endTime,
         totalSpots: totalSpots || ctx.group.defaultEventSpots,
-        slotCost: slotCost ?? Number(ctx.group.defaultSlotCost),
+        pricingMode,
+        slotCost:
+          pricingMode === 'per_spot'
+            ? (slotCost ?? Number(ctx.group.defaultSlotCost))
+            : 0,
+        totalCost:
+          pricingMode === 'split_total'
+            ? (body.totalCost ?? Number(ctx.group.defaultTotalCost))
+            : 0,
         location,
         name: eventType === 'special' ? (name ?? '') : '',
         description,

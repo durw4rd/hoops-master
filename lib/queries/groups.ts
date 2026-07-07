@@ -14,6 +14,7 @@ import type {
   GroupStatus,
   GroupVisibility,
   MemberStatus,
+  PricingMode,
 } from '@/lib/types';
 
 type GroupRow = typeof groups.$inferSelect;
@@ -37,6 +38,8 @@ export function toGroupDTO(row: GroupRow): Group {
     timezone: row.timezone,
     defaultEventSpots: row.defaultEventSpots,
     defaultSlotCost: Number(row.defaultSlotCost),
+    defaultPricingMode: (row.defaultPricingMode === 'split_total' ? 'split_total' : 'per_spot') as PricingMode,
+    defaultTotalCost: Number(row.defaultTotalCost ?? 0),
     roundRobinSlide: row.roundRobinSlide,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
@@ -80,6 +83,8 @@ export interface CreateGroupInput {
   visibility?: GroupVisibility;
   defaultEventSpots?: number;
   defaultSlotCost?: number;
+  defaultPricingMode?: PricingMode;
+  defaultTotalCost?: number;
   timezone?: string;
   roundRobinSlide?: number;
 }
@@ -99,6 +104,8 @@ export async function createGroup(input: CreateGroupInput, creatorId: string): P
         visibility: input.visibility ?? 'private',
         defaultEventSpots: input.defaultEventSpots ?? 10,
         defaultSlotCost: String(input.defaultSlotCost ?? 0),
+        defaultPricingMode: input.defaultPricingMode ?? 'per_spot',
+        defaultTotalCost: String(input.defaultTotalCost ?? 0),
         timezone: input.timezone ?? 'Europe/Prague',
         roundRobinSlide: input.roundRobinSlide ?? 1,
         inviteCode: generateInviteCode(),
@@ -126,6 +133,8 @@ export async function updateGroup(
     bannerOrientation: 'landscape' | 'portrait';
     defaultEventSpots: number;
     defaultSlotCost: number;
+    defaultPricingMode: PricingMode;
+    defaultTotalCost: number;
     timezone: string;
     roundRobinSlide: number;
     name: string;
@@ -138,6 +147,8 @@ export async function updateGroup(
   if (updates.bannerOrientation !== undefined) patch.bannerOrientation = updates.bannerOrientation;
   if (updates.defaultEventSpots !== undefined) patch.defaultEventSpots = updates.defaultEventSpots;
   if (updates.defaultSlotCost !== undefined) patch.defaultSlotCost = String(updates.defaultSlotCost);
+  if (updates.defaultPricingMode !== undefined) patch.defaultPricingMode = updates.defaultPricingMode;
+  if (updates.defaultTotalCost !== undefined) patch.defaultTotalCost = String(updates.defaultTotalCost);
   if (updates.timezone !== undefined) patch.timezone = updates.timezone;
   if (updates.roundRobinSlide !== undefined) patch.roundRobinSlide = updates.roundRobinSlide;
   if (updates.name !== undefined) patch.name = updates.name;

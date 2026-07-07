@@ -52,6 +52,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       timezone: group.timezone,
       defaultEventSpots: group.defaultEventSpots,
       defaultSlotCost: group.defaultSlotCost,
+      defaultPricingMode: group.defaultPricingMode,
+      defaultTotalCost: group.defaultTotalCost,
       roundRobinSlide: group.roundRobinSlide,
       createdAt: group.createdAt,
       status: group.status,
@@ -86,11 +88,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   try {
     const body = await request.json();
-    const { visibility, description, bannerUrl, bannerOrientation, defaultEventSpots, defaultSlotCost, timezone, roundRobinSlide, name } =
+    const { visibility, description, bannerUrl, bannerOrientation, defaultEventSpots, defaultSlotCost, defaultPricingMode, defaultTotalCost, timezone, roundRobinSlide, name } =
       body;
 
     if (visibility && !['public', 'private'].includes(visibility)) {
       return NextResponse.json({ error: 'visibility must be "public" or "private"' }, { status: 400 });
+    }
+    if (defaultPricingMode && !['per_spot', 'split_total'].includes(defaultPricingMode)) {
+      return NextResponse.json({ error: 'defaultPricingMode must be per_spot or split_total' }, { status: 400 });
     }
 
     const updated = await updateGroup(groupId, {
@@ -100,6 +105,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       bannerOrientation,
       defaultEventSpots,
       defaultSlotCost,
+      defaultPricingMode,
+      defaultTotalCost,
       timezone,
       roundRobinSlide,
       name,

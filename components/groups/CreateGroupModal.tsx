@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Lock, Globe, Loader2 } from "lucide-react";
 import BannerUploadField from "./BannerUploadField";
 import { GraffitiDialog, GraffitiErrorBox } from "@/components/ui/GraffitiDialog";
+import PricingFields from "./PricingFields";
+import type { PricingMode } from "@/lib/types";
 
 interface CreateGroupModalProps {
   open: boolean;
@@ -23,6 +25,8 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [defaultSpots, setDefaultSpots] = useState("10");
   const [defaultCost, setDefaultCost] = useState("0");
+  const [defaultPricingMode, setDefaultPricingMode] = useState<PricingMode>("per_spot");
+  const [defaultTotalCost, setDefaultTotalCost] = useState("0");
   const [timezone, setTimezone] = useState(
     Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Prague"
   );
@@ -46,6 +50,8 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
           visibility,
           defaultEventSpots: parseInt(defaultSpots) || 10,
           defaultSlotCost: parseFloat(defaultCost) || 0,
+          defaultPricingMode,
+          defaultTotalCost: parseFloat(defaultTotalCost) || 0,
           timezone,
         }),
       });
@@ -163,7 +169,7 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-2">
             <Label htmlFor="spots" className="font-graffiti text-asphalt">
               Default Spots
@@ -178,18 +184,15 @@ export default function CreateGroupModal({ open, onOpenChange, onGroupCreated }:
               className="sketch-input"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="cost" className="font-graffiti text-asphalt">
-              Default Cost
-            </Label>
-            <Input
-              id="cost"
-              type="number"
-              min="0"
-              step="0.01"
-              value={defaultCost}
-              onChange={(e) => setDefaultCost(e.target.value)}
-              className="sketch-input"
+          <div>
+            <PricingFields
+              idPrefix="create-crew"
+              pricingMode={defaultPricingMode}
+              onPricingModeChange={setDefaultPricingMode}
+              slotCost={defaultCost}
+              onSlotCostChange={setDefaultCost}
+              totalCost={defaultTotalCost}
+              onTotalCostChange={setDefaultTotalCost}
             />
           </div>
         </div>

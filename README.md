@@ -93,9 +93,9 @@ EMAIL=you@example.com ROLE=owner pnpm tsx scripts/setRole.ts
 | Command | Purpose |
 |---|---|
 | `pnpm dev` / `pnpm build` / `pnpm start` | Next.js dev / build / serve (dev & start bind to port **3000**) |
-| `pnpm db:generate` | Generate a migration from schema changes |
-| `pnpm db:push` | Push schema directly to the DB (dev) |
-| `pnpm db:migrate` | Apply migrations |
+| `pnpm db:generate` | Generate a migration from schema changes (updates journal + snapshot) |
+| `pnpm db:push` | Push schema directly to the DB (dev, no migration file) |
+| `pnpm db:migrate` | Apply journal-tracked migrations — requires `DATABASE_URL` in the shell (see [`APP_ARCHITECTURE.md`](./APP_ARCHITECTURE.md#database-migrations)) |
 | `pnpm db:studio` | Drizzle Studio |
 | `pnpm tsx scripts/seedPlayers.ts` | Seed / extend the player allowlist |
 | `pnpm tsx scripts/setRole.ts` | Set a user's app role (`owner`/`admin`/`user`) |
