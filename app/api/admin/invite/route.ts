@@ -6,6 +6,8 @@
  *   Body: { email: string }
  * PATCH /api/admin/invite - Change a registered player's email (app-admin).
  *   Body: { oldEmail: string, newEmail: string }
+ * DELETE /api/admin/invite - Buff a player from the Black Book (app-admin soft-remove).
+ *   Body: { email: string }
  *
  * Invite-only access: only emails added here (or seeded) can sign in. The invitee
  * picks their username during onboarding on first sign-in.
@@ -14,7 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiGuards';
 import { isAppAdmin } from '@/lib/launchdarkly';
-import { inviteUser, listUsers, updateUserEmail } from '@/lib/queries/users';
+import { inviteUser, listUsers, updateUserEmail, removeUserFromApp } from '@/lib/queries/users';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -113,5 +115,44 @@ export async function PATCH(request: NextRequest) {
     }
     console.error('Error updating user email:', error);
     return NextResponse.json({ error: 'Failed to update email', details: String(error) }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const ctx = await requireAuth();
+  if (ctx instanceof NextResponse) return ctx;
+
+  if (!(await isAppAdmin(ctx.user.email, ctx.user.globalRole))) {
+    return NextResponse.json({ error: 'App admin access required' }, { status: 403 });
+  }
+
+  try {
+    const body = await request.json();
+    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+
+    if (!email) {
+      return NextResponse.json({ error: 'email is required' }, { status: 400 });
+    }
+
+    const row = await removeUserFromApp(email, ctx.user.id);
+
+    return NextResponse.json({
+      success: true,
+      message: `${row.displayName || email} buffed from the Black Book`,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes('not found')) {
+      return NextResponse.json({ error: msg }, { status: 404 });
+    }
+    if (
+      msg.includes('Owner') ||
+      msg.includes('yourself') ||
+      msg.includes('already removed')
+    ) {
+      return NextResponse.json({ error: msg }, { status: 403 });
+    }
+    console.error('Error removing user from Black Book:', error);
+    return NextResponse.json({ error: 'Failed to remove user', details: msg }, { status: 500 });
   }
 }

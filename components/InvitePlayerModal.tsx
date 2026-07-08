@@ -10,7 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Mail, Check, Clock, Crown, ShieldCheck, ChevronUp, ChevronDown, Pencil, X } from "lucide-react";
+import { Loader2, Mail, Check, Clock, Crown, ShieldCheck, ChevronUp, ChevronDown, Pencil, X, Trash2 } from "lucide-react";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 interface InvitePlayerModalProps {
   open: boolean;
@@ -24,6 +25,12 @@ interface InviteUser {
   globalRole: string;
   onboarded: boolean;
   invitedAt: string | null;
+}
+
+interface RemovalWarnings {
+  confirmedSpotCount: number;
+  spotBreakdown: { crewName: string; count: number }[];
+  balances: { crewName: string; balance: number }[];
 }
 
 export default function InvitePlayerModal({
@@ -40,6 +47,11 @@ export default function InvitePlayerModal({
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [editEmailValue, setEditEmailValue] = useState("");
   const [emailUpdating, setEmailUpdating] = useState<string | null>(null);
+  const [buffTarget, setBuffTarget] = useState<InviteUser | null>(null);
+  const [buffWarnings, setBuffWarnings] = useState<RemovalWarnings | null>(null);
+  const [buffLoading, setBuffLoading] = useState(false);
+  const [buffRemoving, setBuffRemoving] = useState(false);
+  const [buffError, setBuffError] = useState<string | null>(null);
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -153,7 +165,90 @@ export default function InvitePlayerModal({
     }
   };
 
+  const buildBuffMessage = (target: InviteUser, warnings: RemovalWarnings | null) => {
+    if (buffError) return buffError;
+
+    const name = target.onboarded ? target.displayName : target.email;
+    const lines = [
+      `Buff ${name} from the Black Book? They won't be able to sign in. Crew memberships go inactive; ledger and game history stay on the books.`,
+    ];
+
+    if (warnings) {
+      if (warnings.confirmedSpotCount > 0) {
+        const breakdown = warnings.spotBreakdown
+          .map((s) => `${s.crewName}: ${s.count}`)
+          .join(", ");
+        lines.push(
+          `Warning: ${warnings.confirmedSpotCount} confirmed spot(s) in upcoming games (${breakdown}).`
+        );
+      }
+      for (const b of warnings.balances) {
+        const label = b.balance < 0 ? "owes" : "credit";
+        lines.push(
+          `Warning: Non-zero balance in ${b.crewName} — ${label} $${Math.abs(b.balance).toFixed(2)}.`
+        );
+      }
+    }
+
+    return lines.join("\n\n");
+  };
+
+  const startBuff = async (target: InviteUser) => {
+    setBuffTarget(target);
+    setBuffWarnings(null);
+    setBuffError(null);
+    setBuffLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/users/removal-warnings?email=${encodeURIComponent(target.email)}`
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBuffError(data.error || "Failed to load removal warnings");
+        return;
+      }
+      setBuffWarnings(data.data?.warnings ?? null);
+    } catch {
+      setBuffError("Failed to load removal warnings");
+    } finally {
+      setBuffLoading(false);
+    }
+  };
+
+  const handleBuff = async () => {
+    if (!buffTarget) return;
+    setBuffRemoving(true);
+    setBuffError(null);
+    try {
+      const res = await fetch("/api/admin/invite", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: buffTarget.email }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBuffError(data.error || "Failed to remove player");
+        return;
+      }
+      setSuccess(data.message || "Player buffed from the Black Book");
+      setBuffTarget(null);
+      setBuffWarnings(null);
+      fetchUsers();
+    } catch {
+      setBuffError("An unexpected error occurred");
+    } finally {
+      setBuffRemoving(false);
+    }
+  };
+
+  const closeBuffDialog = () => {
+    setBuffTarget(null);
+    setBuffWarnings(null);
+    setBuffError(null);
+  };
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="graffiti-dialog max-w-md max-h-[85vh] overflow-y-auto mx-2 sm:mx-auto rounded-none shadow-sticker-lg">
         <DialogHeader>
@@ -292,6 +387,20 @@ export default function InvitePlayerModal({
                         <ChevronUp className="w-3 h-3" /> Admin
                       </button>
                     ))}
+                  {u.globalRole !== "owner" &&
+                    u.email.toLowerCase() !== (currentUserEmail ?? "").toLowerCase() &&
+                    (buffLoading && buffTarget?.email === u.email ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-asphalt/60" />
+                    ) : (
+                      <button
+                        onClick={() => startBuff(u)}
+                        title="Buff from Black Book"
+                        className="text-terracotta hover:text-terracotta/70 transition-colors"
+                        aria-label={`Buff ${u.displayName || u.email}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ))}
                 </div>
               </div>
             ))}
@@ -299,5 +408,31 @@ export default function InvitePlayerModal({
         </div>
       </DialogContent>
     </Dialog>
+
+      <ConfirmDialog
+        open={!!buffTarget}
+        onOpenChange={(open) => {
+          if (!open) closeBuffDialog();
+        }}
+        title="Buff 'Em?"
+        message={
+          buffLoading
+            ? "Checking crews for upcoming spots and open balances…"
+            : buffTarget
+              ? buildBuffMessage(buffTarget, buffWarnings)
+              : ""
+        }
+        confirmLabel={buffError ? "OK" : "BUFF EM"}
+        cancelLabel="Nevermind"
+        onConfirm={
+          buffError
+            ? closeBuffDialog
+            : buffLoading
+              ? closeBuffDialog
+              : handleBuff
+        }
+        loading={buffRemoving}
+      />
+    </>
   );
 }

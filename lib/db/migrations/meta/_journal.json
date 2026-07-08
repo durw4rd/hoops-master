@@ -85,6 +85,13 @@
       "when": 1781100000000,
       "tag": "0011_split_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783517372676,
+      "tag": "0012_adorable_supernaut",
+      "breakpoints": true
     }
   ]
 }

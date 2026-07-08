@@ -21,7 +21,7 @@ export const authOptions: AuthOptions = {
       if (!user?.email) return false;
       try {
         const existing = await getUserRowByEmail(user.email);
-        return !!existing;
+        return !!existing && !existing.removedAt;
       } catch (error) {
         console.error('Error checking invite allowlist:', error);
         // Fail closed: deny if we can't verify the allowlist.
@@ -47,7 +47,7 @@ export const authOptions: AuthOptions = {
       if (token.email && (!token.userId || (account && profile))) {
         try {
           const dbUser = await getUserRowByEmail(token.email as string);
-          if (dbUser) {
+          if (dbUser && !dbUser.removedAt) {
             token.userId = dbUser.id;
             token.globalRole = dbUser.globalRole;
           }

@@ -33,6 +33,7 @@ synonyms for the same concept.**
 | Round-robin lineup ordering | **Lineup Order** | |
 | Generate rotation series | **Run the Series** / **Drop the Series** | |
 | Player management dashboard | **The Black Book** | App-admin invites + role mgmt (a writer's blackbook). |
+| Remove player from Black Book | **Buff 'Em** | Soft-delete from allowlist; warns on spots/balances. |
 | Invite a player (button) | **Put On** | "put someone on" = bring into the scene. |
 | Add player to crew (button) | **Put 'Em On** | Modal title; subtext mentions "the yard". |
 | Pool of all known players | **The Yard** | Search placeholder: "Search the yard…". |

@@ -167,6 +167,19 @@ The **Players tab** in `GroupDashboard.tsx` exposes all member admin actions:
 
 `removeGroupMember()` in `lib/queries/groups.ts` queries `event_attendees JOIN events` to find upcoming confirmed spots before setting `group_members.status = 'inactive'`. The check is intentionally conservative (any upcoming event, not just active-status events) to prevent orphaned credit rows.
 
+## Black Book (app-admin player management)
+
+`InvitePlayerModal.tsx` — **The Black Book** on the home screen (app-admin / LD `app-admins` only):
+
+| Action | Who | Notes |
+|---|---|---|
+| Put On (invite) | App admin | Creates allowlist row; re-activates previously buffed emails |
+| Promote / Demote | App admin | Toggle `admin` ↔ `user`; Owner and self protected |
+| Edit email | App admin | Inline pencil on user row |
+| Buff 'Em (remove) | App admin | Soft-delete (`users.removed_at`); deactivates all crew memberships; warns on upcoming confirmed spots + non-zero balances (warn-only, admin can proceed). Ledger/event history retained. Owner and self protected. |
+
+Removed users cannot sign in (`lib/auth.ts`). `listUsers()` excludes buffed rows (Black Book + The Yard).
+
 ## Balances tab (`CreditDashboard.tsx`)
 
 The **Balances** crew tab shows collapsible ledger sections (all collapsed by default):
@@ -273,6 +286,8 @@ POST   /api/groups/[id]/payments                    # record payment (Capo/King)
 GET    /api/groups/[id]/export                      # CSV export (balances / transactions / payments)
 
 GET    /api/admin/invite  POST /api/admin/invite    # Black Book invites (app-admin)
+PATCH  /api/admin/invite  DELETE /api/admin/invite  # email edit / buff player
+GET    /api/admin/users/removal-warnings            # pre-buff warnings (app-admin)
 PATCH  /api/admin/role                              # change app role (app-admin)
 ```
 

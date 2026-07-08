@@ -32,6 +32,6 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 
   // Fallback for sessions issued before id/role were on the token.
   const dbUser = await getUserRowByEmail(email);
-  if (!dbUser) return null;
+  if (!dbUser || dbUser.removedAt) return null;
   return { id: dbUser.id, email: dbUser.email, globalRole: dbUser.globalRole };
 }

@@ -38,6 +38,8 @@ export const users = pgTable('users', {
   onboarded: boolean('onboarded').notNull().default(false),
   invitedBy: uuid('invited_by'),
   invitedAt: timestamp('invited_at', { withTimezone: true }),
+  removedAt: timestamp('removed_at', { withTimezone: true }),
+  removedBy: uuid('removed_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
