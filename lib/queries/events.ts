@@ -375,13 +375,17 @@ export async function updateEvent(
   const oldSlotCost = Number(current.slotCost);
   const pricingModeChanging =
     input.pricingMode !== undefined && input.pricingMode !== current.pricingMode;
+  const switchingToSplitTotal =
+    pricingModeChanging &&
+    current.pricingMode === 'per_spot' &&
+    input.pricingMode === 'split_total';
   const slotCostChanging =
     !pricingModeChanging &&
     input.slotCost !== undefined &&
     input.slotCost !== oldSlotCost &&
     current.pricingMode === 'per_spot';
 
-  if (slotCostChanging) {
+  if (slotCostChanging || switchingToSplitTotal) {
     return serializableTx(async (tx) => {
       const [locked] = await tx
         .select()
@@ -391,10 +395,16 @@ export async function updateEvent(
         .limit(1);
       if (!locked) return null;
 
-      await applySlotCostAdjustment(tx, locked, oldSlotCost, input.slotCost!);
+      if (slotCostChanging) {
+        await applySlotCostAdjustment(tx, locked, oldSlotCost, input.slotCost!);
+      } else if (!locked.pricingFinalizedAt) {
+        await applySlotCostAdjustment(tx, locked, Number(locked.slotCost), 0);
+      }
 
       const patch = buildEventPatch(locked, timezone, input);
-      if (input.slotCost !== undefined) patch.slotCost = String(input.slotCost);
+      if (input.slotCost !== undefined && !pricingModeChanging) {
+        patch.slotCost = String(input.slotCost);
+      }
 
       const [row] = await tx.update(events).set(patch).where(eq(events.id, eventId)).returning();
       return row ? toEventDTO(row, timezone) : null;

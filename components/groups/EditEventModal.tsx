@@ -33,6 +33,7 @@ interface EditableEvent {
   pricingMode?: PricingMode;
   totalCost?: number;
   pricingFinalizedAt?: string | null;
+  occupancy?: number;
   location: string;
   name: string;
   description: string;
@@ -212,6 +213,15 @@ export default function EditEventModal({
                     Saving will adjust player balances for anyone already on the roster.
                   </p>
                 )}
+              {pricingMode === "split_total" &&
+                event.pricingMode === "per_spot" &&
+                !event.pricingFinalizedAt &&
+                (event.occupancy ?? 0) > 0 && (
+                  <p className="text-xs text-terracotta font-body mt-2">
+                    Saving will credit back per-spot charges for players currently on the roster.
+                  </p>
+                )}
+
             </div>
           </div>
 

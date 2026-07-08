@@ -1373,6 +1373,7 @@ export default function EventDetailModal({
           pricingMode: event.pricingMode,
           totalCost: event.totalCost,
           pricingFinalizedAt: event.pricingFinalizedAt,
+          occupancy: event.occupancy,
           location: event.location ?? '',
           name: event.name ?? '',
           description: event.description ?? '',

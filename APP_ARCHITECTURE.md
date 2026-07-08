@@ -114,7 +114,9 @@ Notes for agents:
   occupancy, 1)`. Remainder handling: `ignore`, `admin_absorb_surplus`, or
   `adjust_total_deficit`. After finalize, spot mutations are blocked. Per-spot
   `slot_cost` edits on existing rosters append `price_adjustment` correction rows.
-  Logic in `lib/queries/pricing.ts`.
+  Switching `per_spot` → `split_total` on an unfinalized event credits current
+  attendees via `applySlotCostAdjustment(slot_cost, 0)` before `slot_cost` is zeroed,
+  so finalize does not double-charge. Logic in `lib/queries/pricing.ts`.
 - **Cascades:** deleting a `group` cascades `group_members`, `events`
   (→ `event_attendees`, `event_waitlist`), and `round_robin_rosters`.
   `spot_transactions` and `payments` have **no** cascade FK — `deleteGroup()`
