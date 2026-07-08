@@ -373,7 +373,10 @@ export async function updateEvent(
   if (!current) return null;
 
   const oldSlotCost = Number(current.slotCost);
+  const pricingModeChanging =
+    input.pricingMode !== undefined && input.pricingMode !== current.pricingMode;
   const slotCostChanging =
+    !pricingModeChanging &&
     input.slotCost !== undefined &&
     input.slotCost !== oldSlotCost &&
     current.pricingMode === 'per_spot';
@@ -423,11 +426,20 @@ function buildEventPatch(
     patch.endsAt = endsAt;
   }
   if (input.totalSpots !== undefined) patch.totalSpots = input.totalSpots;
-  if (input.slotCost !== undefined && !isSplitTotal(current)) patch.slotCost = String(input.slotCost);
+
+  const targetMode = (input.pricingMode ?? current.pricingMode) as PricingMode;
+  if (input.slotCost !== undefined && targetMode === 'per_spot') {
+    patch.slotCost = String(input.slotCost);
+  }
   if (input.pricingMode !== undefined) patch.pricingMode = input.pricingMode;
-  if (input.totalCost !== undefined && isSplitTotal(current) && !current.pricingFinalizedAt) {
+  if (input.totalCost !== undefined && targetMode === 'split_total' && !current.pricingFinalizedAt) {
     patch.totalCost = String(input.totalCost);
   }
+  if (input.pricingMode !== undefined && input.pricingMode !== current.pricingMode) {
+    if (input.pricingMode === 'split_total') patch.slotCost = '0';
+    else patch.totalCost = '0';
+  }
+
   if (input.location !== undefined) patch.location = input.location;
   if (input.name !== undefined) patch.name = input.name;
   if (input.description !== undefined) patch.description = input.description;
