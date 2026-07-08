@@ -162,7 +162,8 @@ The **Players tab** in `GroupDashboard.tsx` exposes all member admin actions:
 |---|---|---|
 | Put 'Em On (add) | Capo or King | User must exist (be signed in at least once); re-activates inactive rows |
 | Make King / Demote | Capo only | Toggle between `coleader` and `member`; cannot target other Capos |
-| Remove (Boot) | Capo only | Soft-delete (`status → inactive`); blocked if the player has ≥1 confirmed spot in any upcoming game — unassign them from those events first. Credit/payment history is retained. |
+| Remove (Boot) | Capo or King | King: `member` only; Capo: `member` or `coleader`; never Capo/self. Soft-delete (`status → inactive`); blocked if the player has ≥1 confirmed spot in any upcoming game — unassign them from those events first. Credit/payment history is retained. |
+| Leave crew (Cut Loose) | Player or King (not Capo) | Self-only; same upcoming-spots guard as boot. Credit/payment history is retained. |
 
 `removeGroupMember()` in `lib/queries/groups.ts` queries `event_attendees JOIN events` to find upcoming confirmed spots before setting `group_members.status = 'inactive'`. The check is intentionally conservative (any upcoming event, not just active-status events) to prevent orphaned credit rows.
 
@@ -246,7 +247,7 @@ DELETE /api/groups/[id]                             # hard delete (Owner any / C
 GET    /api/groups/[id]/members                     # list members
 POST   /api/groups/[id]/members                     # add member (Capo/King)
 PATCH  /api/groups/[id]/members                     # change crew role (Capo)
-DELETE /api/groups/[id]/members                     # remove member (Capo; blocked if upcoming confirmed spots)
+DELETE /api/groups/[id]/members                     # boot member (Capo/King) or leave crew (self; blocked if upcoming confirmed spots)
 GET    /api/groups/[id]/members/available           # addable player profiles
 
 GET    /api/groups/[id]/events                      # list games

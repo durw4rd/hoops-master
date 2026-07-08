@@ -48,6 +48,7 @@ interface GroupDashboardProps {
   onBackToGroups?: () => void;
   onGroupUpdated: (group: Group) => void;
   onGroupDeleted?: (groupId: string) => void;
+  onLeftCrew?: (groupId: string) => void;
   initialOpenEventId?: string | null;
   onInitialEventConsumed?: () => void;
   onNotificationNavigate?: (groupId: string, eventId: string) => void;
@@ -71,6 +72,18 @@ interface MemberInfo {
   joinedAt: string;
 }
 
+function canBootMember(
+  actorIsCapo: boolean,
+  actorCanManage: boolean,
+  target: MemberInfo,
+  selfEmail: string
+) {
+  if (target.userEmail === selfEmail) return false;
+  if (target.groupRole === 'admin') return false;
+  if (actorIsCapo) return true;
+  return actorCanManage && target.groupRole === 'member';
+}
+
 export default function GroupDashboard({ 
   group, 
   userEmail, 
@@ -82,6 +95,7 @@ export default function GroupDashboard({
   onBackToGroups,
   onGroupUpdated,
   onGroupDeleted,
+  onLeftCrew,
   initialOpenEventId,
   onInitialEventConsumed,
   onNotificationNavigate,
@@ -109,6 +123,9 @@ export default function GroupDashboard({
   const [removeMemberEmail, setRemoveMemberEmail] = useState<string | null>(null);
   const [removingMember, setRemovingMember] = useState(false);
   const [removeMemberError, setRemoveMemberError] = useState<string | null>(null);
+  const [leaveCrewOpen, setLeaveCrewOpen] = useState(false);
+  const [leavingCrew, setLeavingCrew] = useState(false);
+  const [leaveCrewError, setLeaveCrewError] = useState<string | null>(null);
   const [deletingCrew, setDeletingCrew] = useState(false);
   const [confirmDeleteCrewOpen, setConfirmDeleteCrewOpen] = useState(false);
   const [gameFilter, setGameFilter] = useState<'all' | 'mine'>('all');
@@ -312,6 +329,30 @@ export default function GroupDashboard({
       setRemoveMemberError('Failed to remove member');
     } finally {
       setRemovingMember(false);
+    }
+  };
+
+  const handleLeaveCrew = async () => {
+    setLeavingCrew(true);
+    setLeaveCrewError(null);
+    try {
+      const res = await fetch(`/api/groups/${group.groupId}/members`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setLeaveCrewOpen(false);
+        onLeftCrew?.(group.groupId);
+      } else {
+        setLeaveCrewError(data.error || 'Failed to leave crew');
+      }
+    } catch (error) {
+      console.error('Failed to leave crew:', error);
+      setLeaveCrewError('Failed to leave crew');
+    } finally {
+      setLeavingCrew(false);
     }
   };
 
@@ -595,8 +636,8 @@ export default function GroupDashboard({
                             </button>
                           )
                         )}
-                        {/* Capo can remove any non-Capo, non-self member */}
-                        {isCapo && member.groupRole !== 'admin' && member.userEmail !== userEmail && (
+                        {/* Capo/King can boot eligible members */}
+                        {canBootMember(isCapo, canManage, member, userEmail) && (
                           <button
                             onClick={() => { setRemoveMemberError(null); setRemoveMemberEmail(member.userEmail); }}
                             title={`Remove ${member.displayName} from crew`}
@@ -610,6 +651,21 @@ export default function GroupDashboard({
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {!isCapo && !membersLoading && (
+              <div className="marker-card p-4 border-terracotta/50">
+                <h3 className="font-graffiti text-xl text-terracotta mb-2">Cut Loose</h3>
+                <p className="text-sm text-asphalt/70 font-body mb-3">
+                  Leave this crew on your own. Your credit history stays on the books.
+                  Drop any confirmed upcoming spots first.
+                </p>
+                <button
+                  onClick={() => { setLeaveCrewError(null); setLeaveCrewOpen(true); }}
+                  className="sticker-btn-outline flex items-center gap-2"
+                >
+                  Leave Crew
+                </button>
               </div>
             )}
           </div>
@@ -898,6 +954,30 @@ export default function GroupDashboard({
           />
         );
       })()}
+
+      <ConfirmDialog
+        open={leaveCrewOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLeaveCrewOpen(false);
+            setLeaveCrewError(null);
+          }
+        }}
+        title="Cut Loose?"
+        message={
+          leaveCrewError
+            ? leaveCrewError
+            : `Leave "${group.name}"? Your credit history stays on the books. Drop any confirmed upcoming spots first.`
+        }
+        confirmLabel={leaveCrewError ? 'OK' : 'LEAVE'}
+        cancelLabel="Nevermind"
+        onConfirm={
+          leaveCrewError
+            ? () => { setLeaveCrewOpen(false); setLeaveCrewError(null); }
+            : handleLeaveCrew
+        }
+        loading={leavingCrew}
+      />
     </div>
   );
 }

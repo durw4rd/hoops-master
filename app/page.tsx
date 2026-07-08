@@ -316,6 +316,17 @@ export default function HoopsMaster() {
             fetchGroups();
             fetchUserProfile();
           }}
+          onLeftCrew={() => {
+            setSelectedGroup(null);
+            autoOpenedRef.current = true;
+            try {
+              localStorage.removeItem(LAST_GROUP_KEY);
+            } catch {
+              // ignore
+            }
+            fetchGroups();
+            fetchUserProfile();
+          }}
         />
         {profileModal}
       </AppShell>

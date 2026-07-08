@@ -4,6 +4,7 @@
  * GET   /api/groups/[groupId]/members - List group members
  * POST  /api/groups/[groupId]/members - Add member (Capo / King)
  * PATCH /api/groups/[groupId]/members - Change a member's crew role (Capo only)
+ * DELETE /api/groups/[groupId]/members - Boot another member (Capo / King) or leave crew (self)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -150,16 +151,44 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 }
 
+function removalErrorResponse(error: unknown) {
+  const msg = error instanceof Error ? error.message : String(error);
+  console.error('Error removing group member:', error);
+  const knownErrors = ['confirmed spot', 'not found', 'not a member'];
+  const status = knownErrors.some((s) => msg.toLowerCase().includes(s)) ? 400 : 500;
+  return NextResponse.json({ error: msg }, { status });
+}
+
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const { groupId } = await params;
-  const ctx = await requireGroupAdmin(groupId);
-  if (ctx instanceof NextResponse) return ctx;
 
   try {
-    const body = await request.json();
-    const { userEmail } = body;
+    const body = await request.json().catch(() => ({}));
+    const { userEmail } = body as { userEmail?: string };
 
-    if (!userEmail) return NextResponse.json({ error: 'userEmail is required' }, { status: 400 });
+    const memberCtx = await requireMember(groupId);
+    if (memberCtx instanceof NextResponse) return memberCtx;
+
+    const isSelfLeave = !userEmail || userEmail === memberCtx.user.email;
+
+    if (isSelfLeave) {
+      if (memberCtx.member.groupRole === 'admin') {
+        return NextResponse.json(
+          { error: "The Crew Capo can't leave — delete the crew or hand off leadership first" },
+          { status: 400 }
+        );
+      }
+
+      await removeGroupMember(groupId, memberCtx.user.email);
+
+      return NextResponse.json({
+        success: true,
+        message: 'You left the crew',
+      });
+    }
+
+    const ctx = await requireCrewManager(groupId);
+    if (ctx instanceof NextResponse) return ctx;
 
     const target = await getGroupMember(groupId, userEmail);
     if (!target) {
@@ -169,7 +198,13 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Cannot remove the Crew Capo' }, { status: 400 });
     }
     if (target.userEmail === ctx.user.email) {
-      return NextResponse.json({ error: 'Cannot remove yourself' }, { status: 400 });
+      return NextResponse.json({ error: 'Use leave crew to remove yourself' }, { status: 400 });
+    }
+    if (ctx.member.groupRole === 'coleader' && target.groupRole !== 'member') {
+      return NextResponse.json(
+        { error: 'Kings can only remove regular Players' },
+        { status: 403 }
+      );
     }
 
     await removeGroupMember(groupId, userEmail);
@@ -179,11 +214,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       message: `${target.displayName ?? userEmail} removed from the crew`,
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error('Error removing group member:', error);
-    // Surface business-rule errors (e.g. has upcoming confirmed spots) as 400
-    const knownErrors = ['confirmed spot', 'not found', 'not a member'];
-    const status = knownErrors.some((s) => msg.toLowerCase().includes(s)) ? 400 : 500;
-    return NextResponse.json({ error: msg }, { status });
+    return removalErrorResponse(error);
   }
 }

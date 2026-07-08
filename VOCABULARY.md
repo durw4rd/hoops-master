@@ -50,6 +50,7 @@ synonyms for the same concept.**
 | Empty crew list | **No Crews Yet!** | |
 | Empty games list | **No Games Yet!** | |
 | Danger zone (delete crew) | **Burn It Down** | "buffed" = erased; deletion is permanent. |
+| Leave crew voluntarily | **Cut Loose** | Players tab; self-only; Capo must delete crew or hand off leadership. |
 
 ## Spot-action verbs (kept clear on purpose)
 
