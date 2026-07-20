@@ -17,6 +17,10 @@ subway-graffiti skin.
   primary spot + one Rider (+1). Both cost the same and are tracked in the ledger.
   Drop the Rider first before releasing your own spot.
 - **The Bench (waitlist)** — FIFO; releasing a spot auto-promotes the next player.
+  Within **24h of tip-off**, automatic bench promotion from a release needs the
+  releaser’s approval; Capo/King can remove players from the bench.
+- **Guest spots** (LaunchDarkly `guest-spots`) — Capo/King can assign a spot to a
+  named guest (ledger + roster); gated server-side via Vercel Edge Config.
 - **Credit ledger** — per-crew balances (`paid − spent + earned`), admin-recorded
   payments (single or batch — record the same amount for many players at once,
   e.g. a season buy-in), and CSV export.
@@ -38,7 +42,7 @@ subway-graffiti skin.
 
 - Next.js 15 (App Router) · React 19 · TypeScript
 - Neon Postgres · Drizzle ORM (`@neondatabase/serverless` Pool driver)
-- NextAuth v4 (Google OAuth) · LaunchDarkly (additive app-admin override + session/user multi-context)
+- NextAuth v4 (Google OAuth) · LaunchDarkly (client SDK + Vercel Edge Config for server flags)
 - Vercel Blob (crew banner + player piece images)
 - Tailwind CSS · shadcn/ui · Vercel · pnpm
 
@@ -68,10 +72,14 @@ SEED_ADMIN_EMAILS=you@example.com     # optional: comma-separated emails promote
 # Blob store: `vercel blob create-store <name> --access public --yes`
 BLOB_READ_WRITE_TOKEN=...
 
-# Optional — LaunchDarkly app-admin override + observability
+# Optional — LaunchDarkly (see docs/launchdarkly-vercel-setup.md)
 NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=...
-EDGE_CONFIG=...
+# EDGE_CONFIG=...   # added by LaunchDarkly ↔ Vercel integration (server API flags)
 ```
+
+Server APIs (`guest-spots`, `app-admins` on routes) need **`EDGE_CONFIG`**. Install the
+[Vercel LaunchDarkly integration](docs/launchdarkly-vercel-setup.md), then
+`npx vercel env pull .env.local` and `pnpm tsx scripts/verify-launchdarkly-server.ts`.
 
 ### Install & run
 
@@ -99,14 +107,17 @@ EMAIL=you@example.com ROLE=owner pnpm tsx scripts/setRole.ts
 | `pnpm db:studio` | Drizzle Studio |
 | `pnpm tsx scripts/seedPlayers.ts` | Seed / extend the player allowlist |
 | `pnpm tsx scripts/setRole.ts` | Set a user's app role (`owner`/`admin`/`user`) |
+| `pnpm tsx scripts/verify-launchdarkly-server.ts` | Check `EDGE_CONFIG` + server LD client (after `vercel env pull`) |
 
 ## Deployment
 
 Deploys to Vercel on push to `main` (Git integration). Set the same env vars in
 the Vercel project (connect a Neon store for `DATABASE_URL`, and a Blob store for
-`BLOB_READ_WRITE_TOKEN`). Ensure `NEXTAUTH_URL` matches your production domain
-(no trailing slash). Run migrations/seed against the production `DATABASE_URL` as
-needed.
+`BLOB_READ_WRITE_TOKEN`). For server-side flags, link **Edge Config** and set
+`EDGE_CONFIG` (see [`docs/launchdarkly-vercel-setup.md`](docs/launchdarkly-vercel-setup.md)).
+Ensure `NEXTAUTH_URL` matches your production domain
+(no trailing slash). Run `pnpm db:migrate` against production `DATABASE_URL` when
+shipping schema changes, then seed/role scripts as needed.
 
 ---
 

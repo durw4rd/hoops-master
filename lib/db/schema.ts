@@ -145,6 +145,8 @@ export const eventAttendees = pgTable(
     // Rider (plus-one) spot: non-null means this row is a +1 spot.
     // The referenced row is the owner's primary spot in the same event.
     parentAttendeeId: uuid('parent_attendee_id').references((): AnyPgColumn => eventAttendees.id),
+    /** Non-crew placeholder name; when set, UI shows this instead of holder display name. */
+    guestDisplayName: text('guest_display_name'),
   },
   (t) => ({
     // Partial unique index: one primary spot per user per event.
@@ -175,6 +177,31 @@ export const eventWaitlist = pgTable(
     // Allows one primary waitlist entry AND one rider waitlist entry per user per event.
     eventUserTypeUnique: uniqueIndex('event_waitlist_event_user_type_unique').on(t.eventId, t.userId, t.forRider),
     eventJoinedIdx: index('idx_waitlist_event_joined').on(t.eventId, t.joinedAt),
+  })
+);
+
+// =============================================================================
+// BENCH PROMOTION APPROVAL (<24h before event)
+// =============================================================================
+
+export const benchPromotionRequests = pgTable(
+  'bench_promotion_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+    attendeeId: uuid('attendee_id').notNull().references(() => eventAttendees.id, { onDelete: 'cascade' }),
+    targetUserId: uuid('target_user_id').notNull().references(() => users.id),
+    status: text('status').notNull().default('pending'), // pending | approved | declined | cancelled
+    transactionType: text('transaction_type').notNull().default('waitlist_promote'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+  },
+  (t) => ({
+    attendeePendingUnique: uniqueIndex('bench_promotion_attendee_pending_unique')
+      .on(t.attendeeId)
+      .where(sql`${t.status} = 'pending'`),
+    eventIdx: index('idx_bench_promotion_event').on(t.eventId),
+    targetIdx: index('idx_bench_promotion_target').on(t.targetUserId, t.status),
   })
 );
 

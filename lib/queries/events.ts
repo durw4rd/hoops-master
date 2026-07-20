@@ -27,6 +27,7 @@ import {
   removeUserFromBench,
   transferOpeningToUser,
 } from './benchMatching';
+import { assignOpeningToBenchHeadOrPending, cancelPendingPromotionsForAttendee } from './benchPromotion';
 import { withEventLock, serializableTx, SpotError, type Tx, type EventRow } from './_tx';
 import { zonedToUtc, utcToZonedParts, ALWAYS_OPEN_SENTINEL } from '@/lib/datetime';
 import type {
@@ -206,7 +207,9 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
     attendeeId: a.id,
     eventId: a.eventId,
     userEmail: holderEmail,
-    userName: holderName,
+    userName: a.guestDisplayName?.trim() || holderName,
+    guestDisplayName: a.guestDisplayName ?? null,
+    isGuestSpot: !!a.guestDisplayName?.trim(),
     originalUserEmail: originalEmail,
     status: a.status as AttendeeStatus,
     offeredAt: a.offeredAt ? a.offeredAt.toISOString() : null,
@@ -728,6 +731,9 @@ export async function offerSpot(params: {
     if (!attendee) throw new SpotError('Spot not found', 404);
     if (attendee.userId !== params.userId) throw new SpotError('Not your spot', 403);
     if (attendee.status !== 'confirmed') throw new SpotError('Spot is not confirmed', 400);
+    if (attendee.guestDisplayName?.trim()) {
+      throw new SpotError('Clear the guest assignment before offering this spot', 400);
+    }
 
     const [updated] = await tx
       .update(eventAttendees)
@@ -735,12 +741,21 @@ export async function offerSpot(params: {
       .where(eq(eventAttendees.id, attendee.id))
       .returning();
 
-    const match = await assignOpeningToBenchHead(tx, event, updated, {
+    const match = await assignOpeningToBenchHeadOrPending(tx, event, updated, {
       fromUserId: params.userId,
       transactionType: 'claim',
       notes: params.attendeeId ? 'Offered +1 auto-matched to bench' : 'Offered spot auto-matched to bench',
       notifyPreviousHolder: true,
     });
+
+    if (match.pendingApproval) {
+      const [reverted] = await tx
+        .update(eventAttendees)
+        .set({ status: 'confirmed', offeredAt: null })
+        .where(eq(eventAttendees.id, updated.id))
+        .returning();
+      return reverted;
+    }
 
     if (match.matched && match.attendee) {
       return match.attendee;
@@ -878,13 +893,14 @@ export async function releaseRiderSpot(params: {
       );
     }
 
-    await assignOpeningToBenchHead(tx, event, rider, {
+    const result = await assignOpeningToBenchHeadOrPending(tx, event, rider, {
       fromUserId: params.userId,
       transactionType: 'waitlist_promote',
       notes: '+1 released to bench',
       notifyPreviousHolder: false,
       excludeUserId: params.userId,
     });
+    if (result.pendingApproval) return;
   });
 }
 
@@ -949,6 +965,7 @@ export async function reassignSpot(params: {
             offeredAt: null,
             assignedBy: null,
             parentAttendeeId: null,
+            guestDisplayName: null,
           })
           .where(eq(eventAttendees.id, source.id))
           .returning();
@@ -985,6 +1002,7 @@ export async function reassignSpot(params: {
             offeredAt: null,
             assignedBy: null,
             parentAttendeeId: null,
+            guestDisplayName: null,
           })
           .where(eq(eventAttendees.id, source.id))
           .returning();
@@ -1013,6 +1031,7 @@ export async function reassignSpot(params: {
             offeredAt: null,
             assignedBy: null,
             parentAttendeeId: targetPrimary.id,
+            guestDisplayName: null,
           })
           .where(eq(eventAttendees.id, source.id))
           .returning();
@@ -1061,6 +1080,62 @@ export async function reassignSpot(params: {
 }
 
 /**
+ * Assign a spot to an external guest (display-only; no credit movement).
+ */
+export async function assignSpotToGuest(params: {
+  eventId: string;
+  attendeeId: string;
+  guestName: string;
+  byUserId: string;
+  isAdmin: boolean;
+}): Promise<AttendeeRow> {
+  const GUEST_NAME_MAX = 40;
+  return withEventLock(params.eventId, async (tx, event) => {
+    const name = params.guestName.trim();
+    if (!name) throw new SpotError('Guest name is required', 400);
+    if (name.length > GUEST_NAME_MAX) {
+      throw new SpotError(`Guest name must be at most ${GUEST_NAME_MAX} characters`, 400);
+    }
+
+    const [source] = await tx
+      .select()
+      .from(eventAttendees)
+      .where(and(eq(eventAttendees.id, params.attendeeId), eq(eventAttendees.eventId, params.eventId)))
+      .limit(1);
+    if (!source) throw new SpotError('Spot not found', 404);
+    if (!params.isAdmin && source.userId !== params.byUserId) {
+      throw new SpotError('You can only assign your own spot to a guest', 403);
+    }
+    if (source.status === 'offered') {
+      throw new SpotError('Retract the offer before assigning a guest', 400);
+    }
+
+    const [updated] = await tx
+      .update(eventAttendees)
+      .set({
+        guestDisplayName: name,
+        status: 'confirmed',
+        offeredAt: null,
+      })
+      .where(eq(eventAttendees.id, source.id))
+      .returning();
+
+    await recordTransaction(tx, {
+      eventId: params.eventId,
+      groupId: event.groupId,
+      attendeeId: updated.id,
+      type: 'guest_assign',
+      fromUserId: source.userId,
+      toUserId: source.userId,
+      amount: 0,
+      notes: `Guest: ${name}`,
+    });
+
+    return updated;
+  });
+}
+
+/**
  * Admin: fully remove a player from an event (no replacement). Deletes the
  * attendee row(s) + their transaction chains, reversing all credit effects.
  * If the attendeeId is a primary row that has a rider, both are removed.
@@ -1080,6 +1155,8 @@ export async function adminUnassignSpot(params: {
       .where(and(eq(eventAttendees.id, params.attendeeId), eq(eventAttendees.eventId, params.eventId)))
       .limit(1);
     if (!attendee) throw new SpotError('Spot not found for this event', 404);
+
+    await cancelPendingPromotionsForAttendee(tx, params.attendeeId);
 
     // If this is a primary row, also remove any child rider row.
     if (attendee.parentAttendeeId === null) {

@@ -15,8 +15,6 @@
 
 import { init, type LDClient } from '@launchdarkly/vercel-server-sdk';
 import { createClient, type EdgeConfigClient } from '@vercel/edge-config';
-import { ldApplicationMetadata } from '@/lib/appVersion';
-
 const APP_ADMINS_FLAG = 'app-admins';
 
 let ldClient: LDClient | null = null;
@@ -36,9 +34,8 @@ function getClient(): LDClient | null {
 
   try {
     edgeConfigClient = edgeConfigClient ?? createClient(edgeConfigConnection);
-    ldClient = init(clientSideId, edgeConfigClient, {
-      application: ldApplicationMetadata,
-    } as Parameters<typeof init>[2]);
+    // Vercel edge SDK only supports `logger` in options (not `application`).
+    ldClient = init(clientSideId, edgeConfigClient);
     return ldClient;
   } catch (err) {
     console.warn('[launchdarkly] failed to init server client:', err);
@@ -81,6 +78,27 @@ export async function isAppAdmin(email: string, dbGlobalRole: string): Promise<b
   const normalized = email.toLowerCase();
   const admins = await getAppAdminEmails(normalized);
   return admins.includes(normalized);
+}
+
+export function isServerLdConfigured(): boolean {
+  return getClient() !== null;
+}
+
+/** Non-secret diagnostics for setup scripts and support. */
+export function getLaunchDarklyServerConfigStatus(): {
+  hasClientSideId: boolean;
+  hasEdgeConfig: boolean;
+  serverClientReady: boolean;
+} {
+  const hasClientSideId = Boolean(
+    process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID || process.env.LD_CLIENT_SIDE_ID
+  );
+  const hasEdgeConfig = Boolean(process.env.EDGE_CONFIG);
+  return {
+    hasClientSideId,
+    hasEdgeConfig,
+    serverClientReady: isServerLdConfigured(),
+  };
 }
 
 /**

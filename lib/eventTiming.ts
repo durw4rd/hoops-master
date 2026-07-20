@@ -6,6 +6,15 @@ import { zonedToUtc, ALWAYS_OPEN_SENTINEL } from '@/lib/datetime';
 
 export type SignupOpenType = 'immediate' | 'relative' | 'absolute';
 
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * True when the event starts within the next 24 hours (used for bench promotion approval).
+ */
+export function isWithin24HoursOfEvent(event: { startsAt: Date }): boolean {
+  return event.startsAt.getTime() - Date.now() < TWENTY_FOUR_HOURS_MS;
+}
+
 /**
  * Compute the absolute signup-open ISO string from the modal's signup-timing
  * payload, using the group's timezone for local conversions.

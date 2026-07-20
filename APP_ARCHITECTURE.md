@@ -76,12 +76,13 @@ scripts/
 | `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `default_pricing_mode` (`per_spot`/`split_total`), `default_total_cost`, `round_robin_slide`, `banner_url`, `banner_orientation` |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
 | `events` | Games | `starts_at`/`ends_at`, `total_spots`, `slot_cost` (per-spot mode), `pricing_mode`, `total_cost` (split-total mode), `pricing_finalized_at`, `finalized_per_share`, `remainder_policy`, `effective_total_cost`, plus `event_type`, `name`, `description`, `banner_*`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
-| `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
+| `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot), `guest_display_name` (non-null = guest spot, no `users` row); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
 | `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user)` |
+| `bench_promotion_requests` | Pending bench handoff | When a release would auto-promote bench #1 within 24h of `starts_at`, releaser stays `confirmed` until approve/decline; unique pending row per `attendee_id` |
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
 | `spot_transactions` | Append-only credit ledger | `from_user_id` (nullable), `to_user_id`, `amount`, `type` (audit only) |
 | `payments` | Admin-recorded cash in | `user_id`, `amount`, `payment_date` |
-| `notifications` | In-app inbox (per user) | `user_id`, `group_id`, `event_id`, `type` (`spot_offered_claimed`/`bench_promoted`), `title`, `body`, `read_at`; partial index on unread |
+| `notifications` | In-app inbox (per user) | `user_id`, `group_id`, `event_id`, `type` (`spot_offered_claimed` / `bench_promoted` / `bench_promotion_pending`), `title`, `body`, `read_at`; partial index on unread |
 | `player_credit_balances` | **View** | `balance = paid − spent(to_user) + earned(from_user)` per active member |
 
 Notes for agents:
@@ -97,6 +98,17 @@ Notes for agents:
   if the bench is non-empty and the claimer is not #1, the API returns 409. Logic lives
   in `lib/queries/benchMatching.ts` (`assignOpeningToBenchHead`, `transferOpeningToUser`).
   `EventDetailModal` re-fetches on window focus to keep button states fresh.
+- **Bench promotion <24h:** `releaseSpot` / `releaseRiderSpot` call
+  `assignOpeningToBenchHeadOrPending` (`lib/queries/benchPromotion.ts`). Outside
+  24h before `starts_at`, bench #1 is promoted immediately. Inside 24h, the opening
+  stays with the releaser (`confirmed`) until they approve; decline removes that
+  player from the bench and may cascade to the next #1. Capo/King can remove bench
+  rows via `DELETE .../waitlist?forRider=…` (`removeFromBench`). Direct `claimSpot`
+  and join-bench auto-match are unchanged (no approval gate).
+- **Guest spots:** When LD flag `guest-spots` is on (client + server), Capo/King
+  assign via `POST .../assign-guest` with a display name; `guest_display_name` is set,
+  `user_id` points at the assignee for ledger purposes, and `guest_assign` ledger
+  rows are recorded like other spot charges.
 - **Self-reassign (non-admin):** Non-admin players can hand over their own spot via
   "Hand It Over" in `EventDetailModal`. The reassign route previously blocked any
   `attendeeId` param for non-admins; it now allows it and instead `reassignSpot`
@@ -145,10 +157,11 @@ Two independent role axes:
 API guards (`lib/apiGuards.ts`): `requireAuth`, `requireMember`,
 `requireGroupAdmin` (Capo only), `requireCrewManager` (Capo or King).
 
-**LaunchDarkly** (`lib/launchdarkly.ts`) is an *additive* override for app-admin
-only via the `app-admins` flag (list of emails). The DB is authoritative and the
-system **fails closed**: if LD/Edge Config is unreachable, only the DB role grants
-access. Never make authorization depend on a flag being reachable.
+**LaunchDarkly** (`lib/launchdarkly.ts`): client SDK for UI; server evaluation via
+`@launchdarkly/vercel-server-sdk` + **`EDGE_CONFIG`** (synced by the
+[Vercel ↔ LaunchDarkly integration](docs/launchdarkly-vercel-setup.md)). Flags:
+`app-admins` (email list override for create-crew), `guest-spots` (guest assign API).
+Without `EDGE_CONFIG`, server evaluation is off (fail-closed); DB roles still apply.
 
 **LD client context** (`components/LaunchDarklyProvider.tsx` + `LDIdentify.tsx`):
 pre-login the app evaluates a single `session` context (key = persisted session id,
@@ -184,14 +197,15 @@ Removed users cannot sign in (`lib/auth.ts`). `listUsers()` excludes buffed rows
 
 ## Balances tab (`CreditDashboard.tsx`)
 
-The **Balances** crew tab shows collapsible ledger sections (all collapsed by default):
+The **Balances** crew tab: **Balances** (all members) loads on mount and stays visible.
+Capo/King sections (Square Up, Payments, Spot Ledger) remain collapsible and lazy-load on expand:
 
 | Section | Who | Lazy-loaded on expand |
 |---|---|---|
 | Square Up | Capo/King | Payment form only (no prefetch) |
 | Payments | Capo/King | `GET .../payments` |
 | Spot Ledger | Capo/King | `GET .../transactions` (credit-moving rows only — excludes offer/retract audit entries) |
-| Balances | All members | `GET .../credits` |
+| Balances | All members | `GET .../credits` (loaded on tab mount) |
 
 CSV export buttons (Balances / Transactions / Payments) remain in the admin card header. Recording a payment refreshes balances and the payments list when those sections have already been loaded.
 
@@ -275,6 +289,9 @@ POST   /api/groups/[id]/events/bulk                 # recurring series
 POST   /api/groups/[id]/events/round-robin          # rotation series (+preview)
 POST   /api/groups/[id]/events/batch-assign         # batch assign
 POST   .../events/[eventId]/claim|offer|retract|release|reassign|unassign|waitlist
+DELETE .../events/[eventId]/waitlist              # leave bench (self) or remove player (Capo/King)
+POST   .../events/[eventId]/assign-guest            # guest spot (Capo/King; LD guest-spots)
+POST   .../events/[eventId]/bench-promotion/[id]/approve|decline
 POST   .../events/[eventId]/claim-rider     # bring a +1 (Rider) into the game
 POST   .../events/[eventId]/drop-rider      # remove your Rider spot (refund)
 
@@ -303,9 +320,9 @@ GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 SEED_ADMIN_EMAILS=        # comma-separated emails promoted to admin on seed (optional)
 BLOB_READ_WRITE_TOKEN=    # Vercel Blob store token (crew banners + player pieces); auto-set when the Blob store is linked to the project
-# LaunchDarkly (optional; app-admin override + observability/session replay)
+# LaunchDarkly (optional; see docs/launchdarkly-vercel-setup.md)
 NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=
-EDGE_CONFIG=              # Vercel Edge Config connection (server-side LD eval)
+# EDGE_CONFIG=              # auto-set by LaunchDarkly ↔ Vercel integration
 ```
 
 ## Common workflows
@@ -318,6 +335,7 @@ pnpm db:push                   # push schema to DB (dev)
 pnpm db:migrate                # apply migrations (see Database migrations below)
 pnpm tsx scripts/seedPlayers.ts        # seed/allowlist players (idempotent)
 EMAIL=x@y.com ROLE=owner pnpm tsx scripts/setRole.ts
+pnpm tsx scripts/verify-launchdarkly-server.ts   # after vercel env pull (EDGE_CONFIG)
 npx tsc --noEmit && pnpm build # verify before commit
 ```
 

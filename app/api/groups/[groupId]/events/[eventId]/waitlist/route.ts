@@ -9,9 +9,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireMember } from '@/lib/apiGuards';
+import { requireMember, requireCrewManager } from '@/lib/apiGuards';
 import { getEventRowById } from '@/lib/queries/events';
-import { joinWaitlist, leaveWaitlist } from '@/lib/queries/waitlist';
+import { joinWaitlist, leaveWaitlist, removeFromBench } from '@/lib/queries/waitlist';
+import { db } from '@/lib/db';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
 import { SpotError } from '@/lib/queries/_tx';
 import { spotMutationBlockedMessage } from '@/lib/eventRules';
 
@@ -73,6 +76,32 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const body = await request.json().catch(() => ({}));
     const forRider = body?.forRider === true;
+    const targetEmail =
+      typeof body?.userEmail === 'string' ? body.userEmail.trim().toLowerCase() : null;
+
+    if (targetEmail && targetEmail !== ctx.user.email.toLowerCase()) {
+      const managerCtx = await requireCrewManager(groupId);
+      if (managerCtx instanceof NextResponse) return managerCtx;
+
+      const [targetUser] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, targetEmail))
+        .limit(1);
+      if (!targetUser) {
+        return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+      }
+
+      await removeFromBench({
+        eventId,
+        targetUserId: targetUser.id,
+        forRider,
+      });
+      return NextResponse.json({
+        success: true,
+        message: forRider ? 'Player removed from +1 bench' : 'Player removed from the bench',
+      });
+    }
 
     await leaveWaitlist({ eventId, userId: ctx.user.id, forRider });
     return NextResponse.json({
@@ -80,6 +109,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       message: forRider ? 'Rider removed from the bench' : 'Left the waitlist',
     });
   } catch (error) {
+    if (error instanceof SpotError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error('Error leaving waitlist:', error);
     return NextResponse.json(
       { error: 'Failed to leave waitlist', details: String(error) },

@@ -112,6 +112,11 @@ export function transactionHasCreditMovement(amount: number): boolean {
   return amount > 0;
 }
 
+/** Rows shown in the Spot Ledger UI (credits + guest audit). */
+export function transactionShowsInSpotLedger(type: TransactionType, amount: number): boolean {
+  return transactionHasCreditMovement(amount) || type === 'guest_assign';
+}
+
 /** DTO for group spot ledger (UI + CSV) — credit-moving rows only. */
 export async function getGroupTransactionsDTO(groupId: string): Promise<GroupTransaction[]> {
   const rows = await getGroupTransactions(groupId);
@@ -120,7 +125,7 @@ export async function getGroupTransactionsDTO(groupId: string): Promise<GroupTra
   );
   const fromMap = await getUsersByIds(fromIds);
   return rows
-    .filter((r) => transactionHasCreditMovement(Number(r.t.amount)))
+    .filter((r) => transactionShowsInSpotLedger(r.t.type as TransactionType, Number(r.t.amount)))
     .map((r) => ({
       transactionId: r.t.id,
       eventId: r.t.eventId,

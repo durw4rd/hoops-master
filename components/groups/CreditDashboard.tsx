@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CreditBalance, GroupTransaction, PaymentRecord, TransactionType } from "@/lib/types";
 import { Loader2, Download, Euro, ChevronDown, ChevronRight } from "lucide-react";
 
@@ -26,6 +26,7 @@ function transactionTypeLabel(type: TransactionType): string {
     split_settle: "Split cost",
     split_remainder: "Split remainder",
     price_adjustment: "Price adjustment",
+    guest_assign: "Guest spot",
   };
   return labels[type] ?? type;
 }
@@ -84,7 +85,6 @@ export default function CreditDashboard({
   const [showPayForm, setShowPayForm] = useState(false);
   const [showPayments, setShowPayments] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
-  const [showBalances, setShowBalances] = useState(false);
 
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [payAmount, setPayAmount] = useState("");
@@ -156,11 +156,9 @@ export default function CreditDashboard({
     }
   }, [groupId]);
 
-  const toggleBalances = () => {
-    const next = !showBalances;
-    setShowBalances(next);
-    if (next && !balancesLoaded) fetchBalances();
-  };
+  useEffect(() => {
+    if (!balancesLoaded) fetchBalances();
+  }, [balancesLoaded, fetchBalances]);
 
   const togglePayments = () => {
     const next = !showPayments;
@@ -470,57 +468,53 @@ export default function CreditDashboard({
       )}
 
       <div className="marker-card p-4">
-        <CollapsibleHeader title="Balances" open={showBalances} onToggle={toggleBalances} />
-        {showBalances && (
-          <>
-            <p className="text-xs text-asphalt/50 font-body mt-3 mb-3 pl-6">
-              Balance = paid − spots received + spots given up. Positive means credit available.
-            </p>
-            {balancesLoading ? (
-              <div className="flex items-center gap-2 text-asphalt/60 font-body py-6 justify-center">
-                <Loader2 className="w-5 h-5 animate-spin" /> Loading balances…
-              </div>
-            ) : balances.length === 0 ? (
-              <p className="text-center text-asphalt/50 font-body py-6">No balances yet</p>
-            ) : (
-              <div className="overflow-x-auto pl-6">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left font-graffiti text-asphalt/70 border-b-2 border-asphalt/20">
-                      <th className="py-2 pr-2">Player</th>
-                      <th className="py-2 px-2 text-right">Paid (€)</th>
-                      <th className="py-2 px-2 text-right">Spent (€)</th>
-                      <th className="py-2 px-2 text-right">Earned (€)</th>
-                      <th className="py-2 pl-2 text-right">Balance (€)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {balances.map((b) => (
-                      <tr
-                        key={b.userEmail}
-                        className={`border-b border-asphalt/10 ${
-                          b.userEmail === userEmail ? "bg-moss-green/20" : ""
-                        }`}
-                      >
-                        <td className="py-2 pr-2 font-marker">
-                          {b.displayName || b.userEmail.split("@")[0]}
-                          {b.userEmail === userEmail && (
-                            <span className="text-asphalt/50 ml-1 text-xs">(you)</span>
-                          )}
-                        </td>
-                        <td className="py-2 px-2 text-right font-body">€{b.totalPaid.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right font-body">€{b.totalSpent.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right font-body">€{b.totalEarned.toFixed(2)}</td>
-                        <td className={`py-2 pl-2 text-right font-graffiti ${balanceColor(b.balance)}`}>
-                          €{b.balance.toFixed(2)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+        <h2 className="font-graffiti text-xl text-asphalt">Balances</h2>
+        <p className="text-xs text-asphalt/50 font-body mt-3 mb-3">
+          Balance = paid − spots received + spots given up. Positive means credit available.
+        </p>
+        {balancesLoading ? (
+          <div className="flex items-center gap-2 text-asphalt/60 font-body py-6 justify-center">
+            <Loader2 className="w-5 h-5 animate-spin" /> Loading balances…
+          </div>
+        ) : balances.length === 0 ? (
+          <p className="text-center text-asphalt/50 font-body py-6">No balances yet</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left font-graffiti text-asphalt/70 border-b-2 border-asphalt/20">
+                  <th className="py-2 pr-2">Player</th>
+                  <th className="py-2 px-2 text-right">Paid (€)</th>
+                  <th className="py-2 px-2 text-right">Spent (€)</th>
+                  <th className="py-2 px-2 text-right">Earned (€)</th>
+                  <th className="py-2 pl-2 text-right">Balance (€)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {balances.map((b) => (
+                  <tr
+                    key={b.userEmail}
+                    className={`border-b border-asphalt/10 ${
+                      b.userEmail === userEmail ? "bg-moss-green/20" : ""
+                    }`}
+                  >
+                    <td className="py-2 pr-2 font-marker">
+                      {b.displayName || b.userEmail.split("@")[0]}
+                      {b.userEmail === userEmail && (
+                        <span className="text-asphalt/50 ml-1 text-xs">(you)</span>
+                      )}
+                    </td>
+                    <td className="py-2 px-2 text-right font-body">€{b.totalPaid.toFixed(2)}</td>
+                    <td className="py-2 px-2 text-right font-body">€{b.totalSpent.toFixed(2)}</td>
+                    <td className="py-2 px-2 text-right font-body">€{b.totalEarned.toFixed(2)}</td>
+                    <td className={`py-2 pl-2 text-right font-graffiti ${balanceColor(b.balance)}`}>
+                      €{b.balance.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

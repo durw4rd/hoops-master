@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useFlags } from "launchdarkly-react-client-sdk";
 import { EventAttendee, WaitlistEntry } from "@/lib/types";
 import {
   Dialog,
@@ -92,7 +93,16 @@ interface EventDetail {
   myAttendance: EventAttendee | null;
   myWaitlistPosition: number | null;
   myRiderWaitlistPosition: number | null;
+  pendingBenchPromotion?: {
+    requestId: string;
+    attendeeId: string;
+    releaserName: string;
+    spotKind: 'primary' | 'plus_one';
+  } | null;
+  pendingHandoff?: boolean;
 }
+
+const GUEST_ASSIGN_VALUE = '__guest__';
 
 export default function EventDetailModal({
   open,
@@ -118,6 +128,12 @@ export default function EventDetailModal({
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [remainderPolicy, setRemainderPolicy] = useState<RemainderPolicy>('ignore');
   const [finalizeLoading, setFinalizeLoading] = useState(false);
+  const [guestAssignOpen, setGuestAssignOpen] = useState(false);
+  const [guestAssignAttendeeId, setGuestAssignAttendeeId] = useState<string | null>(null);
+  const [guestNameInput, setGuestNameInput] = useState("");
+
+  const flags = useFlags();
+  const guestSpotsEnabled = flags?.guestSpots === true;
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -390,6 +406,12 @@ export default function EventDetailModal({
 
   const handleSelfHandover = async (attendeeId: string, toUserEmail: string) => {
     if (!toUserEmail) return;
+    if (toUserEmail === GUEST_ASSIGN_VALUE) {
+      setGuestAssignAttendeeId(attendeeId);
+      setGuestNameInput("");
+      setGuestAssignOpen(true);
+      return;
+    }
     setActionLoading('handover');
     setError(null);
     try {
@@ -442,6 +464,12 @@ export default function EventDetailModal({
   const handleLeaveRiderWaitlist = () =>
     runAction('rider-waitlist-leave', 'waitlist', 'DELETE', { forRider: true });
 
+  const handleRemoveFromBench = (userEmail: string, forRider: boolean) => {
+    if (!window.confirm('Remove this player from the bench?')) return;
+    const key = `bench-remove-${userEmail}-${forRider}`;
+    runAction(key, 'waitlist', 'DELETE', { userEmail, forRider });
+  };
+
   const handleAssign = async () => {
     if (!assignEmail) return;
     setActionLoading('assign');
@@ -467,6 +495,12 @@ export default function EventDetailModal({
   const handleReassign = async (attendeeId: string) => {
     const toUserEmail = reassignTarget[attendeeId];
     if (!toUserEmail) return;
+    if (toUserEmail === GUEST_ASSIGN_VALUE) {
+      setGuestAssignAttendeeId(attendeeId);
+      setGuestNameInput("");
+      setGuestAssignOpen(true);
+      return;
+    }
     setActionLoading(`reassign-${attendeeId}`);
     setError(null);
     try {
@@ -486,6 +520,89 @@ export default function EventDetailModal({
       onEventUpdated();
     } catch {
       setError('Failed to reassign spot');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleAssignGuest = async () => {
+    if (!guestAssignAttendeeId || !guestNameInput.trim()) return;
+    setActionLoading(`guest-${guestAssignAttendeeId}`);
+    setError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/events/${eventId}/assign-guest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          attendeeId: guestAssignAttendeeId,
+          guestName: guestNameInput.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      setGuestAssignOpen(false);
+      setGuestAssignAttendeeId(null);
+      setGuestNameInput("");
+      setReassignTarget((prev) => {
+        const next = { ...prev };
+        if (guestAssignAttendeeId) delete next[guestAssignAttendeeId];
+        return next;
+      });
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to assign guest');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleApprovePromotion = async () => {
+    const req = event?.pendingBenchPromotion;
+    if (!req) return;
+    setActionLoading('approve-promotion');
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/groups/${groupId}/events/${eventId}/bench-promotion/${req.requestId}/approve`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to accept spot');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeclinePromotion = async () => {
+    const req = event?.pendingBenchPromotion;
+    if (!req) return;
+    setActionLoading('decline-promotion');
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/groups/${groupId}/events/${eventId}/bench-promotion/${req.requestId}/decline`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error);
+        return;
+      }
+      fetchEvent();
+      onEventUpdated();
+    } catch {
+      setError('Failed to decline spot');
     } finally {
       setActionLoading(null);
     }
@@ -711,6 +828,56 @@ export default function EventDetailModal({
               {/* ── Primary Action Area ── */}
               <div className="space-y-2">
 
+                {event.pendingBenchPromotion && (
+                  <div className="bg-moss-green/20 border-2 border-asphalt p-3 space-y-2">
+                    <p className="font-graffiti text-sm text-asphalt text-center">
+                      {event.pendingBenchPromotion.releaserName} released a{' '}
+                      {event.pendingBenchPromotion.spotKind === 'plus_one' ? '+1 ' : ''}
+                      spot for you
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleApprovePromotion}
+                        disabled={
+                          actionLoading === 'approve-promotion' ||
+                          actionLoading === 'decline-promotion'
+                        }
+                        className="flex-1 bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-2 shadow-sticker-sm disabled:opacity-50"
+                      >
+                        {actionLoading === 'approve-promotion' ? (
+                          <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                        ) : (
+                          'ACCEPT SPOT'
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeclinePromotion}
+                        disabled={
+                          actionLoading === 'approve-promotion' ||
+                          actionLoading === 'decline-promotion'
+                        }
+                        className="flex-1 bg-white text-asphalt border-2 border-asphalt font-graffiti text-sm py-2 shadow-sticker-sm disabled:opacity-50"
+                      >
+                        {actionLoading === 'decline-promotion' ? (
+                          <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                        ) : (
+                          'DECLINE'
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {event.pendingHandoff && isConfirmed && (
+                  <div className="bg-dull-gold/20 border-2 border-asphalt p-2 text-center">
+                    <p className="font-graffiti text-xs text-asphalt">
+                      Handoff pending — waiting for bench approval
+                    </p>
+                  </div>
+                )}
+
                 {/* Not attending → CLAIM SPOT */}
                 {!event.isAttending && availableSpots > 0 && canModifySpots && (
                   <button
@@ -920,6 +1087,11 @@ export default function EventDetailModal({
                               <SelectValue placeholder="Hand it to…" />
                             </SelectTrigger>
                             <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                              {guestSpotsEnabled && (
+                                <SelectItem value={GUEST_ASSIGN_VALUE} className="font-body">
+                                  Guest (outside crew)
+                                </SelectItem>
+                              )}
                               {membersWithoutSpot.map((m) => (
                                 <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
                                   {m.displayName}
@@ -950,6 +1122,11 @@ export default function EventDetailModal({
                               <SelectValue placeholder="Hand it to…" />
                             </SelectTrigger>
                             <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                              {guestSpotsEnabled && (
+                                <SelectItem value={GUEST_ASSIGN_VALUE} className="font-body">
+                                  Guest (outside crew)
+                                </SelectItem>
+                              )}
                               {membersWithoutSpot.map((m) => (
                                 <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
                                   {m.displayName}
@@ -1109,8 +1286,11 @@ export default function EventDetailModal({
                             key={attendee.attendeeId}
                             className={`border-2 border-asphalt p-2 space-y-2 ${isRiderRow ? 'bg-dull-gold/10 ml-3' : 'bg-white'}`}
                           >
-                            <span className="font-marker text-sm text-asphalt flex items-center gap-1.5 truncate">
-                              {displayName}
+                            <span
+                              className="font-marker text-sm text-asphalt flex items-center gap-1.5 min-w-0"
+                              title={displayName}
+                            >
+                              <span className="truncate">{displayName}</span>
                               {attendee.status === 'offered' && (
                                 <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
                                   OFFERING
@@ -1142,6 +1322,11 @@ export default function EventDetailModal({
                                       {asPlusOne ? `${m.displayName} (as +1)` : m.displayName}
                                     </SelectItem>
                                   ))}
+                                  {guestSpotsEnabled && (
+                                    <SelectItem value={GUEST_ASSIGN_VALUE} className="font-body">
+                                      Guest (outside crew)
+                                    </SelectItem>
+                                  )}
                                 </SelectContent>
                               </Select>
                               <button
@@ -1207,9 +1392,20 @@ export default function EventDetailModal({
                           className="marker-card bg-terracotta/10 p-3 flex items-center justify-between"
                           style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
                         >
-                          <span className="font-marker text-terracotta flex items-center gap-1.5">
+                          <span
+                            className="font-marker text-terracotta flex items-center gap-1.5 min-w-0 flex-1 mr-2"
+                            title={
+                              attendee.isPlusOne
+                                ? `${attendee.userName}'s +1`
+                                : `${attendee.userName}'s spot`
+                            }
+                          >
                             {renderRoleIcon(attendee.userEmail)}
-                            {attendee.isPlusOne ? `${attendee.userName}'s +1` : `${attendee.userName}'s spot`}
+                            <span className="truncate">
+                              {attendee.isPlusOne
+                                ? `${attendee.userName}'s +1`
+                                : `${attendee.userName}'s spot`}
+                            </span>
                           </span>
                           {isOwnOffer ? (
                             <button
@@ -1272,20 +1468,28 @@ export default function EventDetailModal({
                         return (
                           <div
                             key={attendee.attendeeId}
-                            className={`marker-card p-2 ${
+                            className={`marker-card p-2 min-w-0 overflow-hidden ${
                               isMe ? 'bg-moss-green border-asphalt' : 'bg-white'
                             } ${attendee.isPlusOne ? 'border-dull-gold/60' : ''}`}
                             style={{ transform: `rotate(${index % 2 === 0 ? -0.5 : 0.5}deg)` }}
                           >
-                            <span className="font-marker text-sm text-asphalt truncate flex flex-wrap items-center gap-1.5">
-                              {!attendee.isPlusOne && (
+                            <span
+                              className="font-marker text-sm text-asphalt flex items-center gap-1.5 min-w-0"
+                              title={displayName}
+                            >
+                              {!attendee.isPlusOne && !attendee.isGuestSpot && (
                                 <PlayerAvatar
                                   pieceUrl={pieceByEmail.get(attendee.userEmail)}
                                   name={attendee.userName}
                                   className="h-6 w-6 shrink-0"
                                 />
                               )}
-                              {!attendee.isPlusOne && renderRoleIcon(attendee.userEmail)}
+                              {!attendee.isPlusOne && !attendee.isGuestSpot && renderRoleIcon(attendee.userEmail)}
+                              {!attendee.isPlusOne && attendee.isGuestSpot && (
+                                <span className="h-6 w-6 shrink-0 rounded-full border-2 border-asphalt bg-asphalt/10 flex items-center justify-center text-[10px] font-graffiti">
+                                  G
+                                </span>
+                              )}
                               <span className="truncate">{displayName}</span>
                               {isMe && !attendee.isPlusOne && (
                                 <span className="text-asphalt/60">(you)</span>
@@ -1325,7 +1529,7 @@ export default function EventDetailModal({
                     {waitlist.map((entry, index) => (
                       <div
                         key={`${entry.userEmail}-${entry.forRider}`}
-                        className={`marker-card p-2 flex items-center gap-2 ${
+                        className={`marker-card p-2 flex items-center gap-2 min-w-0 overflow-hidden ${
                           entry.userEmail === userEmail ? 'bg-slate-blue/15' : 'bg-white'
                         }`}
                         style={{ transform: `rotate(${index % 2 === 0 ? -0.3 : 0.3}deg)` }}
@@ -1337,12 +1541,34 @@ export default function EventDetailModal({
                           className="h-6 w-6 shrink-0"
                         />
                         {renderRoleIcon(entry.userEmail)}
-                        <span className="font-marker text-sm text-asphalt truncate flex items-center gap-1.5">
-                          {entry.forRider ? `${entry.displayName}'s +1` : entry.displayName}
+                        <span
+                          className="font-marker text-sm text-asphalt flex items-center gap-1.5 min-w-0 flex-1"
+                          title={entry.forRider ? `${entry.displayName}'s +1` : entry.displayName}
+                        >
+                          <span className="truncate">
+                            {entry.forRider ? `${entry.displayName}'s +1` : entry.displayName}
+                          </span>
                           {entry.userEmail === userEmail && (
-                            <span className="text-asphalt/60">(you)</span>
+                            <span className="text-asphalt/60 shrink-0">(you)</span>
                           )}
                         </span>
+                        {canManage && entry.userEmail.toLowerCase() !== userEmail.toLowerCase() && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveFromBench(entry.userEmail, entry.forRider)}
+                            disabled={
+                              actionLoading === `bench-remove-${entry.userEmail}-${entry.forRider}`
+                            }
+                            title="Remove from bench"
+                            className="shrink-0 p-1 border-2 border-asphalt bg-white hover:bg-terracotta/10 disabled:opacity-50"
+                          >
+                            {actionLoading === `bench-remove-${entry.userEmail}-${entry.forRider}` ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4 text-terracotta" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1457,6 +1683,37 @@ export default function EventDetailModal({
           </button>
         </div>
       )}
+    </GraffitiDialog>
+
+    <GraffitiDialog
+      open={guestAssignOpen}
+      onOpenChange={setGuestAssignOpen}
+      title="Guest player"
+      description="Who's taking this spot? They don't need a crew account."
+    >
+      <div className="space-y-3">
+        <input
+          type="text"
+          value={guestNameInput}
+          onChange={(e) => setGuestNameInput(e.target.value)}
+          className="sketch-input w-full"
+          placeholder="Name on the roster"
+          maxLength={40}
+          autoFocus
+        />
+        <button
+          type="button"
+          onClick={handleAssignGuest}
+          disabled={!guestNameInput.trim() || !!actionLoading}
+          className="sticker-btn w-full disabled:opacity-50"
+        >
+          {actionLoading?.startsWith('guest-') ? (
+            <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+          ) : (
+            'SAVE GUEST'
+          )}
+        </button>
+      </div>
     </GraffitiDialog>
 
     <ConfirmDialog

@@ -12,12 +12,12 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { eventAttendees, eventWaitlist } from '@/lib/db/schema';
 import {
-  assignOpeningToBenchHead,
   getGlobalBenchPosition,
   getUnifiedBench,
   removeUserFromBench,
   tryMatchEarliestOfferToBench,
 } from './benchMatching';
+import { assignOpeningToBenchHeadOrPending } from './benchPromotion';
 import { withEventLock, SpotError } from './_tx';
 
 // ---------------------------------------------------------------------------
@@ -83,12 +83,36 @@ export async function leaveWaitlist(params: {
   userId: string;
   forRider?: boolean;
 }): Promise<void> {
+  const forRider = params.forRider ?? false;
   await db
     .delete(eventWaitlist)
     .where(and(
       eq(eventWaitlist.eventId, params.eventId),
       eq(eventWaitlist.userId, params.userId),
+      eq(eventWaitlist.forRider, forRider),
     ));
+}
+
+/** Remove a specific user from the bench (manager or self). */
+export async function removeFromBench(params: {
+  eventId: string;
+  targetUserId: string;
+  forRider?: boolean;
+}): Promise<void> {
+  return withEventLock(params.eventId, async (tx) => {
+    const forRider = params.forRider ?? false;
+    const deleted = await tx
+      .delete(eventWaitlist)
+      .where(and(
+        eq(eventWaitlist.eventId, params.eventId),
+        eq(eventWaitlist.userId, params.targetUserId),
+        eq(eventWaitlist.forRider, forRider),
+      ))
+      .returning({ id: eventWaitlist.id });
+    if (deleted.length === 0) {
+      throw new SpotError('Player is not on the bench for this game', 404);
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +122,7 @@ export async function leaveWaitlist(params: {
 export async function releaseSpot(params: {
   eventId: string;
   userId: string;
-}): Promise<{ promotedUserId: string | null }> {
+}): Promise<{ promotedUserId: string | null; pendingApproval?: boolean }> {
   return withEventLock(params.eventId, async (tx, event) => {
     const [primary] = await tx
       .select()
@@ -132,13 +156,17 @@ export async function releaseSpot(params: {
       );
     }
 
-    const result = await assignOpeningToBenchHead(tx, event, primary, {
+    const result = await assignOpeningToBenchHeadOrPending(tx, event, primary, {
       fromUserId: params.userId,
       transactionType: 'waitlist_promote',
       notes: 'Spot released to bench',
       notifyPreviousHolder: false,
       excludeUserId: params.userId,
     });
+
+    if (result.pendingApproval) {
+      return { promotedUserId: null, pendingApproval: true };
+    }
 
     await removeUserFromBench(tx, params.eventId, params.userId);
 

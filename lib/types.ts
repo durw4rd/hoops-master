@@ -136,6 +136,8 @@ export interface EventAttendee {
   eventId: string;              // FK to Events.eventId
   userEmail: string;            // FK to AppUsers.email (current holder)
   userName: string;             // Display name of current holder
+  guestDisplayName: string | null;
+  isGuestSpot: boolean;
   originalUserEmail: string;    // Email of originally assigned user
   status: AttendeeStatus;
   offeredAt: string | null;     // ISO timestamp when offered
@@ -177,7 +179,8 @@ export type TransactionType =
   | 'waitlist_promote'
   | 'split_settle'
   | 'split_remainder'
-  | 'price_adjustment';
+  | 'price_adjustment'
+  | 'guest_assign';
 
 // =============================================================================
 // WAITLIST / ROSTER / CREDIT TYPES
@@ -392,7 +395,7 @@ export type TransactionRow = [string, string, string, string, string, string, st
 // NOTIFICATIONS
 // =============================================================================
 
-export type NotificationType = 'spot_offered_claimed' | 'bench_promoted';
+export type NotificationType = 'spot_offered_claimed' | 'bench_promoted' | 'bench_promotion_pending';
 
 export interface Notification {
   id: string;

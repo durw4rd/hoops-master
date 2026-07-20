@@ -16,6 +16,10 @@ import {
   updateEvent,
   deleteEvent,
 } from '@/lib/queries/events';
+import {
+  getPendingPromotionForTarget,
+  hasPendingHandoffForUser,
+} from '@/lib/queries/benchPromotion';
 import { computeSignupOpensAt } from '@/lib/eventTiming';
 import type { AssignmentMode, RemainderPolicy } from '@/lib/types';
 import { computeSplitFinalize } from '@/lib/queries/pricing';
@@ -58,6 +62,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         ? computeSplitFinalize(eventRow, occupancy)
         : null;
 
+    const [pendingBenchPromotion, pendingHandoff] = await Promise.all([
+      getPendingPromotionForTarget(eventId, ctx.user.id),
+      hasPendingHandoffForUser(eventId, ctx.user.id),
+    ]);
+
     return NextResponse.json({
       success: true,
       data: {
@@ -71,6 +80,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         myAttendance: userAttendance || null,
         myWaitlistPosition: myBenchEntry ? myBenchEntry.position : null,
         myRiderWaitlistPosition: null,
+        pendingBenchPromotion,
+        pendingHandoff,
       },
     });
   } catch (error) {
