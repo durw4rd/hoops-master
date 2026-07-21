@@ -1,5 +1,6 @@
 "use client";
 
+import type { Session } from "next-auth";
 import { useState, useEffect, useCallback } from "react";
 import { Group, Event, UserProfile } from "@/lib/types";
 import { 
@@ -41,7 +42,7 @@ interface GroupDashboardProps {
   group: Group;
   userEmail: string;
   userProfile: UserProfile | null;
-  session: any;
+  session: Session | null;
   onSignIn: () => void;
   onSignOut: () => void;
   onOpenProfile?: () => void;
@@ -128,6 +129,7 @@ export default function GroupDashboard({
   const [leaveCrewError, setLeaveCrewError] = useState<string | null>(null);
   const [deletingCrew, setDeletingCrew] = useState(false);
   const [confirmDeleteCrewOpen, setConfirmDeleteCrewOpen] = useState(false);
+  const [deleteCrewError, setDeleteCrewError] = useState<string | null>(null);
   const [gameFilter, setGameFilter] = useState<'all' | 'mine'>('all');
   const [showPast, setShowPast] = useState(false);
   const [piecePreview, setPiecePreview] = useState<{ url: string; name: string } | null>(null);
@@ -247,11 +249,11 @@ export default function GroupDashboard({
         onGroupDeleted?.(group.groupId);
       } else {
         const data = await res.json().catch(() => ({}));
-        alert(data.error || 'Failed to delete crew');
+        setDeleteCrewError(data.error || 'Failed to delete crew');
       }
     } catch (error) {
       console.error('Failed to delete crew:', error);
-      alert('Failed to delete crew');
+      setDeleteCrewError('Failed to delete crew');
     } finally {
       setDeletingCrew(false);
     }
@@ -926,11 +928,18 @@ export default function GroupDashboard({
 
       <ConfirmDialog
         open={confirmDeleteCrewOpen}
-        onOpenChange={setConfirmDeleteCrewOpen}
+        onOpenChange={(open) => { setConfirmDeleteCrewOpen(open); if (!open) setDeleteCrewError(null); }}
         title="Burn It Down?"
-        message={`Delete the crew "${group.name}" for good? This wipes its games, waitlists, ledger and payments. No take-backs.`}
-        confirmLabel="BURN IT"
-        onConfirm={handleDeleteCrew}
+        message={
+          deleteCrewError
+            ?? `Delete the crew "${group.name}" for good? This wipes its games, waitlists, ledger and payments. No take-backs.`
+        }
+        confirmLabel={deleteCrewError ? 'OK' : 'BURN IT'}
+        onConfirm={
+          deleteCrewError
+            ? () => { setConfirmDeleteCrewOpen(false); setDeleteCrewError(null); }
+            : handleDeleteCrew
+        }
         loading={deletingCrew}
       />
 

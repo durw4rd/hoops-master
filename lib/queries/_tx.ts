@@ -44,7 +44,7 @@ export async function withEventLock<T>(
   eventId: string,
   fn: (tx: Tx, event: EventRow) => Promise<T>
 ): Promise<T> {
-  return serializableTx(async (tx) => {
+  const result = await serializableTx(async (tx) => {
     const [event] = await tx
       .select()
       .from(events)
@@ -54,6 +54,25 @@ export async function withEventLock<T>(
     if (!event) throw new SpotError('Event not found', 404);
     return fn(tx, event);
   });
+  await scheduleOutboxDrain();
+  return result;
+}
+
+/**
+ * Dispatch queued outbox emails after the transaction commits, without adding
+ * latency to the response (next/server `after`). Outside a request scope
+ * (scripts, tests) this is a no-op — the reminders cron sweeps leftovers.
+ */
+async function scheduleOutboxDrain(): Promise<void> {
+  try {
+    const { after } = await import('next/server');
+    const { drainEmailOutbox } = await import('./emailOutbox');
+    after(() =>
+      drainEmailOutbox().catch((err) => console.error('[email] outbox drain failed:', err))
+    );
+  } catch {
+    // Not in a Next.js request scope — intentionally ignored.
+  }
 }
 
 /**

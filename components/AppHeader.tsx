@@ -1,11 +1,12 @@
 "use client";
 
+import type { Session } from "next-auth";
 import { ChevronLeft } from "lucide-react";
 import { Group, UserProfile } from "@/lib/types";
 import SettingsMenu from "@/components/SettingsMenu";
 
 interface AppHeaderProps {
-  session: any;
+  session: Session | null;
   onSignIn: () => void;
   onSignOut: () => void;
   onOpenProfile?: () => void;

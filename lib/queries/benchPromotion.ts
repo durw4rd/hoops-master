@@ -7,8 +7,9 @@ import { benchPromotionRequests, eventAttendees, eventWaitlist, events, groups, 
 import { isWithin24HoursOfEvent } from '@/lib/eventTiming';
 import {
   assignOpeningToBenchHead,
-  getUnifiedBench,
+  getSeatableBenchHead,
   type BenchAssignResult,
+  type TransferOptions,
 } from './benchMatching';
 import type { Tx, EventRow } from './_tx';
 import { SpotError } from './_tx';
@@ -26,14 +27,6 @@ export interface PendingBenchPromotionDTO {
   spotKind: 'primary' | 'plus_one';
 }
 
-interface TransferOptions {
-  fromUserId: string;
-  transactionType: TransactionType;
-  notes?: string;
-  notifyPreviousHolder?: boolean;
-  excludeUserId?: string;
-}
-
 function formatGameLabel(startsAt: Date, timezone: string, location?: string | null): string {
   const { date, time } = utcToZonedParts(startsAt, timezone);
   const loc = location?.trim();
@@ -47,7 +40,7 @@ async function notifyPromotionPending(
     groupId: string;
     eventId: string;
     spotKind: 'primary' | 'plus_one';
-    releaserName: string;
+    releaserName: string | null;
   }
 ): Promise<void> {
   const [event] = await tx
@@ -64,6 +57,9 @@ async function notifyPromotionPending(
     .limit(1);
   const eventLabel = formatGameLabel(event.startsAt, group?.timezone ?? 'Europe/Prague', event.location);
   const spotLabel = params.spotKind === 'plus_one' ? 'a +1 spot' : 'a spot';
+  const opener = params.releaserName
+    ? `${params.releaserName} released ${spotLabel}`
+    : `${spotLabel[0].toUpperCase()}${spotLabel.slice(1)} opened up`;
 
   await tx.insert(notifications).values({
     userId: params.targetUserId,
@@ -71,22 +67,11 @@ async function notifyPromotionPending(
     eventId: params.eventId,
     type: 'bench_promotion_pending',
     title: 'Spot waiting on you',
-    body: `${params.releaserName} released ${spotLabel} for ${eventLabel}. Accept to get in — or decline to pass it to the next person on the bench.`,
+    body: `${opener} for ${eventLabel}. Accept to get in — or decline to pass it to the next person on the bench.`,
   });
 }
 
-function pickBenchHead(
-  bench: Awaited<ReturnType<typeof getUnifiedBench>>,
-  excludeUserId?: string
-) {
-  let list = bench;
-  if (excludeUserId) {
-    list = list.filter((w) => w.userId !== excludeUserId);
-  }
-  return list.length > 0 ? list[0] : null;
-}
-
-async function createPendingForHead(
+export async function createPendingForHead(
   tx: Tx,
   event: EventRow,
   openingRow: AttendeeRow,
@@ -105,11 +90,15 @@ async function createPendingForHead(
     throw new SpotError('A promotion approval is already pending for this spot', 409);
   }
 
-  const [releaser] = await tx
-    .select({ displayName: users.displayName })
-    .from(users)
-    .where(eq(users.id, openingRow.userId))
-    .limit(1);
+  let releaserName: string | null = null;
+  if (openingRow.userId) {
+    const [releaser] = await tx
+      .select({ displayName: users.displayName })
+      .from(users)
+      .where(eq(users.id, openingRow.userId))
+      .limit(1);
+    releaserName = releaser?.displayName ?? null;
+  }
 
   await tx.insert(benchPromotionRequests).values({
     eventId: event.id,
@@ -125,7 +114,17 @@ async function createPendingForHead(
     groupId: event.groupId,
     eventId: event.id,
     spotKind,
-    releaserName: releaser?.displayName ?? 'A player',
+    releaserName,
+  });
+
+  // A last-minute spot is waiting on this player — email them too.
+  const { enqueueEmail } = await import('./emailOutbox');
+  await enqueueEmail(tx, {
+    userId: headUserId,
+    groupId: event.groupId,
+    eventId: event.id,
+    emailType: 'bench_promotion_pending',
+    spotKind,
   });
 }
 
@@ -142,8 +141,7 @@ export async function assignOpeningToBenchHeadOrPending(
     return assignOpeningToBenchHead(tx, event, openingRow, options);
   }
 
-  const bench = await getUnifiedBench(tx, event.id);
-  const head = pickBenchHead(bench, options.excludeUserId);
+  const head = await getSeatableBenchHead(tx, event.id, { excludeUserId: options.excludeUserId });
   if (!head) return { matched: false };
 
   await createPendingForHead(tx, event, openingRow, head.userId, options);
@@ -176,7 +174,7 @@ export async function getPendingPromotionForTarget(
     })
     .from(benchPromotionRequests)
     .innerJoin(eventAttendees, eq(eventAttendees.id, benchPromotionRequests.attendeeId))
-    .innerJoin(users, eq(users.id, eventAttendees.userId))
+    .leftJoin(users, eq(users.id, eventAttendees.userId))
     .where(and(
       eq(benchPromotionRequests.eventId, eventId),
       eq(benchPromotionRequests.targetUserId, targetUserId),
@@ -189,7 +187,7 @@ export async function getPendingPromotionForTarget(
     requestId: row.r.id,
     attendeeId: row.r.attendeeId,
     eventId: row.r.eventId,
-    releaserName: row.releaserName,
+    releaserName: row.releaserName ?? 'A player',
     spotKind: row.parentAttendeeId ? 'plus_one' : 'primary',
   };
 }
@@ -304,14 +302,62 @@ export async function declineBenchPromotion(params: {
         eq(eventWaitlist.userId, params.userId),
       ));
 
-    const bench = await getUnifiedBench(tx, params.eventId);
-    const head = pickBenchHead(bench, opening.userId);
-    if (head) {
-      await createPendingForHead(tx, event, opening, head.userId, {
-        fromUserId: opening.userId,
-        transactionType: req.transactionType as TransactionType,
-        notes: 'Cascade after decline',
-      });
-    }
+    // Cascade: next seatable bench player gets a pending request; if the bench
+    // is exhausted the spot opens up (or the placeholder dissolves into free
+    // capacity). Dynamic import avoids a module cycle with spotOpening.
+    const { handleSpotOpening } = await import('./spotOpening');
+    await handleSpotOpening(tx, event, opening, {
+      funding: opening.userId
+        ? { kind: 'holder_funded', fromUserId: opening.userId }
+        : { kind: 'vacant' },
+      transactionType: req.transactionType as TransactionType,
+      notes: 'Cascade after decline',
+      excludeUserId: opening.userId ?? undefined,
+    });
   });
+}
+
+/**
+ * Cancel any pending promotion requests that target `userId` in this event
+ * (because they left the bench, or landed a spot some other way), then
+ * re-resolve each affected opening: next bench player, or open/dissolve.
+ */
+export async function cancelPendingTargetsForUser(
+  tx: Tx,
+  event: EventRow,
+  userId: string
+): Promise<void> {
+  const pending = await tx
+    .select()
+    .from(benchPromotionRequests)
+    .where(and(
+      eq(benchPromotionRequests.eventId, event.id),
+      eq(benchPromotionRequests.targetUserId, userId),
+      eq(benchPromotionRequests.status, 'pending'),
+    ));
+  if (pending.length === 0) return;
+
+  const { handleSpotOpening } = await import('./spotOpening');
+  for (const req of pending) {
+    await tx
+      .update(benchPromotionRequests)
+      .set({ status: 'cancelled', respondedAt: new Date() })
+      .where(eq(benchPromotionRequests.id, req.id));
+
+    const [opening] = await tx
+      .select()
+      .from(eventAttendees)
+      .where(eq(eventAttendees.id, req.attendeeId))
+      .limit(1);
+    if (!opening) continue;
+
+    await handleSpotOpening(tx, event, opening, {
+      funding: opening.userId
+        ? { kind: 'holder_funded', fromUserId: opening.userId }
+        : { kind: 'vacant' },
+      transactionType: req.transactionType as TransactionType,
+      notes: 'Re-matched after pending target left the bench',
+      excludeUserId: opening.userId ?? undefined,
+    });
+  }
 }

@@ -9,8 +9,6 @@ import {
   events,
   groupMembers,
   groups,
-  payments,
-  spotTransactions,
   users,
 } from '@/lib/db/schema';
 import type { AppUser, GlobalRole } from '@/lib/types';
@@ -30,6 +28,8 @@ function toAppUser(row: UserRow): AppUser {
     pieceUrl: row.pieceUrl ?? undefined,
     globalRole: row.globalRole as GlobalRole,
     onboarded: row.onboarded,
+    emailGameReminders: row.emailGameReminders,
+    emailBenchPromotions: row.emailBenchPromotions,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -123,6 +123,23 @@ export async function updatePieceUrl(userId: string, pieceUrl: string | null): P
   const [row] = await db
     .update(users)
     .set({ pieceUrl })
+    .where(eq(users.id, userId))
+    .returning();
+  return row ?? null;
+}
+
+/** Update per-type email notification opt-outs. */
+export async function updateEmailPreferences(
+  userId: string,
+  prefs: { emailGameReminders?: boolean; emailBenchPromotions?: boolean }
+): Promise<UserRow | null> {
+  const patch: Partial<typeof users.$inferInsert> = {};
+  if (prefs.emailGameReminders !== undefined) patch.emailGameReminders = prefs.emailGameReminders;
+  if (prefs.emailBenchPromotions !== undefined) patch.emailBenchPromotions = prefs.emailBenchPromotions;
+  if (Object.keys(patch).length === 0) return getUserById(userId);
+  const [row] = await db
+    .update(users)
+    .set(patch)
     .where(eq(users.id, userId))
     .returning();
   return row ?? null;

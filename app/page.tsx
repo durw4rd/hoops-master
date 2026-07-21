@@ -206,6 +206,8 @@ export default function HoopsMaster() {
       onOpenChange={setProfileModalOpen}
       currentDisplayName={userProfile?.displayName || session?.user?.name || ""}
       currentPieceUrl={userProfile?.pieceUrl}
+      currentEmailGameReminders={userProfile?.emailGameReminders ?? true}
+      currentEmailBenchPromotions={userProfile?.emailBenchPromotions ?? true}
       onSaved={() => fetchUserProfile()}
     />
   ) : null;

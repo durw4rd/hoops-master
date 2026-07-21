@@ -20,11 +20,14 @@ const useIsMobile = () => {
   return isMobile;
 };
 
+/** toggle → boolean, dropdown → string, multi-select/toggle-buttons → Set<string>. */
+export type FilterValue = string | boolean | Set<string>;
+
 export interface FilterItem {
   id: string;
   type: 'toggle' | 'dropdown' | 'multi-select' | 'toggle-buttons';
   label: string;
-  value: any;
+  value: FilterValue;
   options?: Array<{value: string, label: string}>;
   disabled?: boolean;
   description?: string;
@@ -33,7 +36,7 @@ export interface FilterItem {
 export interface FilterBarProps {
   title?: string;
   filters: FilterItem[];
-  onFilterChange: (filterId: string, value: any) => void;
+  onFilterChange: (filterId: string, value: FilterValue) => void;
   isExpanded?: boolean;
   onToggleExpanded?: () => void;
   className?: string;
@@ -84,7 +87,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
     onToggleExpanded?.();
   };
 
-  const handleFilterChange = (filterId: string, value: any) => {
+  const handleFilterChange = (filterId: string, value: FilterValue) => {
     onFilterChange(filterId, value);
   };
 
@@ -95,9 +98,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
       case 'toggle':
         return (
           <div key={filter.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-concrete transition-colors">
-            <Switch 
-              id={filter.id} 
-              checked={filter.value} 
+            <Switch
+              id={filter.id}
+              checked={filter.value === true}
               onCheckedChange={(checked) => handleFilterChange(filter.id, checked)}
               disabled={filter.disabled}
             />
@@ -158,12 +161,13 @@ const FilterBar: React.FC<FilterBarProps> = ({
               disabled={filter.disabled}
             >
               <span className="truncate">
-                {filter.value && filter.value instanceof Set && filter.value.has('all') ? 
-                   filter.options?.find(opt => opt.value === 'all')?.label || 'All' : 
-                 filter.value && filter.value instanceof Set && filter.value.size === 1 ? 
-                   filter.options?.find(opt => opt.value === Array.from(filter.value)[0])?.label :
-                 filter.value && filter.value instanceof Set ? 
-                   `${filter.value.size} selected` : 'All'}
+                {(() => {
+                  const selected = filter.value instanceof Set ? filter.value : null;
+                  if (!selected) return 'All';
+                  if (selected.has('all')) return filter.options?.find(opt => opt.value === 'all')?.label || 'All';
+                  if (selected.size === 1) return filter.options?.find(opt => opt.value === Array.from(selected)[0])?.label;
+                  return `${selected.size} selected`;
+                })()}
               </span>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

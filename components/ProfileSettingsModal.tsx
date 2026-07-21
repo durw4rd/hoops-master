@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, SprayCan, ImagePlus, X } from "lucide-react";
 import PlayerAvatar from "@/components/PlayerAvatar";
 
@@ -18,6 +19,8 @@ interface ProfileSettingsModalProps {
   onOpenChange: (open: boolean) => void;
   currentDisplayName: string;
   currentPieceUrl?: string;
+  currentEmailGameReminders?: boolean;
+  currentEmailBenchPromotions?: boolean;
   onSaved: (displayName: string) => void;
 }
 
@@ -26,10 +29,14 @@ export default function ProfileSettingsModal({
   onOpenChange,
   currentDisplayName,
   currentPieceUrl,
+  currentEmailGameReminders = true,
+  currentEmailBenchPromotions = true,
   onSaved,
 }: ProfileSettingsModalProps) {
   const [tag, setTag] = useState(currentDisplayName);
   const [pieceUrl, setPieceUrl] = useState<string | undefined>(currentPieceUrl);
+  const [emailGameReminders, setEmailGameReminders] = useState(currentEmailGameReminders);
+  const [emailBenchPromotions, setEmailBenchPromotions] = useState(currentEmailBenchPromotions);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,12 +47,17 @@ export default function ProfileSettingsModal({
     if (open) {
       setTag(currentDisplayName);
       setPieceUrl(currentPieceUrl);
+      setEmailGameReminders(currentEmailGameReminders);
+      setEmailBenchPromotions(currentEmailBenchPromotions);
       setError(null);
     }
-  }, [open, currentDisplayName, currentPieceUrl]);
+  }, [open, currentDisplayName, currentPieceUrl, currentEmailGameReminders, currentEmailBenchPromotions]);
 
   const tagChanged = tag.trim() !== currentDisplayName;
   const pieceChanged = (pieceUrl ?? "") !== (currentPieceUrl ?? "");
+  const emailPrefsChanged =
+    emailGameReminders !== currentEmailGameReminders ||
+    emailBenchPromotions !== currentEmailBenchPromotions;
 
   const handlePieceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -76,9 +88,20 @@ export default function ProfileSettingsModal({
     setLoading(true);
 
     try {
-      const payload: { displayName?: string; pieceUrl?: string | null } = {};
+      const payload: {
+        displayName?: string;
+        pieceUrl?: string | null;
+        emailGameReminders?: boolean;
+        emailBenchPromotions?: boolean;
+      } = {};
       if (tagChanged) payload.displayName = tag;
       if (pieceChanged) payload.pieceUrl = pieceUrl ?? null;
+      if (emailGameReminders !== currentEmailGameReminders) {
+        payload.emailGameReminders = emailGameReminders;
+      }
+      if (emailBenchPromotions !== currentEmailBenchPromotions) {
+        payload.emailBenchPromotions = emailBenchPromotions;
+      }
 
       const res = await fetch("/api/user/profile", {
         method: "PATCH",
@@ -172,6 +195,36 @@ export default function ProfileSettingsModal({
             <p className="text-xs text-asphalt/40 font-body">2-30 characters</p>
           </div>
 
+          <div className="space-y-2">
+            <Label className="font-graffiti text-asphalt">Mail Drops</Label>
+            <div className="border-2 border-asphalt divide-y-2 divide-asphalt/20">
+              <div className="flex items-center justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <p className="font-body text-sm text-asphalt">Game reminders</p>
+                  <p className="font-body text-xs text-asphalt/50">48h heads-up before tip-off</p>
+                </div>
+                <Switch
+                  checked={emailGameReminders}
+                  onCheckedChange={setEmailGameReminders}
+                  aria-label="Game reminder emails"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <p className="font-body text-sm text-asphalt">Bench call-ups</p>
+                  <p className="font-body text-xs text-asphalt/50">
+                    When you get promoted into a game or a spot is waiting on you
+                  </p>
+                </div>
+                <Switch
+                  checked={emailBenchPromotions}
+                  onCheckedChange={setEmailBenchPromotions}
+                  aria-label="Bench promotion emails"
+                />
+              </div>
+            </div>
+          </div>
+
           {error && (
             <div className="p-3 bg-terracotta/10 border-2 border-terracotta">
               <p className="text-sm text-terracotta whitespace-pre-line font-body">{error}</p>
@@ -188,7 +241,7 @@ export default function ProfileSettingsModal({
             </button>
             <button
               type="submit"
-              disabled={loading || uploading || tag.trim().length < 2 || (!tagChanged && !pieceChanged)}
+              disabled={loading || uploading || tag.trim().length < 2 || (!tagChanged && !pieceChanged && !emailPrefsChanged)}
               className="sticker-btn disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (

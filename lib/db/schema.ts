@@ -40,6 +40,9 @@ export const users = pgTable('users', {
   invitedAt: timestamp('invited_at', { withTimezone: true }),
   removedAt: timestamp('removed_at', { withTimezone: true }),
   removedBy: uuid('removed_by'),
+  // Email notification preferences (opt-out per type).
+  emailGameReminders: boolean('email_game_reminders').notNull().default(true),
+  emailBenchPromotions: boolean('email_bench_promotions').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -117,6 +120,8 @@ export const events = pgTable(
     signupOpensAt: timestamp('signup_opens_at', { withTimezone: true }),
     roundRobinOffset: integer('round_robin_offset'),
     status: text('status').notNull().default('scheduled'), // 'scheduled' | 'cancelled' | 'completed'
+    // Set once the 48h-before-start reminder emails have been dispatched.
+    reminderSentAt: timestamp('reminder_sent_at', { withTimezone: true }),
     createdBy: uuid('created_by').notNull().references(() => users.id),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -135,9 +140,11 @@ export const eventAttendees = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
-    userId: uuid('user_id').notNull().references(() => users.id),
-    originalUserId: uuid('original_user_id').notNull().references(() => users.id),
-    status: text('status').notNull().default('confirmed'), // 'confirmed' | 'offered'
+    // Nullable: a NULL holder marks a "held-open" placeholder spot that is
+    // reserved while a bench promotion approval is pending (status 'open').
+    userId: uuid('user_id').references(() => users.id),
+    originalUserId: uuid('original_user_id').references(() => users.id),
+    status: text('status').notNull().default('confirmed'), // 'confirmed' | 'offered' | 'open'
     offeredAt: timestamp('offered_at', { withTimezone: true }),
     assignedBy: uuid('assigned_by').references(() => users.id),
     assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
@@ -235,7 +242,8 @@ export const spotTransactions = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     eventId: uuid('event_id').notNull().references(() => events.id),
-    attendeeId: uuid('attendee_id').references(() => eventAttendees.id),
+    // Ledger rows are append-only and must outlive their attendee row.
+    attendeeId: uuid('attendee_id').references(() => eventAttendees.id, { onDelete: 'set null' }),
     groupId: uuid('group_id').notNull().references(() => groups.id),
     // display/audit only; never used in balance math
     type: text('type').notNull(),
@@ -296,6 +304,29 @@ export const notifications = pgTable(
     unreadIdx: index('idx_notifications_user_unread')
       .on(t.userId)
       .where(sql`${t.readAt} IS NULL`),
+  })
+);
+
+// =============================================================================
+// EMAIL OUTBOX (transactional queue; enqueued in-tx, drained after commit)
+// =============================================================================
+
+export const emailOutbox = pgTable(
+  'email_outbox',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    groupId: uuid('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+    eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
+    emailType: text('email_type').notNull(), // 'bench_promotion' | 'bench_promotion_pending'
+    spotKind: text('spot_kind').notNull().default('primary'), // 'primary' | 'plus_one'
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+  },
+  (t) => ({
+    unsentIdx: index('idx_email_outbox_unsent')
+      .on(t.createdAt)
+      .where(sql`${t.sentAt} IS NULL`),
   })
 );
 

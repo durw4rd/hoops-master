@@ -16,11 +16,12 @@ export function isSignupOpen(event: Pick<EventRow, 'signupOpensAt'>): boolean {
 }
 
 export function isSpotMutationBlocked(event: EventRow): boolean {
-  return isPastEvent(event) || isPricingLocked(event);
+  return isPastEvent(event) || event.status === 'cancelled' || isPricingLocked(event);
 }
 
 export function spotMutationBlockedMessage(event: EventRow): string | null {
   if (isPastEvent(event)) return 'Cannot modify spots for past events';
+  if (event.status === 'cancelled') return 'This game has been cancelled';
   if (isPricingLocked(event)) return 'Roster cost has been finalized — spot changes are locked';
   return null;
 }

@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Either groupId or inviteCode is required' }, { status: 400 });
     }
 
-    let group = inviteCode
+    const group = inviteCode
       ? await getGroupByInviteCode(inviteCode)
       : groupId
         ? await getGroupById(groupId)

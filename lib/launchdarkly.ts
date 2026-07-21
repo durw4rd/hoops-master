@@ -15,6 +15,7 @@
 
 import { init, type LDClient } from '@launchdarkly/vercel-server-sdk';
 import { createClient, type EdgeConfigClient } from '@vercel/edge-config';
+import { APP_VERSION } from '@/lib/appVersion';
 const APP_ADMINS_FLAG = 'app-admins';
 
 let ldClient: LDClient | null = null;
@@ -53,7 +54,9 @@ export async function getAppAdminEmails(email: string): Promise<string[]> {
 
   try {
     await client.waitForInitialization();
-    const context = { kind: 'user', key: email, email } as const;
+    // The edge SDK doesn't support application metadata, so the running app
+    // version travels as a context attribute instead.
+    const context = { kind: 'user', key: email, email, appVersion: APP_VERSION } as const;
     const admins = (await client.variation(APP_ADMINS_FLAG, context, [])) as unknown;
     if (Array.isArray(admins)) {
       return admins.map((a) => String(a).toLowerCase());
@@ -115,7 +118,7 @@ export async function evalServerFlag<T>(
 
   try {
     await client.waitForInitialization();
-    const context = { kind: 'user', key: email, email } as const;
+    const context = { kind: 'user', key: email, email, appVersion: APP_VERSION } as const;
     return (await client.variation(flagKey, context, defaultValue as never)) as T;
   } catch (err) {
     console.warn(`[launchdarkly] flag ${flagKey} eval failed:`, err);

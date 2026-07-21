@@ -5,7 +5,7 @@ import Observability from '@launchdarkly/observability';
 import SessionReplay from '@launchdarkly/session-replay';
 import { ReactNode, useEffect, useState } from 'react';
 import { getDeviceType, getBrowserName, getOrCreateSessionId, detectBrowser, shouldOptimizeForPerformance } from '@/lib/utils';
-import { ldApplicationMetadata } from '@/lib/appVersion';
+import { APP_VERSION, ldApplicationMetadata } from '@/lib/appVersion';
 import LDIdentify from './LDIdentify';
 
 interface LaunchDarklyProviderProps {
@@ -38,6 +38,7 @@ function LaunchDarklyProviderContent({ children }: LaunchDarklyProviderProps) {
           key: sessionId,
           deviceType: getDeviceType(),
           browser: getBrowserName(),
+          appVersion: APP_VERSION,
         };
 
         console.log('Initializing LaunchDarkly with session context');
@@ -69,7 +70,10 @@ function LaunchDarklyProviderContent({ children }: LaunchDarklyProviderProps) {
       } catch (error) {
         console.error('Failed to initialize LaunchDarkly:', error instanceof Error ? error.message : 'Unknown error');
         // Fallback: create a simple provider that just renders children
-        setLDProvider(() => ({ children }: { children: ReactNode }) => <>{children}</>);
+        function LDFallbackProvider({ children }: { children: ReactNode }) {
+          return <>{children}</>;
+        }
+        setLDProvider(() => LDFallbackProvider);
       } finally {
         setIsLoading(false);
       }

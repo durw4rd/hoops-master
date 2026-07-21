@@ -25,8 +25,11 @@ function transactionTypeLabel(type: TransactionType): string {
     waitlist_promote: "Bench promo",
     split_settle: "Split cost",
     split_remainder: "Split remainder",
+    split_unsettle: "Split undo",
     price_adjustment: "Price adjustment",
     guest_assign: "Guest spot",
+    unassign_refund: "Removal refund",
+    event_cancelled_refund: "Game cancelled",
   };
   return labels[type] ?? type;
 }
@@ -212,8 +215,15 @@ export default function CreditDashboard({
   const balanceColor = (balance: number) =>
     balance > 0 ? "text-success" : balance < 0 ? "text-terracotta" : "text-asphalt";
 
+  // Includes tip-off time — crews often run multiple games on the same day.
   const formatGameDate = (iso: string) =>
-    new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+    new Date(iso).toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
 
   const formatWhen = (iso: string) =>
     new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });

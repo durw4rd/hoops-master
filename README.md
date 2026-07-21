@@ -16,14 +16,26 @@ subway-graffiti skin.
 - **Rider spots** — bring a plus-one into the game. Each player can hold one
   primary spot + one Rider (+1). Both cost the same and are tracked in the ledger.
   Drop the Rider first before releasing your own spot.
-- **The Bench (waitlist)** — FIFO; releasing a spot auto-promotes the next player.
-  Within **24h of tip-off**, automatic bench promotion from a release needs the
-  releaser’s approval; Capo/King can remove players from the bench.
+- **The Bench (waitlist)** — FIFO; any freed spot (player release, offer, admin
+  removal, extra capacity) auto-promotes the next seatable player — a spot never
+  sits open while the bench is occupied. Within **24h of tip-off** the promoted
+  player must approve first (decline passes it down the bench; if the bench runs
+  dry the spot opens for anyone). Capo/King can remove players from the bench.
 - **Guest spots** (LaunchDarkly `guest-spots`) — Capo/King can assign a spot to a
-  named guest (ledger + roster); gated server-side via Vercel Edge Config.
-- **Credit ledger** — per-crew balances (`paid − spent + earned`), admin-recorded
-  payments (single or batch — record the same amount for many players at once,
-  e.g. a season buy-in), and CSV export.
+  named guest (roster only, credit-neutral — settle outside the app); gated
+  server-side via Vercel Edge Config.
+- **Credit ledger (append-only)** — per-crew balances (`paid − spent + earned`),
+  admin-recorded payments (single or batch), and CSV export. Nothing is ever
+  deleted from the books: admin removals, game cancellations, and pricing undos
+  write visible compensating refund entries.
+- **Email notifications (Resend)** — 48h game reminders (Vercel Cron) and bench
+  promotion emails (incl. last-minute approval requests), with per-type opt-out
+  toggles in profile settings. Gated behind the LD boolean flag
+  `email-notifications` (fail-closed) — deploy first, flip the flag when your
+  Resend domain is verified.
+- **Upgrade banner** — the LD boolean flag `app-version-upgrade-banner` (targeting
+  rule on the `appVersion` context attribute, e.g. semVerLessThan the latest
+  release) prompts users on stale bundles to reload; version shown in the footer.
 - **Invite-only auth** — Google sign-in restricted to pre-invited/seeded emails,
   with a first-login username picker and an editable handle ("Your Tag").
 - **Player pieces** — upload your profile picture ("Your Piece", stored in Vercel
@@ -75,6 +87,11 @@ BLOB_READ_WRITE_TOKEN=...
 # Optional — LaunchDarkly (see docs/launchdarkly-vercel-setup.md)
 NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=...
 # EDGE_CONFIG=...   # added by LaunchDarkly ↔ Vercel integration (server API flags)
+
+# Optional — email notifications (sending no-ops without these; see APP_ARCHITECTURE.md)
+RESEND_API_KEY=...                    # Resend API key
+EMAIL_FROM="Hoops Master <notifications@yourdomain.com>"   # verified sender
+CRON_SECRET=...                       # Bearer secret for /api/cron/event-reminders
 ```
 
 Server APIs (`guest-spots`, `app-admins` on routes) need **`EDGE_CONFIG`**. Install the
@@ -101,6 +118,8 @@ EMAIL=you@example.com ROLE=owner pnpm tsx scripts/setRole.ts
 | Command | Purpose |
 |---|---|
 | `pnpm dev` / `pnpm build` / `pnpm start` | Next.js dev / build / serve (dev & start bind to port **3000**) |
+| `pnpm test` | Vitest suite on an embedded Postgres (no Docker needed) — spot lifecycle, ledger, and bench invariants |
+| `pnpm lint` | ESLint (flat config) |
 | `pnpm db:generate` | Generate a migration from schema changes (updates journal + snapshot) |
 | `pnpm db:push` | Push schema directly to the DB (dev, no migration file) |
 | `pnpm db:migrate` | Apply journal-tracked migrations — requires `DATABASE_URL` in the shell (see [`APP_ARCHITECTURE.md`](./APP_ARCHITECTURE.md#database-migrations)) |
@@ -118,6 +137,13 @@ the Vercel project (connect a Neon store for `DATABASE_URL`, and a Blob store fo
 Ensure `NEXTAUTH_URL` matches your production domain
 (no trailing slash). Run `pnpm db:migrate` against production `DATABASE_URL` when
 shipping schema changes, then seed/role scripts as needed.
+
+For emails, set `RESEND_API_KEY`, `EMAIL_FROM`, and `CRON_SECRET` in Vercel — the
+48h-reminder cron in `vercel.json` activates on the next deploy (Hobby plan limits
+crons to once daily; trigger the same URL from an external scheduler if needed).
+After each release, update the `app-version-upgrade-banner` flag's targeting rule
+(`appVersion` semVerLessThan the new version → true) so stale tabs get the
+reload banner.
 
 ---
 

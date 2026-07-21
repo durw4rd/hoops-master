@@ -1,12 +1,13 @@
 "use client";
 
+import type { Session } from "next-auth";
 import Image from "next/image";
 import { BookText, ScrollText } from "lucide-react";
 import { UserProfile } from "@/lib/types";
 import SettingsMenu from "@/components/SettingsMenu";
 
 interface LogoBannerProps {
-  session: any;
+  session: Session | null;
   userProfile?: UserProfile | null;
   onSignIn: () => void;
   onSignOut: () => void;

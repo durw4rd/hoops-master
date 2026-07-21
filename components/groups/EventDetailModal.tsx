@@ -123,6 +123,7 @@ export default function EventDetailModal({
   const [handoverSecondSpotEmail, setHandoverSecondSpotEmail] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [benchRemoveTarget, setBenchRemoveTarget] = useState<{ userEmail: string; forRider: boolean } | null>(null);
   const [reassignTarget, setReassignTarget] = useState<Record<string, string>>({});
   const [manageSquadOpen, setManageSquadOpen] = useState(false);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
@@ -465,9 +466,15 @@ export default function EventDetailModal({
     runAction('rider-waitlist-leave', 'waitlist', 'DELETE', { forRider: true });
 
   const handleRemoveFromBench = (userEmail: string, forRider: boolean) => {
-    if (!window.confirm('Remove this player from the bench?')) return;
-    const key = `bench-remove-${userEmail}-${forRider}`;
-    runAction(key, 'waitlist', 'DELETE', { userEmail, forRider });
+    setBenchRemoveTarget({ userEmail, forRider });
+  };
+
+  const confirmRemoveFromBench = async () => {
+    if (!benchRemoveTarget) return;
+    const { userEmail: targetEmail, forRider } = benchRemoveTarget;
+    const key = `bench-remove-${targetEmail}-${forRider}`;
+    await runAction(key, 'waitlist', 'DELETE', { userEmail: targetEmail, forRider });
+    setBenchRemoveTarget(null);
   };
 
   const handleAssign = async () => {
@@ -642,14 +649,19 @@ export default function EventDetailModal({
   const allAttendees = event?.attendees ?? [];
   // Primary rows only (parentAttendeeId is null → isPlusOne is false)
   const primaryAttendees = allAttendees.filter(a => !a.isPlusOne);
-  const confirmedAttendees = allAttendees.filter(a => a.status === 'confirmed');
   const offeredSpots = allAttendees.filter(a => a.status === 'offered');
   const availableSpots = event?.availableSpots ?? 0;
   const isFull = availableSpots <= 0;
   const waitlist = event?.waitlist ?? [];
   const hasBench = waitlist.length > 0;
-  const onBench = (event?.myWaitlistPosition ?? null) !== null;
-  const isBenchHead = event?.myWaitlistPosition === 1;
+  // Two independent bench entries: primary (myself) and rider (my +1).
+  const onPrimaryBench = (event?.myWaitlistPosition ?? null) !== null;
+  const onRiderBench = (event?.myRiderWaitlistPosition ?? null) !== null;
+  const onBench = onPrimaryBench || onRiderBench;
+  const myBenchPosition = onRiderBench
+    ? event!.myRiderWaitlistPosition
+    : event?.myWaitlistPosition ?? null;
+  const isBenchHead = event?.myWaitlistPosition === 1 || event?.myRiderWaitlistPosition === 1;
   const earliestOffered = [...offeredSpots].sort(
     (a, b) => new Date(a.offeredAt ?? 0).getTime() - new Date(b.offeredAt ?? 0).getTime()
   )[0] ?? null;
@@ -663,7 +675,6 @@ export default function EventDetailModal({
   const myRiderAttendance = allAttendees.find(
     a => a.isPlusOne && a.userEmail.toLowerCase() === userEmail.toLowerCase()
   ) ?? null;
-  const hasRider = myRiderAttendance !== null;
   const riderIsConfirmed = myRiderAttendance?.status === 'confirmed';
   const riderIsOffered = myRiderAttendance?.status === 'offered';
 
@@ -926,9 +937,9 @@ export default function EventDetailModal({
                 {onBench && (
                   <div className="space-y-1.5">
                     <div className="bg-slate-blue/10 border-2 border-slate-blue p-3 text-center font-graffiti text-slate-blue">
-                      {isConfirmed
-                        ? <>Your +1 is #{event.myWaitlistPosition} on the bench</>
-                        : <>You&apos;re #{event.myWaitlistPosition} on the bench</>}
+                      {onRiderBench
+                        ? <>Your +1 is #{myBenchPosition} on the bench</>
+                        : <>You&apos;re #{myBenchPosition} on the bench</>}
                     </div>
                     {canClaimOfferedSpot && (
                       <button
@@ -944,14 +955,14 @@ export default function EventDetailModal({
                       </button>
                     )}
                     <button
-                      onClick={handleLeaveWaitlist}
-                      disabled={actionLoading === 'waitlist'}
+                      onClick={onRiderBench ? handleLeaveRiderWaitlist : handleLeaveWaitlist}
+                      disabled={actionLoading === 'waitlist' || actionLoading === 'rider-waitlist-leave'}
                       className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-base py-2.5 px-5 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-[5px_5px_0_#1A1A1A] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                     >
-                      {actionLoading === 'waitlist' ? (
+                      {actionLoading === 'waitlist' || actionLoading === 'rider-waitlist-leave' ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
                       ) : (
-                        <><LogOut className="w-5 h-5" /><span>{isConfirmed ? 'TAKE +1 OFF THE BENCH' : 'OFF THE BENCH'}</span></>
+                        <><LogOut className="w-5 h-5" /><span>{onRiderBench ? 'TAKE +1 OFF THE BENCH' : 'OFF THE BENCH'}</span></>
                       )}
                     </button>
                   </div>
@@ -1296,8 +1307,17 @@ export default function EventDetailModal({
                                   OFFERING
                                 </span>
                               )}
+                              {attendee.status === 'open' && (
+                                <span className="text-[10px] font-graffiti bg-slate-blue text-white px-1 py-0.5 leading-none shrink-0">
+                                  ON HOLD
+                                </span>
+                              )}
                             </span>
-                            {isRiderRow ? (
+                            {attendee.status === 'open' ? (
+                              <p className="text-[10px] text-asphalt/50 font-body">
+                                Held while a bench player decides — resolves on accept/decline
+                              </p>
+                            ) : isRiderRow ? (
                               <p className="text-[10px] text-asphalt/50 font-body">
                                 Second slot — assign to any player not in the game
                               </p>
@@ -1306,6 +1326,7 @@ export default function EventDetailModal({
                                 Assign as primary (not in game) or as +1 (already playing)
                               </p>
                             )}
+                            {attendee.status !== 'open' && (
                             <div className="flex gap-2">
                               <Select
                                 value={reassignTarget[attendee.attendeeId] ?? ''}
@@ -1366,6 +1387,7 @@ export default function EventDetailModal({
                                 )}
                               </button>
                             </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1497,6 +1519,11 @@ export default function EventDetailModal({
                               {attendee.status === 'offered' && (
                                 <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
                                   OFFERING
+                                </span>
+                              )}
+                              {attendee.status === 'open' && (
+                                <span className="text-[10px] font-graffiti bg-slate-blue text-white px-1 py-0.5 leading-none shrink-0">
+                                  ON HOLD
                                 </span>
                               )}
                             </span>
@@ -1720,10 +1747,27 @@ export default function EventDetailModal({
       open={confirmDeleteOpen}
       onOpenChange={setConfirmDeleteOpen}
       title="Drop This Game?"
-      message="This deletes the game for everyone and reverses its spot transactions and credit effects. This can't be undone."
+      message="This drops the game for everyone. Any charges on the ledger are credited back to the players. This can't be undone."
       confirmLabel="DROP IT"
       onConfirm={handleDelete}
       loading={actionLoading === 'delete'}
+    />
+
+    <ConfirmDialog
+      open={benchRemoveTarget !== null}
+      onOpenChange={(open) => { if (!open) setBenchRemoveTarget(null); }}
+      title="Clear the Bench?"
+      message={
+        benchRemoveTarget?.forRider
+          ? "This pulls their +1 off the bench for this game. They can rejoin anytime."
+          : "This pulls the player off the bench for this game. They can rejoin anytime."
+      }
+      confirmLabel="PULL 'EM"
+      onConfirm={confirmRemoveFromBench}
+      loading={
+        !!benchRemoveTarget &&
+        actionLoading === `bench-remove-${benchRemoveTarget.userEmail}-${benchRemoveTarget.forRider}`
+      }
     />
     </>
   );

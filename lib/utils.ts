@@ -63,9 +63,10 @@ export function detectBrowser() {
   }
 
   const userAgent = navigator.userAgent;
-  const isBrave = (navigator as any).brave?.isBrave?.() || 
+  const nav = navigator as Navigator & { brave?: { isBrave?: () => boolean } };
+  const isBrave = nav.brave?.isBrave?.() ||
                   userAgent.includes('Brave') ||
-                  (navigator as any).brave;
+                  nav.brave;
   const isChrome = userAgent.includes('Chrome') && !userAgent.includes('Brave');
   const isFirefox = userAgent.includes('Firefox');
   const isSafari = userAgent.includes('Safari') && !userAgent.includes('Chrome');
@@ -113,8 +114,9 @@ export function shouldOptimizeForPerformance(): boolean {
   
   // Additional checks for low-end devices
   if (typeof window !== 'undefined') {
-    const memory = (navigator as any).deviceMemory;
-    const cores = (navigator as any).hardwareConcurrency;
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    const memory = nav.deviceMemory;
+    const cores = nav.hardwareConcurrency;
     
     // Optimize for devices with limited resources
     if (memory && memory < 4) return true; // Less than 4GB RAM
@@ -156,7 +158,7 @@ export function getOptimizedProfileImageForUser(userEmail: string, userMapping: 
 }
 
 // Profile image error handler with fallback chain
-export function handleProfileImageError(event: React.SyntheticEvent<HTMLImageElement, Event>, playerName?: string) {
+export function handleProfileImageError(event: React.SyntheticEvent<HTMLImageElement, Event>, _playerName?: string) {
   const img = event.currentTarget;
   const currentSrc = img.src;
   

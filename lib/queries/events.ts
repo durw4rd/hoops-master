@@ -18,16 +18,16 @@ import { and, asc, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '@/lib/db';
 import { events, eventAttendees, eventWaitlist, users, groups, spotTransactions } from '@/lib/db/schema';
-import { recordTransaction } from './transactions';
-import { getSpotChargeAmount, applySlotCostAdjustment, isSplitTotal } from './pricing';
-import { notifySpotChange } from './notifications';
+import { getNetChargedByUser, recordTransaction } from './transactions';
+import { getSpotChargeAmount, applySlotCostAdjustment } from './pricing';
 import {
   assignOpeningToBenchHead,
-  getUnifiedBench,
+  getSeatableBenchHead,
   removeUserFromBench,
   transferOpeningToUser,
 } from './benchMatching';
-import { assignOpeningToBenchHeadOrPending, cancelPendingPromotionsForAttendee } from './benchPromotion';
+import { cancelPendingPromotionsForAttendee } from './benchPromotion';
+import { handleSpotOpening, reconcileCapacityWithBench } from './spotOpening';
 import { withEventLock, serializableTx, SpotError, type Tx, type EventRow } from './_tx';
 import { zonedToUtc, utcToZonedParts, ALWAYS_OPEN_SENTINEL } from '@/lib/datetime';
 import type {
@@ -197,8 +197,9 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
       assignedByEmail: users.email,
     })
     .from(eventAttendees)
-    .innerJoin(holder, eq(holder.id, eventAttendees.userId))
-    .innerJoin(original, eq(original.id, eventAttendees.originalUserId))
+    // Left joins: held-open placeholder rows (pending bench approval) have no holder.
+    .leftJoin(holder, eq(holder.id, eventAttendees.userId))
+    .leftJoin(original, eq(original.id, eventAttendees.originalUserId))
     .leftJoin(users, eq(users.id, eventAttendees.assignedBy))
     .where(eq(eventAttendees.eventId, eventId))
     .orderBy(asc(eventAttendees.assignedAt));
@@ -206,11 +207,11 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
   return rows.map(({ a, holderEmail, holderName, originalEmail, assignedByEmail }) => ({
     attendeeId: a.id,
     eventId: a.eventId,
-    userEmail: holderEmail,
-    userName: a.guestDisplayName?.trim() || holderName,
+    userEmail: holderEmail ?? '',
+    userName: a.guestDisplayName?.trim() || holderName || 'Held for bench decision',
     guestDisplayName: a.guestDisplayName ?? null,
     isGuestSpot: !!a.guestDisplayName?.trim(),
-    originalUserEmail: originalEmail,
+    originalUserEmail: originalEmail ?? '',
     status: a.status as AttendeeStatus,
     offeredAt: a.offeredAt ? a.offeredAt.toISOString() : null,
     assignedBy: a.assignedBy ? assignedByEmail : null,
@@ -387,8 +388,10 @@ export async function updateEvent(
     input.slotCost !== undefined &&
     input.slotCost !== oldSlotCost &&
     current.pricingMode === 'per_spot';
+  const totalSpotsIncreasing =
+    input.totalSpots !== undefined && input.totalSpots > current.totalSpots;
 
-  if (slotCostChanging || switchingToSplitTotal) {
+  if (slotCostChanging || switchingToSplitTotal || totalSpotsIncreasing) {
     return serializableTx(async (tx) => {
       const [locked] = await tx
         .select()
@@ -400,7 +403,7 @@ export async function updateEvent(
 
       if (slotCostChanging) {
         await applySlotCostAdjustment(tx, locked, oldSlotCost, input.slotCost!);
-      } else if (!locked.pricingFinalizedAt) {
+      } else if (switchingToSplitTotal && !locked.pricingFinalizedAt) {
         await applySlotCostAdjustment(tx, locked, Number(locked.slotCost), 0);
       }
 
@@ -410,7 +413,13 @@ export async function updateEvent(
       }
 
       const [row] = await tx.update(events).set(patch).where(eq(events.id, eventId)).returning();
-      return row ? toEventDTO(row, timezone) : null;
+      if (!row) return null;
+
+      // Freed capacity must go to the bench, never sit open next to it.
+      if (totalSpotsIncreasing) {
+        await reconcileCapacityWithBench(tx, row);
+      }
+      return toEventDTO(row, timezone);
     });
   }
 
@@ -464,11 +473,33 @@ function buildEventPatch(
   return patch;
 }
 
+/**
+ * Hard-delete an event. Only allowed while the event has no ledger history —
+ * the ledger is append-only, so events with credit movements must be cancelled
+ * (cancelEvent) instead.
+ */
 export async function deleteEvent(eventId: string): Promise<void> {
   await serializableTx(async (tx) => {
-    await tx.delete(spotTransactions).where(eq(spotTransactions.eventId, eventId));
+    const [txn] = await tx
+      .select({ id: spotTransactions.id })
+      .from(spotTransactions)
+      .where(eq(spotTransactions.eventId, eventId))
+      .limit(1);
+    if (txn) {
+      throw new SpotError('Game has ledger history — cancel it instead of deleting', 409);
+    }
     await tx.delete(events).where(eq(events.id, eventId));
   });
+}
+
+/** True when the event has any ledger rows (delete forbidden, cancel instead). */
+export async function eventHasLedgerHistory(eventId: string): Promise<boolean> {
+  const [txn] = await db
+    .select({ id: spotTransactions.id })
+    .from(spotTransactions)
+    .where(eq(spotTransactions.eventId, eventId))
+    .limit(1);
+  return !!txn;
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +586,8 @@ export async function fillSpot(params: {
       notes: params.notes,
     });
 
+    await removeUserFromBench(tx, params.eventId, params.toUserId);
+
     return attendee;
   });
 }
@@ -607,6 +640,7 @@ export async function fillSpots(params: {
         amount: getSpotChargeAmount(event),
         notes: params.notes,
       });
+      await removeUserFromBench(tx, params.eventId, userId);
       held.add(userId);
       occ += 1;
       assigned.push(userId);
@@ -638,12 +672,13 @@ export async function claimSpot(params: {
       if (!offered) throw new SpotError('Offered spot not found', 404);
       if (offered.status !== 'offered') throw new SpotError('That spot is no longer available', 409);
 
-      const bench = await getUnifiedBench(tx, params.eventId);
-      if (bench.length > 0) {
-        const headId = bench[0].userId;
-        if (headId !== params.userId) {
-          throw new SpotError('Someone is ahead of you on the bench', 409);
-        }
+      // Bench priority: whoever is first in line (and actually seatable) has
+      // dibs on any offered spot.
+      const head = await getSeatableBenchHead(tx, params.eventId);
+      if (head && head.userId !== params.userId) {
+        throw new SpotError('Someone is ahead of you on the bench', 409);
+      }
+      if (head) {
         const result = await assignOpeningToBenchHead(tx, event, offered, {
           fromUserId: offered.userId,
           transactionType: 'claim',
@@ -691,6 +726,7 @@ export async function claimSpot(params: {
       toUserId: params.userId,
       amount: getSpotChargeAmount(event),
     });
+    await removeUserFromBench(tx, params.eventId, params.userId);
     return attendee;
   });
 }
@@ -735,43 +771,18 @@ export async function offerSpot(params: {
       throw new SpotError('Clear the guest assignment before offering this spot', 400);
     }
 
-    const [updated] = await tx
-      .update(eventAttendees)
-      .set({ status: 'offered', offeredAt: new Date() })
-      .where(eq(eventAttendees.id, attendee.id))
-      .returning();
-
-    const match = await assignOpeningToBenchHeadOrPending(tx, event, updated, {
-      fromUserId: params.userId,
+    const result = await handleSpotOpening(tx, event, attendee, {
+      funding: { kind: 'holder_funded', fromUserId: params.userId },
       transactionType: 'claim',
       notes: params.attendeeId ? 'Offered +1 auto-matched to bench' : 'Offered spot auto-matched to bench',
+      excludeUserId: params.userId,
       notifyPreviousHolder: true,
     });
 
-    if (match.pendingApproval) {
-      const [reverted] = await tx
-        .update(eventAttendees)
-        .set({ status: 'confirmed', offeredAt: null })
-        .where(eq(eventAttendees.id, updated.id))
-        .returning();
-      return reverted;
-    }
-
-    if (match.matched && match.attendee) {
-      return match.attendee;
-    }
-
-    await recordTransaction(tx, {
-      eventId: params.eventId,
-      groupId: event.groupId,
-      attendeeId: updated.id,
-      type: 'offer',
-      fromUserId: params.userId,
-      toUserId: params.userId,
-      amount: 0,
-      notes: params.attendeeId ? 'Offered +1 to marketplace' : 'Offered spot to marketplace',
-    });
-    return updated;
+    // 'pending_approval' keeps the spot confirmed with the offerer until the
+    // invited bench player accepts; 'vacated' cannot happen (holder-funded).
+    if (result.outcome === 'vacated') throw new SpotError('Spot not found', 404);
+    return result.attendee;
   });
 }
 
@@ -865,6 +876,7 @@ export async function claimRiderSpot(params: {
       amount: getSpotChargeAmount(event),
       notes: params.byUserId ? 'Rider assigned by admin' : 'Rider claimed',
     });
+    await removeUserFromBench(tx, params.eventId, params.userId);
     return attendee;
   });
 }
@@ -885,22 +897,21 @@ export async function releaseRiderSpot(params: {
     if (!rider) throw new SpotError('You do not have a +1 in this game', 404);
     if (rider.status !== 'confirmed') throw new SpotError('Only a confirmed +1 can be released to the bench', 400);
 
-    const bench = await getUnifiedBench(tx, params.eventId);
-    if (bench.filter((e) => e.userId !== params.userId).length === 0) {
+    const head = await getSeatableBenchHead(tx, params.eventId, { excludeUserId: params.userId });
+    if (!head) {
       throw new SpotError(
         'No one is on the bench — offer your +1 instead so it can be claimed',
         400
       );
     }
 
-    const result = await assignOpeningToBenchHeadOrPending(tx, event, rider, {
-      fromUserId: params.userId,
+    await handleSpotOpening(tx, event, rider, {
+      funding: { kind: 'holder_funded', fromUserId: params.userId },
       transactionType: 'waitlist_promote',
       notes: '+1 released to bench',
       notifyPreviousHolder: false,
       excludeUserId: params.userId,
     });
-    if (result.pendingApproval) return;
   });
 }
 
@@ -940,10 +951,18 @@ export async function reassignSpot(params: {
     const type: TransactionType = params.isAdmin ? 'admin_reassign' : 'reassign';
 
     if (source) {
+      if (source.userId === null) {
+        throw new SpotError('This spot is held for a pending bench promotion', 400);
+      }
       // Non-admins can only reassign their own spots.
       if (!params.isAdmin && source.userId !== params.byUserId) {
         throw new SpotError('You can only reassign your own spot', 403);
       }
+
+      // The spot is changing hands directly: any pending bench promotion on it
+      // is moot, and the recipient leaves the bench (they're in the game now).
+      await cancelPendingPromotionsForAttendee(tx, source.id);
+      await removeUserFromBench(tx, params.eventId, params.toUserId);
 
       const isRiderSource = source.parentAttendeeId !== null;
       const previousHolder = source.userId;
@@ -1075,6 +1094,7 @@ export async function reassignSpot(params: {
       toUserId: params.toUserId,
       amount: getSpotChargeAmount(event),
     });
+    await removeUserFromBench(tx, params.eventId, params.toUserId);
     return attendee;
   });
 }
@@ -1103,6 +1123,9 @@ export async function assignSpotToGuest(params: {
       .where(and(eq(eventAttendees.id, params.attendeeId), eq(eventAttendees.eventId, params.eventId)))
       .limit(1);
     if (!source) throw new SpotError('Spot not found', 404);
+    if (source.userId === null) {
+      throw new SpotError('This spot is held for a pending bench promotion', 400);
+    }
     if (!params.isAdmin && source.userId !== params.byUserId) {
       throw new SpotError('You can only assign your own spot to a guest', 403);
     }
@@ -1136,47 +1159,118 @@ export async function assignSpotToGuest(params: {
 }
 
 /**
- * Admin: fully remove a player from an event (no replacement). Deletes the
- * attendee row(s) + their transaction chains, reversing all credit effects.
+ * Admin: fully remove a player from an event (no replacement provided by the
+ * admin). Append-only: the player's actual net charge for the removed rows is
+ * reversed with a visible 'unassign_refund' ledger entry (this also absorbs
+ * price adjustments and legacy rows), and each freed row goes through the
+ * unified opening handler so the bench is auto-matched like any other opening.
  * If the attendeeId is a primary row that has a rider, both are removed.
  * If it is a rider row, only the rider is removed.
- *
- * This is an exceptional action — for normal spot transfers use reassignSpot,
- * releaseSpot (waitlist), or offerSpot (marketplace).
  */
 export async function adminUnassignSpot(params: {
   eventId: string;
   attendeeId: string;
-}): Promise<void> {
-  await serializableTx(async (tx) => {
+}): Promise<{ refunded: number }> {
+  return withEventLock(params.eventId, async (tx, event) => {
     const [attendee] = await tx
       .select()
       .from(eventAttendees)
       .where(and(eq(eventAttendees.id, params.attendeeId), eq(eventAttendees.eventId, params.eventId)))
       .limit(1);
     if (!attendee) throw new SpotError('Spot not found for this event', 404);
+    const holderId = attendee.userId;
+    if (holderId === null) {
+      throw new SpotError('This spot is held for a pending bench promotion — resolve or cancel it first', 400);
+    }
 
-    await cancelPendingPromotionsForAttendee(tx, params.attendeeId);
-
-    // If this is a primary row, also remove any child rider row.
+    // Rows being removed: the target row, plus the child rider when removing a primary.
+    const rowsToRemove: AttendeeRow[] = [];
     if (attendee.parentAttendeeId === null) {
       const [rider] = await tx
-        .select({ id: eventAttendees.id })
+        .select()
         .from(eventAttendees)
         .where(and(
           eq(eventAttendees.eventId, params.eventId),
-          eq(eventAttendees.userId, attendee.userId),
+          eq(eventAttendees.userId, holderId),
           isNotNull(eventAttendees.parentAttendeeId),
         ))
         .limit(1);
-      if (rider) {
-        await tx.delete(spotTransactions).where(eq(spotTransactions.attendeeId, rider.id));
-        await tx.delete(eventAttendees).where(eq(eventAttendees.id, rider.id));
-      }
+      if (rider) rowsToRemove.push(rider);
+    }
+    rowsToRemove.push(attendee);
+
+    // Refund = everything the holder has netted for this event beyond the rows
+    // they keep. Net-based so price adjustments and split rows are covered.
+    const heldRows = await tx
+      .select({ id: eventAttendees.id })
+      .from(eventAttendees)
+      .where(and(eq(eventAttendees.eventId, params.eventId), eq(eventAttendees.userId, holderId)));
+    const remaining = heldRows.length - rowsToRemove.length;
+    const net = (await getNetChargedByUser(tx, params.eventId)).get(holderId) ?? 0;
+    const refund = Math.round((net - getSpotChargeAmount(event) * remaining) * 100) / 100;
+    if (refund !== 0) {
+      await recordTransaction(tx, {
+        eventId: params.eventId,
+        groupId: event.groupId,
+        attendeeId: attendee.id,
+        type: 'unassign_refund',
+        fromUserId: null,
+        toUserId: holderId,
+        amount: -refund,
+        notes: 'Removed from game by admin — charges reversed',
+      });
     }
 
-    await tx.delete(spotTransactions).where(eq(spotTransactions.attendeeId, params.attendeeId));
-    await tx.delete(eventAttendees).where(eq(eventAttendees.id, params.attendeeId));
+    // Free each removed row through the unified opening flow (vacant: the
+    // holder was refunded, so a bench fill is a fresh debit).
+    for (const row of rowsToRemove) {
+      await cancelPendingPromotionsForAttendee(tx, row.id);
+      await handleSpotOpening(tx, event, row, {
+        funding: { kind: 'vacant' },
+        transactionType: 'waitlist_promote',
+        notes: 'Promoted from bench after admin removal',
+        excludeUserId: holderId,
+      });
+    }
+
+    return { refunded: refund };
+  });
+}
+
+/**
+ * Cancel an event append-only: every player's net charge is reversed with an
+ * 'event_cancelled_refund' entry, pending promotions are cancelled, and the
+ * event is marked cancelled (which blocks further spot mutations).
+ */
+export async function cancelEvent(eventId: string): Promise<void> {
+  await withEventLock(eventId, async (tx, event) => {
+    if (event.status === 'cancelled') throw new SpotError('Game is already cancelled', 409);
+
+    const net = await getNetChargedByUser(tx, eventId);
+    for (const [userId, amount] of net) {
+      if (Math.abs(amount) < 0.005) continue;
+      await recordTransaction(tx, {
+        eventId,
+        groupId: event.groupId,
+        attendeeId: null,
+        type: 'event_cancelled_refund',
+        fromUserId: null,
+        toUserId: userId,
+        amount: -amount,
+        notes: 'Game cancelled — charges reversed',
+      });
+    }
+
+    const { benchPromotionRequests } = await import('@/lib/db/schema');
+    await tx
+      .update(benchPromotionRequests)
+      .set({ status: 'cancelled', respondedAt: new Date() })
+      .where(and(
+        eq(benchPromotionRequests.eventId, eventId),
+        eq(benchPromotionRequests.status, 'pending'),
+      ));
+
+    await tx.update(events).set({ status: 'cancelled' }).where(eq(events.id, eventId));
   });
 }
 

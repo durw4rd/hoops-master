@@ -39,9 +39,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'attendeeId is required' }, { status: 400 });
     }
 
-    await adminUnassignSpot({ eventId, attendeeId });
+    const { refunded } = await adminUnassignSpot({ eventId, attendeeId });
 
-    return NextResponse.json({ success: true, message: 'Player removed from the game' });
+    return NextResponse.json({
+      success: true,
+      message:
+        refunded > 0
+          ? `Player removed from the game — ${refunded} credited back`
+          : 'Player removed from the game',
+    });
   } catch (error) {
     if (error instanceof SpotError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

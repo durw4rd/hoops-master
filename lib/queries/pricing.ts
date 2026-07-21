@@ -64,11 +64,13 @@ export function computeSplitFinalize(event: EventRow, occupancy: number): SplitF
   };
 }
 
+/** Funded attendee rows only — held-open placeholders (userId NULL) have no payer. */
 async function occupiedRowsInTx(tx: Tx, eventId: string) {
-  return tx
+  const rows = await tx
     .select()
     .from(eventAttendees)
     .where(eq(eventAttendees.eventId, eventId));
+  return rows.filter((r): r is typeof r & { userId: string } => r.userId !== null);
 }
 
 export async function finalizeSplitPricing(params: {
@@ -153,14 +155,35 @@ export async function unfinalizeSplitPricing(eventId: string): Promise<void> {
       throw new SpotError('Cannot undo finalize after the game has started', 400);
     }
 
-    await tx
-      .delete(spotTransactions)
+    // Append-only: reverse the settlement with compensating entries instead of
+    // deleting rows. Nets per user across settle/remainder/previous unsettle
+    // rows, so repeated finalize/unfinalize cycles stay balanced.
+    const rows = await tx
+      .select()
+      .from(spotTransactions)
       .where(
         and(
           eq(spotTransactions.eventId, eventId),
-          inArray(spotTransactions.type, ['split_settle', 'split_remainder'])
+          inArray(spotTransactions.type, ['split_settle', 'split_remainder', 'split_unsettle'])
         )
       );
+    const netByUser = new Map<string, number>();
+    for (const r of rows) {
+      netByUser.set(r.toUserId, (netByUser.get(r.toUserId) ?? 0) + Number(r.amount));
+    }
+    for (const [userId, net] of netByUser) {
+      if (Math.abs(net) < 0.005) continue;
+      await recordTransaction(tx, {
+        eventId,
+        groupId: event.groupId,
+        attendeeId: null,
+        type: 'split_unsettle',
+        fromUserId: null,
+        toUserId: userId,
+        amount: -net,
+        notes: 'Cost split un-finalized — settlement reversed',
+      });
+    }
 
     await tx
       .update(events)

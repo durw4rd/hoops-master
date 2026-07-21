@@ -19,6 +19,8 @@ export interface AppUser {
   pieceUrl?: string;       // Optional profile picture ("piece") URL
   globalRole: GlobalRole;  // Global role: 'admin' | 'user'
   onboarded: boolean;      // Has the user chosen their username on first sign-in
+  emailGameReminders: boolean;    // 48h game reminder emails enabled
+  emailBenchPromotions: boolean;  // bench promotion emails enabled
   createdAt: string;       // ISO timestamp
 }
 
@@ -147,7 +149,8 @@ export interface EventAttendee {
   isPlusOne: boolean;              // convenience: parentAttendeeId !== null
 }
 
-export type AttendeeStatus = 'confirmed' | 'offered';
+// 'open' = held-open placeholder (no holder) while a bench promotion approval is pending.
+export type AttendeeStatus = 'confirmed' | 'offered' | 'open';
 
 /**
  * Transactions Sheet - Slot transaction history
@@ -179,8 +182,11 @@ export type TransactionType =
   | 'waitlist_promote'
   | 'split_settle'
   | 'split_remainder'
+  | 'split_unsettle'
   | 'price_adjustment'
-  | 'guest_assign';
+  | 'guest_assign'
+  | 'unassign_refund'
+  | 'event_cancelled_refund';
 
 // =============================================================================
 // WAITLIST / ROSTER / CREDIT TYPES
@@ -258,6 +264,8 @@ export interface UserProfile {
   globalRole: GlobalRole;
   onboarded: boolean;
   createdAt: string;
+  emailGameReminders: boolean;
+  emailBenchPromotions: boolean;
   groups: GroupMembership[];
 }
 

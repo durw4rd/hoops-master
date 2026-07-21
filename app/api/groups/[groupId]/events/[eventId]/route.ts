@@ -15,13 +15,15 @@ import {
   toEventDTO,
   updateEvent,
   deleteEvent,
+  cancelEvent,
+  eventHasLedgerHistory,
 } from '@/lib/queries/events';
 import {
   getPendingPromotionForTarget,
   hasPendingHandoffForUser,
 } from '@/lib/queries/benchPromotion';
 import { computeSignupOpensAt } from '@/lib/eventTiming';
-import type { AssignmentMode, RemainderPolicy } from '@/lib/types';
+import type { AssignmentMode } from '@/lib/types';
 import { computeSplitFinalize } from '@/lib/queries/pricing';
 
 interface RouteParams {
@@ -49,8 +51,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const userAttendance = attendees.find(
       (a) => a.userEmail.toLowerCase() === ctx.user.email.toLowerCase() && !a.isPlusOne
     );
+    // A user can hold a primary bench entry and a rider (+1) bench entry
+    // independently; the UI needs both positions to render the right controls.
+    const myEmail = ctx.user.email.toLowerCase();
     const myBenchEntry = waitlist.find(
-      (w) => w.userEmail.toLowerCase() === ctx.user.email.toLowerCase()
+      (w) => w.userEmail.toLowerCase() === myEmail && !w.forRider
+    );
+    const myRiderBenchEntry = waitlist.find(
+      (w) => w.userEmail.toLowerCase() === myEmail && w.forRider
     );
 
     // Occupancy = one slot per attendee row (each rider row is a separate row).
@@ -79,7 +87,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         isAttending: !!userAttendance,
         myAttendance: userAttendance || null,
         myWaitlistPosition: myBenchEntry ? myBenchEntry.position : null,
-        myRiderWaitlistPosition: null,
+        myRiderWaitlistPosition: myRiderBenchEntry ? myRiderBenchEntry.position : null,
         pendingBenchPromotion,
         pendingHandoff,
       },
@@ -191,6 +199,17 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const eventRow = await getEventRowById(eventId);
     if (!eventRow || eventRow.groupId !== groupId) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+
+    // Append-only ledger: events with credit history are cancelled (every
+    // player's net charge reversed with visible entries); only ledger-free
+    // events can be hard-deleted.
+    if (await eventHasLedgerHistory(eventId)) {
+      await cancelEvent(eventId);
+      return NextResponse.json({
+        success: true,
+        message: 'Game cancelled — all charges were credited back',
+      });
     }
     await deleteEvent(eventId);
     return NextResponse.json({ success: true, message: 'Event deleted successfully' });

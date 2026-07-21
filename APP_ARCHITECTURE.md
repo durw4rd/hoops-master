@@ -52,20 +52,32 @@ components/
   OnboardingScreen.tsx     # First-login username picker
   LaunchDarklyProvider.tsx # Client LD init (session context) + mounts LDIdentify
   LDIdentify.tsx           # Syncs LD context with auth (session-only → session+user)
+  UpdateBanner.tsx         # "Reload to update" banner (LD flag app-version-upgrade-banner)
 lib/
   design-tokens.ts         # JS mirror of CSS palette (for non-Tailwind use)
   db/schema.ts             # Drizzle schema (source of truth for tables)
   db/index.ts              # Neon Pool + drizzle client
   queries/                 # All DB access (events, groups, users, waitlist, credits, notifications, ...)
+    spotOpening.ts         # ★ Unified opening handler — ALL freed spots resolve here
+    benchMatching.ts       # Seatable-head picking + transferOpeningToUser
+    benchPromotion.ts      # <24h pending-approval flow (create/approve/decline/cascade)
+    transactions.ts        # recordTransaction + getNetChargedByUser (refund basis)
+    emailOutbox.ts         # Transactional email outbox (enqueue in-tx, drain post-commit)
+    eventReminders.ts      # 48h reminder emails (cron-driven, idempotent claim)
+  email/send.ts            # Resend wrapper (no-op without RESEND_API_KEY)
+  email/templates.ts       # Plain-HTML email templates
   apiGuards.ts             # requireAuth / requireMember / requireGroupAdmin / requireCrewManager
   auth.ts                  # NextAuth config (invite-only signIn callback)
   session.ts               # getSessionUser() — id/email/globalRole from JWT
   launchdarkly.ts          # isAppAdmin() + server flag eval (fail-closed)
   roles.ts                 # Role labels + capability helpers (client + server)
-  datetime.ts / eventTiming.ts / eventRules.ts  # timezone + signup-window logic
+  appVersion.ts / version.ts  # APP_VERSION (from package.json) + semver compare
+  datetime.ts / eventTiming.ts / eventRules.ts  # timezone + signup/24h/48h-window logic
+test/                      # Vitest suite on embedded Postgres (see Automated tests)
 scripts/
   seedPlayers.ts           # Seed/allowlist players (idempotent, onConflictDoNothing)
   setRole.ts               # Set a user's global role (owner|admin|user)
+  audit-unassign-credits.ts # Read-only credit/ledger consistency audit (prod)
 ```
 
 ## Data model (`lib/db/schema.ts`)
@@ -75,36 +87,90 @@ scripts/
 | `users` | App users / invite allowlist | `email` unique, `display_name`, `piece_url` (optional avatar, Vercel Blob), `global_role` (`owner`/`admin`/`user`), `onboarded` |
 | `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `default_pricing_mode` (`per_spot`/`split_total`), `default_total_cost`, `round_robin_slide`, `banner_url`, `banner_orientation` |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
-| `events` | Games | `starts_at`/`ends_at`, `total_spots`, `slot_cost` (per-spot mode), `pricing_mode`, `total_cost` (split-total mode), `pricing_finalized_at`, `finalized_per_share`, `remainder_policy`, `effective_total_cost`, plus `event_type`, `name`, `description`, `banner_*`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
-| `event_attendees` | Spot holders | `user_id` (current), `original_user_id`, `status` (`confirmed`/`offered`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot), `guest_display_name` (non-null = guest spot, no `users` row); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
-| `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user)` |
-| `bench_promotion_requests` | Pending bench handoff | When a release would auto-promote bench #1 within 24h of `starts_at`, releaser stays `confirmed` until approve/decline; unique pending row per `attendee_id` |
+| `events` | Games | `starts_at`/`ends_at`, `total_spots`, `slot_cost` (per-spot mode), `pricing_mode`, `total_cost` (split-total mode), `pricing_finalized_at`, `finalized_per_share`, `remainder_policy`, `effective_total_cost`, `reminder_sent_at` (48h email claim marker), plus `event_type`, `name`, `description`, `banner_*`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
+| `event_attendees` | Spot holders | `user_id` (current holder, **nullable** — NULL + `status='open'` = held-open placeholder while a bench promotion approval is pending), `original_user_id`, `status` (`confirmed`/`offered`/`open`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot), `guest_display_name` (non-null = guest spot, no `users` row); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
+| `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user,for_rider)` |
+| `bench_promotion_requests` | Pending bench handoff | Any opening arising within 24h of `starts_at` requires the target's approval; unique pending row per `attendee_id` |
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
-| `spot_transactions` | Append-only credit ledger | `from_user_id` (nullable), `to_user_id`, `amount`, `type` (audit only) |
+| `spot_transactions` | **Append-only** credit ledger | `from_user_id` (nullable), `to_user_id`, `amount`, `type` (audit only), `attendee_id` (FK `ON DELETE SET NULL` — ledger rows outlive attendee rows). **Never deleted** — reversals are compensating entries |
 | `payments` | Admin-recorded cash in | `user_id`, `amount`, `payment_date` |
 | `notifications` | In-app inbox (per user) | `user_id`, `group_id`, `event_id`, `type` (`spot_offered_claimed` / `bench_promoted` / `bench_promotion_pending`), `title`, `body`, `read_at`; partial index on unread |
+| `email_outbox` | Transactional email queue | Enqueued inside spot-mutation transactions, drained after commit; `email_type` (`bench_promotion` / `bench_promotion_pending`), `sent_at` |
+| `users` (email prefs) | Opt-outs | `email_game_reminders`, `email_bench_promotions` — both default `true`, checked at send time |
 | `player_credit_balances` | **View** | `balance = paid − spent(to_user) + earned(from_user)` per active member |
+
+## Spot lifecycle & credit invariants (READ BEFORE TOUCHING SPOT/CREDIT CODE)
+
+These are the load-bearing rules of the domain. The automated test suite
+(`test/*.test.ts`) enforces them — any change to `lib/queries/*` must keep
+`pnpm test` green. Do not add per-action special cases; extend the unified
+handler instead.
+
+1. **Every freed spot is an "opening"** and MUST go through
+   `handleSpotOpening()` in `lib/queries/spotOpening.ts`. That is the ONLY
+   place that decides what happens to a vacated spot. An opening carries a
+   funding mode which alone determines the ledger entry when it is filled:
+   - `holder_funded` — the previous holder keeps paying until someone takes
+     over (release/offer semantics); fill = zero-sum transfer
+     (`from = old holder, to = new holder`).
+   - `vacant` — the previous holder was already refunded (admin unassign) or
+     never existed (capacity increase); fill = fresh debit (`from = NULL`).
+2. **Bench invariant:** a spot is never open/offered/unfilled while a seatable
+   player waits on the bench. Resolution order (identical for player- and
+   admin-initiated actions): seatable bench head gets the spot instantly when
+   >24h before start; within 24h a `bench_promotion_requests` row is created
+   and the target must approve. Bench exhausted → holder-funded spots become
+   `offered` (free-for-all claimable); vacant openings dissolve into plain
+   capacity. Capacity increases run `reconcileCapacityWithBench()`.
+3. **24h approval flow:** decline removes the decliner from the bench and
+   cascades to the next seatable player; when the bench runs dry the spot is
+   marked open. While a `vacant` opening waits on approval it is held as a
+   placeholder attendee row (`user_id NULL`, `status 'open'`) so capacity
+   can't be stolen. A pending target leaving the bench (self or admin removal)
+   cancels + re-matches the opening (`cancelPendingTargetsForUser`).
+4. **Whoever lands a spot leaves the bench** — every fill path
+   (`fillSpot(s)`, `claimSpot`, `claimRiderSpot`, `reassignSpot`, transfers)
+   calls `removeUserFromBench` for the recipient.
+5. **The ledger is append-only.** No code path deletes `spot_transactions`
+   rows. Reversals are explicit compensating entries: `unassign_refund`
+   (admin removal — refund computed from the player's *actual net* for the
+   event via `getNetChargedByUser`, which absorbs price adjustments),
+   `event_cancelled_refund` (event cancellation zeroes every player's net),
+   `split_unsettle` (split-pricing undo). Events with ledger history cannot
+   be hard-deleted — the DELETE route cancels them instead (`cancelEvent`).
+6. **Credit rules are identical for admin- and player-initiated actions.**
+   +1 (Rider) spots debit/credit the bringing player. The single exception:
+   **guest assignment is credit-neutral** (`guest_assign`, amount 0 — the
+   holder keeps funding and settles outside the app).
+7. **Invariant checks:** for every event, a player currently holding N spots
+   must have net charged = N × `getSpotChargeAmount(event)`; everyone else
+   nets 0 (see `test/invariants.ts`). If your change breaks this, the change
+   is wrong — not the invariant.
 
 Notes for agents:
 - **Rider (+1) spots:** `parent_attendee_id` is non-null for +1 rows. A user may hold
   at most one primary + one +1 per event. Offering/releasing the primary is blocked
   while the +1 is confirmed — handle the +1 first. +1 rows show inline as *"Name's +1"*.
+  A user can hold a primary bench entry AND a rider bench entry independently
+  (`for_rider` distinguishes them — API + UI must always pass it through).
 - **Unified bench:** One FIFO queue (`event_waitlist` ordered by `joinedAt`). Primary
-  and +1 waiters share the same line and global `#N` position. When any spot opens
-  (offer, release, or join triggering a match), **bench #1 always receives it** —
-  the backend morphs the row shape (primary vs +1) invisibly. `offerSpot` auto-matches
-  to bench #1 when the bench is non-empty; otherwise the spot stays on the marketplace
-  until claimed (bench empty) or someone joins the bench. Direct claims bypass nobody:
-  if the bench is non-empty and the claimer is not #1, the API returns 409. Logic lives
-  in `lib/queries/benchMatching.ts` (`assignOpeningToBenchHead`, `transferOpeningToUser`).
+  and +1 waiters share the same line and global `#N` position. When any spot opens,
+  the first **seatable** bench entry receives it (`getSeatableBenchHead` skips players
+  already targeted by a pending request or already holding primary + rider) — the
+  backend morphs the row shape (primary vs +1) invisibly via `transferOpeningToUser`.
+  All opening resolution goes through `handleSpotOpening` (`lib/queries/spotOpening.ts`)
+  — see the invariants section above. Direct claims bypass nobody: if a seatable bench
+  head exists and the claimer is not it, the API returns 409.
   `EventDetailModal` re-fetches on window focus to keep button states fresh.
-- **Bench promotion <24h:** `releaseSpot` / `releaseRiderSpot` call
-  `assignOpeningToBenchHeadOrPending` (`lib/queries/benchPromotion.ts`). Outside
-  24h before `starts_at`, bench #1 is promoted immediately. Inside 24h, the opening
-  stays with the releaser (`confirmed`) until they approve; decline removes that
-  player from the bench and may cascade to the next #1. Capo/King can remove bench
-  rows via `DELETE .../waitlist?forRider=…` (`removeFromBench`). Direct `claimSpot`
-  and join-bench auto-match are unchanged (no approval gate).
+- **Bench promotion <24h:** any opening inside 24h of `starts_at` creates a
+  `bench_promotion_requests` row instead of an instant transfer
+  (`assignOpeningToBenchHeadOrPending` in `lib/queries/benchPromotion.ts`).
+  Holder-funded openings stay `confirmed` with the releaser until approval; vacant
+  openings (admin unassign, capacity increase) become `user_id NULL / status 'open'`
+  placeholders. Decline cascades to the next seatable player; an exhausted bench
+  marks the spot open (offered) or dissolves the placeholder. Capo/King can remove
+  bench rows via `DELETE .../waitlist` (`removeFromBench`) — removing a pending
+  target cancels + re-matches the opening.
 - **Guest spots:** When LD flag `guest-spots` is on (client + server), Capo/King
   assign via `POST .../assign-guest` with a display name; `guest_display_name` is set,
   `user_id` points at the assignee for ledger purposes, and `guest_assign` ledger
@@ -128,19 +194,87 @@ Notes for agents:
   `slot_cost` edits on existing rosters append `price_adjustment` correction rows.
   Switching `per_spot` → `split_total` on an unfinalized event credits current
   attendees via `applySlotCostAdjustment(slot_cost, 0)` before `slot_cost` is zeroed,
-  so finalize does not double-charge. Logic in `lib/queries/pricing.ts`.
+  so finalize does not double-charge. Un-finalizing writes per-user `split_unsettle`
+  compensating entries (append-only — nothing is deleted). Logic in `lib/queries/pricing.ts`.
+- **Deleting vs cancelling events:** `deleteEvent` is only allowed while an event has
+  zero ledger rows. Otherwise the DELETE route calls `cancelEvent`, which writes
+  `event_cancelled_refund` entries zeroing every player's net, cancels pending
+  promotions, and sets `status='cancelled'` (which blocks further spot mutations
+  via `eventRules.ts`).
 - **Cascades:** deleting a `group` cascades `group_members`, `events`
   (→ `event_attendees`, `event_waitlist`), and `round_robin_rosters`.
   `spot_transactions` and `payments` have **no** cascade FK — `deleteGroup()`
-  removes them first inside a transaction.
+  removes them first inside a transaction (the only sanctioned ledger deletion,
+  since the whole crew's books go with it).
 - **In-app notifications:** persisted rows in `notifications`, created inside spot
   mutations via `notifySpotChange()` in `lib/queries/notifications.ts`. Triggers:
   (1) someone claims your offered primary or Rider spot; (2) you (or your Rider
-  slot) are promoted off the bench via `releaseSpot` / `releaseRiderSpot`.
+  slot) are promoted off the bench; (3) a last-minute spot is pending your approval.
   Recipient is always the primary account holder; copy differs by slot kind only.
-  No email/push — badge + **Fresh tags** panel in `SettingsMenu` (`hooks/useNotifications.ts`:
+  Badge + **Fresh tags** panel in `SettingsMenu` (`hooks/useNotifications.ts`:
   fetch on mount, window focus, 60s poll). Tapping a tag marks it read and deep-links
   to the game (`app/page.tsx` → `GroupDashboard` → `EventDetailModal`).
+
+## Email notifications (Resend + Vercel Cron)
+
+- **Kill-switch**: all dispatch is gated behind the LD **boolean flag
+  `email-notifications`** (`isEmailNotificationsEnabled()` in `lib/email/send.ts`,
+  evaluated server-side, fail-closed — no LD/Edge Config → emails off). Enqueueing
+  is NOT gated, so flipping the flag needs no deploy; while off, outbox rows stay
+  unclaimed and reminder events stay unclaimed. When the flag turns on, queued
+  rows for already-started games are claimed but skipped (no stale backlog blast).
+- **Sending** (`lib/email/send.ts`): Resend wrapper; graceful no-op with a log line
+  when `RESEND_API_KEY`/`EMAIL_FROM` are unset. Never throws — email failure must
+  never break a spot mutation or cron run. Templates in `lib/email/templates.ts`.
+- **Bench promotion emails** (`bench_promotion`, `bench_promotion_pending`) use a
+  **transactional outbox** (`email_outbox` table, `lib/queries/emailOutbox.ts`):
+  rows are enqueued INSIDE the serializable spot-mutation transaction (in
+  `transferOpeningToUser` / `createPendingForHead`), so retried/rolled-back
+  transactions never produce stray emails. `withEventLock` (`lib/queries/_tx.ts`)
+  schedules `drainEmailOutbox()` after commit via `next/server` `after()`; the cron
+  sweeps leftovers. Drain claims rows with `FOR UPDATE SKIP LOCKED` and marks them
+  sent BEFORE dispatch (at-most-once — a lost email beats a duplicate).
+  **Do not send emails inline inside transactions.** New email types go through
+  the outbox, not direct sends.
+- **48h game reminders** (`lib/queries/eventReminders.ts`): Vercel Cron hits
+  `GET /api/cron/event-reminders` every 15 min (`vercel.json`), guarded by
+  `Authorization: Bearer $CRON_SECRET`. Idempotent: due events are claimed
+  atomically (`reminder_sent_at` set in the same UPDATE that selects them).
+  Recipients: distinct non-removed spot holders with `email_game_reminders=true`.
+- **Preferences**: `users.email_game_reminders` / `users.email_bench_promotions`
+  (default true; both `bench_promotion` types share the latter). Edited via the
+  "Mail Drops" toggles in `ProfileSettingsModal` → `PATCH /api/user/profile`.
+  Preferences are checked at **send time**, not enqueue time.
+
+## App version & upgrade banner
+
+`lib/appVersion.ts` exports `APP_VERSION` (from `package.json`) — bundled at build
+time. It travels as: LD application metadata (client init), an `appVersion`
+attribute on every LD context (client `session`/`user` kinds and server contexts
+in `lib/launchdarkly.ts`), and a subtle `v{X.Y.Z}` label in the footer.
+`components/UpdateBanner.tsx` reads the LD **boolean flag
+`app-version-upgrade-banner`** and shows a dismissible "reload to update" banner
+whenever it evaluates true — all version logic lives in the flag's targeting
+rules, not in the app. Recommended rule: `appVersion` **semVerLessThan** the
+latest released version → serve `true`; default/fallthrough `false`.
+Release flow: bump `package.json` version → deploy → update the rule's version
+number in LD. Stale tabs (old `appVersion` in their context) match the rule and
+get the banner; freshly reloaded bundles don't.
+
+## Automated tests (`test/`)
+
+`pnpm test` (Vitest) boots a **real embedded Postgres** (`embedded-postgres` dev
+dependency — no Docker required), applies the drizzle migrations, and swaps
+`@/lib/db` to a `node-postgres` handle via `vi.mock` in `test/setup.ts`. The whole
+query layer — including `withEventLock` serializable transactions and the
+`player_credit_balances` view — runs unmodified. Scenarios live in
+`test/spotLifecycle.test.ts`, `test/ledger.test.ts`, `test/benchPromotion.test.ts`,
+`test/emailOutbox.test.ts`; shared checks in `test/invariants.ts`
+(`assertLedgerInvariant`, `assertBenchInvariant`) run at the end of every scenario.
+Factories (`test/factories.ts`) build a fresh crew/event/users per test; the
+`startsInHours` option flips the 24h pending-approval branch. Tests run serially.
+**Any change to spot/credit behavior needs a scenario here, and `pnpm test` must
+stay green.**
 
 ## Authorization
 
@@ -160,8 +294,11 @@ API guards (`lib/apiGuards.ts`): `requireAuth`, `requireMember`,
 **LaunchDarkly** (`lib/launchdarkly.ts`): client SDK for UI; server evaluation via
 `@launchdarkly/vercel-server-sdk` + **`EDGE_CONFIG`** (synced by the
 [Vercel ↔ LaunchDarkly integration](docs/launchdarkly-vercel-setup.md)). Flags:
-`app-admins` (email list override for create-crew), `guest-spots` (guest assign API).
-Without `EDGE_CONFIG`, server evaluation is off (fail-closed); DB roles still apply.
+`app-admins` (email list override for create-crew), `guest-spots` (guest assign API),
+`email-notifications` (boolean kill-switch for all outgoing email),
+`app-version-upgrade-banner` (boolean, client-side — reload banner via `appVersion`
+targeting rule). Without `EDGE_CONFIG`, server evaluation is off (fail-closed);
+DB roles still apply and emails stay off.
 
 **LD client context** (`components/LaunchDarklyProvider.tsx` + `LDIdentify.tsx`):
 pre-login the app evaluates a single `session` context (key = persisted session id,
@@ -284,7 +421,7 @@ POST   /api/groups/[id]/events                      # create game (Capo/King); a
 POST   /api/groups/[id]/events/banner               # upload event banner to Blob (Capo/King)
 GET    /api/groups/[id]/events/[eventId]            # game detail
 PATCH  /api/groups/[id]/events/[eventId]            # edit game (Capo/King)
-DELETE /api/groups/[id]/events/[eventId]            # delete game (Capo/King)
+DELETE /api/groups/[id]/events/[eventId]            # delete game (no ledger) or cancel + refund (Capo/King)
 POST   /api/groups/[id]/events/bulk                 # recurring series
 POST   /api/groups/[id]/events/round-robin          # rotation series (+preview)
 POST   /api/groups/[id]/events/batch-assign         # batch assign
@@ -308,6 +445,8 @@ GET    /api/admin/invite  POST /api/admin/invite    # Black Book invites (app-ad
 PATCH  /api/admin/invite  DELETE /api/admin/invite  # email edit / buff player
 GET    /api/admin/users/removal-warnings            # pre-buff warnings (app-admin)
 PATCH  /api/admin/role                              # change app role (app-admin)
+
+GET    /api/cron/event-reminders                    # 48h reminders + outbox sweep (Bearer CRON_SECRET; Vercel Cron)
 ```
 
 ## Environment variables
@@ -323,6 +462,10 @@ BLOB_READ_WRITE_TOKEN=    # Vercel Blob store token (crew banners + player piece
 # LaunchDarkly (optional; see docs/launchdarkly-vercel-setup.md)
 NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=
 # EDGE_CONFIG=              # auto-set by LaunchDarkly ↔ Vercel integration
+# Email (optional locally — sending no-ops without these)
+RESEND_API_KEY=           # Resend API key
+EMAIL_FROM=               # verified sender, e.g. "Hoops Master <notifications@domain.com>"
+CRON_SECRET=              # Bearer secret for /api/cron/event-reminders (Vercel Cron sends it)
 ```
 
 ## Common workflows
@@ -336,6 +479,9 @@ pnpm db:migrate                # apply migrations (see Database migrations below
 pnpm tsx scripts/seedPlayers.ts        # seed/allowlist players (idempotent)
 EMAIL=x@y.com ROLE=owner pnpm tsx scripts/setRole.ts
 pnpm tsx scripts/verify-launchdarkly-server.ts   # after vercel env pull (EDGE_CONFIG)
+pnpm tsx scripts/audit-unassign-credits.ts       # read-only credit audit against prod
+pnpm test                      # Vitest suite on embedded Postgres (must stay green)
+pnpm lint                      # ESLint (flat config, eslint.config.mjs)
 npx tsc --noEmit && pnpm build # verify before commit
 ```
 
@@ -413,14 +559,24 @@ when possible.
 
 ## Conventions for agents
 
+- **Spot/credit changes:** read **Spot lifecycle & credit invariants** above first.
+  Freed spots go through `handleSpotOpening()`; the ledger is append-only (reversals
+  are compensating entries, never deletes); admin and player actions follow identical
+  credit rules. Add/extend a scenario in `test/` and keep `pnpm test` green.
 - **Schema changes:** follow **Database migrations** above (`db:generate` → `db:migrate`,
   load `DATABASE_URL`, verify columns). Never ship code that references new columns
   without a registered, applied migration.
 - All DB access goes through `lib/queries/*` — don't query Drizzle directly from
   route handlers or components.
 - Use the `apiGuards` helpers for authz; don't re-implement role checks inline.
+- **Emails:** never send inline inside a transaction — enqueue in `email_outbox`
+  and let the post-commit drain / cron dispatch. Respect the per-type user opt-outs.
 - Currency is always **€**. Display players by `display_name`, never raw email.
 - Keep authorization fail-closed; LD is additive, never required.
+- Native `window.confirm`/`alert` are banned — use `components/ui/ConfirmDialog`
+  (GraffitiDialog styling) with inline error states.
+- **Verification gates before commit:** `pnpm lint`, `npx tsc --noEmit`,
+  `pnpm test`, `pnpm build` — all four must pass.
 - Match the app's voice — read [`VOCABULARY.md`](./VOCABULARY.md) before writing copy.
 - **Theme colors**: Tailwind classes (`text-asphalt`, `bg-terracotta`, etc.) use
   `*-rgb` channel variables so opacity modifiers (`/70`, `/80`) work. Raw hex vars

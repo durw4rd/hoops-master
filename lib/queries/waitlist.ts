@@ -9,15 +9,16 @@
  */
 
 import { and, eq, isNull } from 'drizzle-orm';
-import { db } from '@/lib/db';
 import { eventAttendees, eventWaitlist } from '@/lib/db/schema';
 import {
   getGlobalBenchPosition,
+  getSeatableBenchHead,
   getUnifiedBench,
   removeUserFromBench,
   tryMatchEarliestOfferToBench,
 } from './benchMatching';
-import { assignOpeningToBenchHeadOrPending } from './benchPromotion';
+import { cancelPendingTargetsForUser } from './benchPromotion';
+import { handleSpotOpening } from './spotOpening';
 import { withEventLock, SpotError } from './_tx';
 
 // ---------------------------------------------------------------------------
@@ -83,14 +84,11 @@ export async function leaveWaitlist(params: {
   userId: string;
   forRider?: boolean;
 }): Promise<void> {
-  const forRider = params.forRider ?? false;
-  await db
-    .delete(eventWaitlist)
-    .where(and(
-      eq(eventWaitlist.eventId, params.eventId),
-      eq(eventWaitlist.userId, params.userId),
-      eq(eventWaitlist.forRider, forRider),
-    ));
+  return removeFromBench({
+    eventId: params.eventId,
+    targetUserId: params.userId,
+    forRider: params.forRider,
+  });
 }
 
 /** Remove a specific user from the bench (manager or self). */
@@ -99,7 +97,7 @@ export async function removeFromBench(params: {
   targetUserId: string;
   forRider?: boolean;
 }): Promise<void> {
-  return withEventLock(params.eventId, async (tx) => {
+  return withEventLock(params.eventId, async (tx, event) => {
     const forRider = params.forRider ?? false;
     const deleted = await tx
       .delete(eventWaitlist)
@@ -111,6 +109,19 @@ export async function removeFromBench(params: {
       .returning({ id: eventWaitlist.id });
     if (deleted.length === 0) {
       throw new SpotError('Player is not on the bench for this game', 404);
+    }
+
+    // If a pending promotion was waiting on this player, pass it down the bench.
+    const [stillBenched] = await tx
+      .select({ id: eventWaitlist.id })
+      .from(eventWaitlist)
+      .where(and(
+        eq(eventWaitlist.eventId, params.eventId),
+        eq(eventWaitlist.userId, params.targetUserId),
+      ))
+      .limit(1);
+    if (!stillBenched) {
+      await cancelPendingTargetsForUser(tx, event, params.targetUserId);
     }
   });
 }
@@ -148,28 +159,30 @@ export async function releaseSpot(params: {
       throw new SpotError('Release or offer your +1 before releasing your own spot', 400);
     }
 
-    const bench = await getUnifiedBench(tx, params.eventId);
-    if (bench.filter((e) => e.userId !== params.userId).length === 0) {
+    const head = await getSeatableBenchHead(tx, params.eventId, { excludeUserId: params.userId });
+    if (!head) {
       throw new SpotError(
         'No one is on the bench — offer your spot instead so it can be claimed',
         400
       );
     }
 
-    const result = await assignOpeningToBenchHeadOrPending(tx, event, primary, {
-      fromUserId: params.userId,
+    const result = await handleSpotOpening(tx, event, primary, {
+      funding: { kind: 'holder_funded', fromUserId: params.userId },
       transactionType: 'waitlist_promote',
       notes: 'Spot released to bench',
       notifyPreviousHolder: false,
       excludeUserId: params.userId,
     });
 
-    if (result.pendingApproval) {
+    if (result.outcome === 'pending_approval') {
       return { promotedUserId: null, pendingApproval: true };
     }
 
     await removeUserFromBench(tx, params.eventId, params.userId);
 
-    return { promotedUserId: result.promotedUserId ?? null };
+    return {
+      promotedUserId: result.outcome === 'promoted' ? result.promotedUserId : null,
+    };
   });
 }

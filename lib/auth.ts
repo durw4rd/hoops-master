@@ -28,7 +28,7 @@ export const authOptions: AuthOptions = {
         return false;
       }
     },
-    async session({ session, token }: { session: any; token: any }) {
+    async session({ session, token }) {
       if (session?.user) {
         session.user.email = token.email;
         session.user.name = token.name;
@@ -37,7 +37,7 @@ export const authOptions: AuthOptions = {
       }
       return session;
     },
-    async jwt({ token, account, profile }: { token: any; account?: any; profile?: any }) {
+    async jwt({ token, account, profile }) {
       if (account && profile) {
         token.email = profile.email;
         token.name = profile.name;

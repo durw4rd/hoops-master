@@ -1,5 +1,6 @@
 "use client";
 
+import type { Session } from "next-auth";
 import { useState } from "react";
 import { Bell, LogOut, Settings, SprayCan } from "lucide-react";
 import { UserProfile, Notification } from "@/lib/types";
@@ -17,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface SettingsMenuProps {
-  session: any;
+  session: Session | null;
   userProfile?: UserProfile | null;
   onSignIn: () => void;
   onSignOut: () => void;

@@ -7,6 +7,7 @@ import { zonedToUtc, ALWAYS_OPEN_SENTINEL } from '@/lib/datetime';
 export type SignupOpenType = 'immediate' | 'relative' | 'absolute';
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+export const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
 /**
  * True when the event starts within the next 24 hours (used for bench promotion approval).

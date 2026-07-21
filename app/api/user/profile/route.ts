@@ -8,7 +8,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getUserByEmail, updateDisplayName, updatePieceUrl } from '@/lib/queries/users';
+import {
+  getUserByEmail,
+  updateDisplayName,
+  updateEmailPreferences,
+  updatePieceUrl,
+} from '@/lib/queries/users';
 import { getUserGroups } from '@/lib/queries/groups';
 import { requireAuth } from '@/lib/apiGuards';
 import { UserProfile } from '@/lib/types';
@@ -37,6 +42,8 @@ export async function GET() {
       pieceUrl: user.pieceUrl,
       globalRole: user.globalRole,
       onboarded: user.onboarded,
+      emailGameReminders: user.emailGameReminders,
+      emailBenchPromotions: user.emailBenchPromotions,
       createdAt: user.createdAt,
       groups,
     };
@@ -56,8 +63,11 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json();
     const hasName = typeof body?.displayName === 'string';
     const hasPiece = 'pieceUrl' in (body ?? {});
+    const hasEmailPrefs =
+      typeof body?.emailGameReminders === 'boolean' ||
+      typeof body?.emailBenchPromotions === 'boolean';
 
-    if (!hasName && !hasPiece) {
+    if (!hasName && !hasPiece && !hasEmailPrefs) {
       return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
     }
 
@@ -85,13 +95,27 @@ export async function PATCH(request: NextRequest) {
       row = await updatePieceUrl(ctx.user.id, pieceUrl);
     }
 
+    if (hasEmailPrefs) {
+      row = await updateEmailPreferences(ctx.user.id, {
+        emailGameReminders:
+          typeof body.emailGameReminders === 'boolean' ? body.emailGameReminders : undefined,
+        emailBenchPromotions:
+          typeof body.emailBenchPromotions === 'boolean' ? body.emailBenchPromotions : undefined,
+      });
+    }
+
     if (!row) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     return NextResponse.json({
       success: true,
-      data: { displayName: row.displayName, pieceUrl: row.pieceUrl ?? null },
+      data: {
+        displayName: row.displayName,
+        pieceUrl: row.pieceUrl ?? null,
+        emailGameReminders: row.emailGameReminders,
+        emailBenchPromotions: row.emailBenchPromotions,
+      },
     });
   } catch (error) {
     console.error('Error updating profile:', error);

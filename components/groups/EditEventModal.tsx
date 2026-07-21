@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import BannerUploadField from "./BannerUploadField";
-import type { EventType, BannerOrientation, PricingMode, RemainderPolicy } from "@/lib/types";
+import type { EventType, BannerOrientation, PricingMode } from "@/lib/types";
 import PricingFields from "./PricingFields";
 
 const TIME_OPTIONS = Array.from({ length: 24 * 4 }, (_, i) => {

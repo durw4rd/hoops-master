@@ -4,7 +4,7 @@
  */
 
 import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
-import { eventAttendees, eventWaitlist } from '@/lib/db/schema';
+import { benchPromotionRequests, eventAttendees, eventWaitlist } from '@/lib/db/schema';
 import { recordTransaction } from './transactions';
 import { getSpotChargeAmount } from './pricing';
 import { notifySpotChange } from './notifications';
@@ -70,14 +70,47 @@ export async function getEarliestOfferedSpot(tx: Tx, eventId: string): Promise<A
   return row ?? null;
 }
 
-interface TransferOptions {
-  fromUserId: string;
+export interface TransferOptions {
+  /** Previous funder of the spot; null for vacant openings (fresh debit). */
+  fromUserId: string | null;
   transactionType: TransactionType;
   notes?: string;
   notifyPreviousHolder?: boolean;
   /** Skip this user when picking bench #1 (e.g. the player releasing a spot). */
   excludeUserId?: string;
 }
+
+/**
+ * First bench entry that can actually be seated: not excluded, not already the
+ * target of a pending promotion approval, and not holding both a primary and a
+ * +1 already.
+ */
+export async function getSeatableBenchHead(
+  tx: Tx,
+  eventId: string,
+  opts: { excludeUserId?: string } = {}
+): Promise<WaitlistRow | null> {
+  const bench = await getUnifiedBench(tx, eventId);
+  const pendingRows = await tx
+    .select({ targetUserId: benchPromotionRequests.targetUserId })
+    .from(benchPromotionRequests)
+    .where(and(
+      eq(benchPromotionRequests.eventId, eventId),
+      eq(benchPromotionRequests.status, 'pending'),
+    ));
+  const pendingTargets = new Set(pendingRows.map((r) => r.targetUserId));
+
+  for (const entry of bench) {
+    if (opts.excludeUserId && entry.userId === opts.excludeUserId) continue;
+    if (pendingTargets.has(entry.userId)) continue;
+    const primary = await getPrimaryAttendeeInTx(tx, eventId, entry.userId);
+    const rider = await getRiderAttendeeInTx(tx, eventId, entry.userId);
+    if (primary && rider) continue; // already holds a full spot — unseatable
+    return entry;
+  }
+  return null;
+}
+
 export async function transferOpeningToUser(
   tx: Tx,
   event: EventRow,
@@ -112,6 +145,7 @@ export async function transferOpeningToUser(
       offeredAt: null,
       assignedBy: null,
       parentAttendeeId,
+      guestDisplayName: null,
     })
     .where(eq(eventAttendees.id, openingRow.id))
     .returning();
@@ -130,7 +164,7 @@ export async function transferOpeningToUser(
   const notifyPrevious =
     options.notifyPreviousHolder ?? options.transactionType === 'claim';
 
-  if (notifyPrevious && previousHolder !== toUserId) {
+  if (notifyPrevious && previousHolder && previousHolder !== toUserId) {
     await notifySpotChange(tx, {
       holderUserId: previousHolder,
       groupId: event.groupId,
@@ -149,6 +183,15 @@ export async function transferOpeningToUser(
       spotKind,
       transition: 'bench_promoted',
     });
+    // Bench→game promotions also email the player (drained after commit).
+    const { enqueueEmail } = await import('./emailOutbox');
+    await enqueueEmail(tx, {
+      userId: toUserId,
+      groupId: event.groupId,
+      eventId: event.id,
+      emailType: 'bench_promotion',
+      spotKind,
+    });
   }
 
   return updated;
@@ -161,7 +204,8 @@ export interface BenchAssignResult {
 }
 
 /**
- * Assign opening to bench #1 (never skip). Returns matched:false if bench empty.
+ * Assign opening to the first seatable bench entry. Returns matched:false if
+ * nobody on the bench can take the spot.
  */
 export async function assignOpeningToBenchHead(
   tx: Tx,
@@ -169,13 +213,9 @@ export async function assignOpeningToBenchHead(
   openingRow: AttendeeRow,
   options: TransferOptions
 ): Promise<BenchAssignResult> {
-  let bench = await getUnifiedBench(tx, event.id);
-  if (options.excludeUserId) {
-    bench = bench.filter((w) => w.userId !== options.excludeUserId);
-  }
-  if (bench.length === 0) return { matched: false };
+  const head = await getSeatableBenchHead(tx, event.id, { excludeUserId: options.excludeUserId });
+  if (!head) return { matched: false };
 
-  const head = bench[0];
   const attendee = await transferOpeningToUser(tx, event, openingRow, head.userId, options);
   await tx.delete(eventWaitlist).where(eq(eventWaitlist.id, head.id));
 

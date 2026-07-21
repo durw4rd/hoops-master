@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useLDClient } from "launchdarkly-react-client-sdk";
 import { getDeviceType, getBrowserName, getOrCreateSessionId } from "@/lib/utils";
+import { APP_VERSION } from "@/lib/appVersion";
 
 /**
  * Keeps the LaunchDarkly evaluation context in sync with auth state.
@@ -26,7 +27,8 @@ export default function LDIdentify() {
 
     const deviceType = getDeviceType();
     const browser = getBrowserName();
-    const sessionContext = { key: getOrCreateSessionId(), deviceType, browser };
+    const appVersion = APP_VERSION;
+    const sessionContext = { key: getOrCreateSessionId(), deviceType, browser, appVersion };
 
     if (email) {
       ldClient.identify({
@@ -38,6 +40,7 @@ export default function LDIdentify() {
           name: name || email,
           deviceType,
           browser,
+          appVersion,
         },
       });
     } else {

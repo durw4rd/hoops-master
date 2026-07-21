@@ -104,12 +104,37 @@ export async function getGroupTransactions(groupId: string) {
 }
 
 /**
+ * Net amount each user has been charged for one event: SUM(amount) as to_user
+ * minus SUM(amount) as from_user. The refund basis for append-only reversals —
+ * it automatically absorbs price adjustments, split settlements, and legacy
+ * rows regardless of their attendee linkage.
+ */
+export async function getNetChargedByUser(tx: Tx, eventId: string): Promise<Map<string, number>> {
+  const rows = await tx
+    .select({
+      fromUserId: spotTransactions.fromUserId,
+      toUserId: spotTransactions.toUserId,
+      amount: spotTransactions.amount,
+    })
+    .from(spotTransactions)
+    .where(eq(spotTransactions.eventId, eventId));
+  const net = new Map<string, number>();
+  for (const r of rows) {
+    const amount = Number(r.amount);
+    net.set(r.toUserId, (net.get(r.toUserId) ?? 0) + amount);
+    if (r.fromUserId) net.set(r.fromUserId, (net.get(r.fromUserId) ?? 0) - amount);
+  }
+  return net;
+}
+
+/**
  * Spot-ledger rows that affect `player_credit_balances` — debits (to_user) or
- * credits (from_user). Marketplace offer/retract rows use amount 0 and are
- * excluded; the subsequent claim (or a release/bench promote) records the move.
+ * credits (from_user), including negative compensating entries (refunds).
+ * Marketplace offer/retract rows use amount 0 and are excluded; the subsequent
+ * claim (or a release/bench promote) records the move.
  */
 export function transactionHasCreditMovement(amount: number): boolean {
-  return amount > 0;
+  return amount !== 0;
 }
 
 /** Rows shown in the Spot Ledger UI (credits + guest audit). */

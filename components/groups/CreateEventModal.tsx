@@ -350,7 +350,7 @@ export default function CreateEventModal({
   const renderSignupTiming = () => (
     <div className="space-y-3 border-t-2 border-asphalt/20 pt-3 mt-3">
       <Label className="font-graffiti text-asphalt">Signup Opens</Label>
-      <Select value={signupOpenType} onValueChange={(v) => setSignupOpenType(v as any)}>
+      <Select value={signupOpenType} onValueChange={(v) => setSignupOpenType(v as "immediate" | "relative" | "absolute")}>
         <SelectTrigger className="sketch-input">
           <SelectValue />
         </SelectTrigger>
