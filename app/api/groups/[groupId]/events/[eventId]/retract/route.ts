@@ -12,6 +12,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireMember } from '@/lib/apiGuards';
 import { getEventRowById, retractOffer } from '@/lib/queries/events';
 import { SpotError } from '@/lib/queries/_tx';
+import { spotMutationBlockedMessage } from '@/lib/eventRules';
+import { isCrewManager } from '@/lib/roles';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -28,10 +30,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
 
+    // Players cannot retract on past/cancelled/locked games; Capo/King may
+    // retract on past games to clean up rows stuck 'offered' after tip-off.
+    const isAdmin = isCrewManager(ctx.member.groupRole);
+    const blocked = spotMutationBlockedMessage(eventRow, { actorIsManager: isAdmin });
+    if (blocked) {
+      return NextResponse.json({ error: blocked }, { status: 400 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const attendeeId: string | undefined = body?.attendeeId;
 
-    const attendee = await retractOffer({ eventId, userId: ctx.user.id, attendeeId });
+    const attendee = await retractOffer({ eventId, userId: ctx.user.id, attendeeId, isAdmin });
     return NextResponse.json({
       success: true,
       message: 'Spot offer retracted',

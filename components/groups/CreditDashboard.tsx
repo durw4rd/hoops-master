@@ -1,8 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CreditBalance, GroupTransaction, PaymentRecord, TransactionType } from "@/lib/types";
 import { Loader2, Download, Euro, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface CreditDashboardProps {
   groupId: string;
@@ -88,6 +95,10 @@ export default function CreditDashboard({
   const [showPayForm, setShowPayForm] = useState(false);
   const [showPayments, setShowPayments] = useState(false);
   const [showTransactions, setShowTransactions] = useState(false);
+
+  // Spot Ledger filters (client-side — the full ledger is already loaded).
+  const [ledgerGameFilter, setLedgerGameFilter] = useState<string>("all");
+  const [ledgerPlayerFilter, setLedgerPlayerFilter] = useState<string>("all");
 
   const [selectedEmails, setSelectedEmails] = useState<string[]>([]);
   const [payAmount, setPayAmount] = useState("");
@@ -227,6 +238,34 @@ export default function CreditDashboard({
 
   const formatWhen = (iso: string) =>
     new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+  // Distinct games present in the loaded ledger, newest first.
+  const ledgerGameOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const t of transactions) {
+      if (!byId.has(t.eventId)) byId.set(t.eventId, t.eventStartsAt);
+    }
+    return [...byId.entries()].sort(
+      (a, b) => new Date(b[1]).getTime() - new Date(a[1]).getTime()
+    );
+  }, [transactions]);
+
+  const ledgerPlayerOptions = useMemo(
+    () =>
+      [...members].sort((a, b) =>
+        displayNameFor(a.userEmail, members).localeCompare(displayNameFor(b.userEmail, members))
+      ),
+    [members]
+  );
+
+  const filteredTransactions = transactions.filter(
+    (t) =>
+      (ledgerGameFilter === "all" || t.eventId === ledgerGameFilter) &&
+      (ledgerPlayerFilter === "all" ||
+        t.fromUserEmail === ledgerPlayerFilter ||
+        t.toUserEmail === ledgerPlayerFilter)
+  );
+  const ledgerFiltered = ledgerGameFilter !== "all" || ledgerPlayerFilter !== "all";
 
   return (
     <div className="space-y-4">
@@ -426,6 +465,50 @@ export default function CreditDashboard({
                 ) : transactions.length === 0 ? (
                   <p className="text-center text-asphalt/50 font-body py-4">No spot moves yet</p>
                 ) : (
+                  <>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <Select value={ledgerGameFilter} onValueChange={setLedgerGameFilter}>
+                      <SelectTrigger className="w-[180px] bg-white border-2 border-asphalt rounded-none font-body text-xs h-8 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
+                        <SelectValue placeholder="All games" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                        <SelectItem value="all" className="font-body">All games</SelectItem>
+                        {ledgerGameOptions.map(([eventId, startsAt]) => (
+                          <SelectItem key={eventId} value={eventId} className="font-body">
+                            {formatGameDate(startsAt)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={ledgerPlayerFilter} onValueChange={setLedgerPlayerFilter}>
+                      <SelectTrigger className="w-[160px] bg-white border-2 border-asphalt rounded-none font-body text-xs h-8 focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
+                        <SelectValue placeholder="All players" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-sticker-white border-2 border-asphalt rounded-none">
+                        <SelectItem value="all" className="font-body">All players</SelectItem>
+                        {ledgerPlayerOptions.map((m) => (
+                          <SelectItem key={m.userEmail} value={m.userEmail} className="font-body">
+                            {displayNameFor(m.userEmail, members)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="font-body text-xs text-asphalt/50">
+                      Showing {filteredTransactions.length} of {transactions.length} moves
+                    </span>
+                    {ledgerFiltered && (
+                      <button
+                        type="button"
+                        onClick={() => { setLedgerGameFilter("all"); setLedgerPlayerFilter("all"); }}
+                        className="font-graffiti text-xs text-terracotta hover:text-asphalt transition-colors"
+                      >
+                        CLEAR
+                      </button>
+                    )}
+                  </div>
+                  {filteredTransactions.length === 0 ? (
+                    <p className="text-center text-asphalt/50 font-body py-4">No moves match these filters</p>
+                  ) : (
                   <div className="overflow-x-auto max-h-64 overflow-y-auto">
                     <table className="w-full text-sm">
                       <thead>
@@ -439,7 +522,7 @@ export default function CreditDashboard({
                         </tr>
                       </thead>
                       <tbody>
-                        {transactions.map((t) => (
+                        {filteredTransactions.map((t) => (
                           <tr key={t.transactionId} className="border-b border-asphalt/10">
                             <td className="py-2 pr-2 font-body whitespace-nowrap text-xs">
                               {formatWhen(t.createdAt)}
@@ -464,6 +547,8 @@ export default function CreditDashboard({
                       </tbody>
                     </table>
                   </div>
+                  )}
+                  </>
                 )}
               </div>
             )}

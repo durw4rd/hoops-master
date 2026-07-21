@@ -48,7 +48,10 @@ export async function createCrew(): Promise<{ group: GroupRow; capo: UserRow }> 
 }
 
 export interface CreateEventOpts {
-  /** Hours from now until tip-off; <24 exercises the pending-approval branch. */
+  /**
+   * Hours from now until tip-off; <24 exercises the pending-approval branch,
+   * negative values create a game that has already been played.
+   */
   startsInHours?: number;
   totalSpots?: number;
   slotCost?: number;
@@ -97,6 +100,23 @@ export async function createScenario(opts: CreateEventOpts & { playerCount?: num
 export async function reloadEvent(eventId: string): Promise<EventRow> {
   const { eq } = await import('drizzle-orm');
   const [row] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+  if (!row) throw new Error(`event ${eventId} not found`);
+  return row;
+}
+
+/**
+ * Flip an event's tip-off into the past. Lets scenarios seed a roster/bench
+ * on an upcoming game (normal rules apply) and then test post-game behavior.
+ */
+export async function timeTravelEventToPast(eventId: string, hoursAgo = 2): Promise<EventRow> {
+  const { eq } = await import('drizzle-orm');
+  const startsAt = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
+  const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000);
+  const [row] = await db
+    .update(events)
+    .set({ startsAt, endsAt })
+    .where(eq(events.id, eventId))
+    .returning();
   if (!row) throw new Error(`event ${eventId} not found`);
   return row;
 }

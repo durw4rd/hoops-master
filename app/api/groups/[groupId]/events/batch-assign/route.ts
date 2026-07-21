@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireCrewManager } from '@/lib/apiGuards';
 import { getEventRowById, fillSpots } from '@/lib/queries/events';
 import { getActiveMembersWithUsers } from '@/lib/queries/groups';
+import { spotMutationBlockedMessage } from '@/lib/eventRules';
 
 interface RouteParams {
   params: Promise<{ groupId: string }>;
@@ -46,6 +47,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     for (const eventId of eventIds) {
       const eventRow = await getEventRowById(eventId);
       if (!eventRow || eventRow.groupId !== groupId) {
+        results[eventId] = { assigned: 0, skipped: toUserIds.length };
+        continue;
+      }
+      // Managers may backfill past games; cancelled + cost-finalized stay locked.
+      if (spotMutationBlockedMessage(eventRow, { actorIsManager: true })) {
         results[eventId] = { assigned: 0, skipped: toUserIds.length };
         continue;
       }

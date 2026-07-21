@@ -15,12 +15,23 @@ export function isSignupOpen(event: Pick<EventRow, 'signupOpensAt'>): boolean {
   return event.signupOpensAt.getTime() <= Date.now();
 }
 
-export function isSpotMutationBlocked(event: EventRow): boolean {
-  return isPastEvent(event) || event.status === 'cancelled' || isPricingLocked(event);
+export interface SpotMutationActor {
+  /**
+   * Capo/King acting on behalf: may edit past games retroactively (fix the
+   * record). Cancelled games and finalized pricing stay locked for everyone.
+   */
+  actorIsManager?: boolean;
 }
 
-export function spotMutationBlockedMessage(event: EventRow): string | null {
-  if (isPastEvent(event)) return 'Cannot modify spots for past events';
+export function isSpotMutationBlocked(event: EventRow, opts: SpotMutationActor = {}): boolean {
+  return spotMutationBlockedMessage(event, opts) !== null;
+}
+
+export function spotMutationBlockedMessage(
+  event: EventRow,
+  opts: SpotMutationActor = {}
+): string | null {
+  if (!opts.actorIsManager && isPastEvent(event)) return 'Cannot modify spots for past events';
   if (event.status === 'cancelled') return 'This game has been cancelled';
   if (isPricingLocked(event)) return 'Roster cost has been finalized — spot changes are locked';
   return null;

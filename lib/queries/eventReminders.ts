@@ -12,7 +12,7 @@ import { eventAttendees, events, groups, users } from '@/lib/db/schema';
 import { FORTY_EIGHT_HOURS_MS } from '@/lib/eventTiming';
 import { isEmailNotificationsEnabled, sendEmail } from '@/lib/email/send';
 import { gameReminderEmail } from '@/lib/email/templates';
-import { utcToZonedParts } from '@/lib/datetime';
+import { utcToZonedFriendlyParts } from '@/lib/datetime';
 
 export async function sendDueEventReminders(): Promise<{ events: number; emails: number }> {
   // Kill-switch off → don't claim anything; events still inside the 48h window
@@ -57,7 +57,7 @@ export async function sendDueEventReminders(): Promise<{ events: number; emails:
         recipients.add(a.email);
       }
 
-      const { date, time } = utcToZonedParts(event.startsAt, group.timezone);
+      const { date, time } = utcToZonedFriendlyParts(event.startsAt, group.timezone);
       const email = gameReminderEmail({
         crewName: group.name,
         eventName: event.name,

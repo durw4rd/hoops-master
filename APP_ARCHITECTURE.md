@@ -88,7 +88,7 @@ scripts/
 | `groups` | Crews | `invite_code` unique, `timezone` (IANA), `default_event_spots`, `default_slot_cost`, `default_pricing_mode` (`per_spot`/`split_total`), `default_total_cost`, `round_robin_slide`, `banner_url`, `banner_orientation` |
 | `group_members` | Crew membership | `group_role` (`admin`=Capo / `coleader`=King / `member`), `status`; unique `(group,user)` |
 | `events` | Games | `starts_at`/`ends_at`, `total_spots`, `slot_cost` (per-spot mode), `pricing_mode`, `total_cost` (split-total mode), `pricing_finalized_at`, `finalized_per_share`, `remainder_policy`, `effective_total_cost`, `reminder_sent_at` (48h email claim marker), plus `event_type`, `name`, `description`, `banner_*`, `assignment_mode`, `signup_opens_at`, `round_robin_offset`, `status` |
-| `event_attendees` | Spot holders | `user_id` (current holder, **nullable** — NULL + `status='open'` = held-open placeholder while a bench promotion approval is pending), `original_user_id`, `status` (`confirmed`/`offered`/`open`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot), `guest_display_name` (non-null = guest spot, no `users` row); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
+| `event_attendees` | Spot holders | `user_id` (current holder, **nullable** — NULL + `status='open'` = held-open placeholder while a bench promotion approval is pending), `original_user_id`, `status` (`confirmed`/`offered`/`open`), `parent_attendee_id` (self-FK, null = primary spot, non-null = Rider/+1 spot), `guest_display_name` (non-null = guest spot, no `users` row), `no_show_at`/`no_show_by` (post-tip-off no-show marker, record-keeping only); partial unique index `(event,user) WHERE parent_attendee_id IS NULL` — allows one primary + one Rider row per user per event |
 | `event_waitlist` | "The Bench" | FIFO by `joined_at`; unique `(event,user,for_rider)` |
 | `bench_promotion_requests` | Pending bench handoff | Any opening arising within 24h of `starts_at` requires the target's approval; unique pending row per `attendee_id` |
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
@@ -122,6 +122,11 @@ handler instead.
    and the target must approve. Bench exhausted → holder-funded spots become
    `offered` (free-for-all claimable); vacant openings dissolve into plain
    capacity. Capacity increases run `reconcileCapacityWithBench()`.
+   **Bench matching is skipped for past events** (`assignOpeningToBenchHeadOrPending`
+   returns matched:false first thing): an opening on a played game dissolves
+   into capacity slack (vacant) or sits `offered` (holder-funded) — never a
+   promotion or pending request. Note `isWithin24HoursOfEvent` is TRUE for past
+   dates, so this early-return must stay first.
 3. **24h approval flow:** decline removes the decliner from the bench and
    cascades to the next seatable player; when the bench runs dry the spot is
    marked open. While a `vacant` opening waits on approval it is held as a
@@ -146,6 +151,21 @@ handler instead.
    must have net charged = N × `getSpotChargeAmount(event)`; everyone else
    nets 0 (see `test/invariants.ts`). If your change breaks this, the change
    is wrong — not the invariant.
+8. **Actor-aware blocking:** `spotMutationBlockedMessage(event, { actorIsManager })`
+   (`lib/eventRules.ts`) skips the past-event check for Capo/King so they can
+   fix rosters retroactively; cancelled + finalized-pricing stay locked for
+   everyone. Routes accepting the manager bypass: reassign, unassign,
+   assign-guest, retract, batch-assign, and claim-rider's admin-assign path
+   only (an admin SELF-claiming on a past game is still blocked). Player
+   self-service routes (offer, release, claim, waitlist, drop-rider) stay
+   player-strict — the marketplace/bench is meaningless on played games.
+9. **On-behalf offer/retract:** `offerSpot`/`retractOffer` accept `isAdmin`;
+   the HOLDER (not the caller) is always the funding party, the excluded bench
+   user, and the from/to on audit rows.
+10. **No-show is record-keeping only** (`setAttendeeNoShow`): Capo/King, only
+    after tip-off, confirmed non-placeholder rows; sets
+    `event_attendees.no_show_at/no_show_by` and **never writes ledger rows** —
+    the player stays charged for the spot they burned.
 
 Notes for agents:
 - **Rider (+1) spots:** `parent_attendee_id` is non-null for +1 rows. A user may hold
@@ -297,18 +317,37 @@ API guards (`lib/apiGuards.ts`): `requireAuth`, `requireMember`,
 
 **LaunchDarkly** (`lib/launchdarkly.ts`): client SDK for UI; server evaluation via
 `@launchdarkly/vercel-server-sdk` + **`EDGE_CONFIG`** (synced by the
-[Vercel ↔ LaunchDarkly integration](docs/launchdarkly-vercel-setup.md)). Flags:
-`app-admins` (email list override for create-crew), `guest-spots` (guest assign API),
-`email-notifications` (boolean kill-switch for all outgoing email),
-`app-version-upgrade-banner` (boolean, client-side — reload banner via `appVersion`
-targeting rule). Without `EDGE_CONFIG`, server evaluation is off (fail-closed);
-DB roles still apply and emails stay off.
+[Vercel ↔ LaunchDarkly integration](docs/launchdarkly-vercel-setup.md)). LD is
+**additive and fail-closed** — it never grants authorization the DB doesn't, and
+without `EDGE_CONFIG` (or on any eval error) every server flag returns its
+default. See the flag inventory below.
 
 **LD client context** (`components/LaunchDarklyProvider.tsx` + `LDIdentify.tsx`):
 pre-login the app evaluates a single `session` context (key = persisted session id,
-plus `deviceType`/`browser`). On login, `LDIdentify` re-identifies to a `multi`
-context adding a `user` kind (key = email, with `email`/`name`/`deviceType`/`browser`).
-This is for targeting/analytics only — it does not grant authorization.
+plus `deviceType`/`browser`/`appVersion`). On login, `LDIdentify` re-identifies to a
+`multi` context adding a `user` kind (key = email, with `email`/`name`/`deviceType`/
+`browser`/`appVersion`). This is for targeting/analytics only — it does not grant
+authorization.
+
+## Feature flags
+
+All flags are consumed additively. **Server-side** flags are evaluated with
+`evalServerFlag(key, email, default)` (`lib/launchdarkly.ts`) using a
+`{ kind: 'user', key: email, email, appVersion }` context — so they are
+**per-user targetable** (rules on email/segment/percentage all work) — except
+`email-notifications`, which is a backend kill-switch evaluated with the fixed
+synthetic key `hoops-master-backend` (per-user rules do NOT apply to it; use the
+default/fallthrough). **Client-side** flags come from `useFlags()` (camelCased
+key) on the same email-keyed `user` context. All server flags are fail-closed:
+missing/unreachable LD → the default column below.
+
+| Flag key | Type | Side | Default (fail) | Targetable per user | Purpose |
+|---|---|---|---|---|---|
+| `app-admins` | string[] | server | `[]` | n/a (email list) | Email allowlist that grants app-admin (create crews, Black Book) on top of DB `global_role`. `isAppAdmin()`. |
+| `guest-spots` | bool | server + client | `false` (off) | yes | Enables assigning a spot to an outside-crew guest (credit-neutral). Server gate in `assign-guest`; client shows the "Guest (outside crew)" option. |
+| `player-spot-reassignment` | bool | server + client | `false` (off) | yes | Enables **player** self-service handover: the "Hand over spot/2nd spot" UI + the non-admin paths of `reassign` and `assign-guest`. Admin SWAP/ASSIGN is never gated by this. |
+| `email-notifications` | bool | server | `false` (off) | **no** (kill-switch) | Master on/off for ALL outgoing email; checked at dispatch time (`isEmailNotificationsEnabled()`). Outbox keeps enqueueing while off. |
+| `app-version-upgrade-banner` | bool | client | `false` (off) | yes | Shows the "reload to update" banner. Intended targeting rule: `appVersion` semVerLessThan the latest release → true. |
 
 ## Crew member management
 
@@ -345,7 +384,7 @@ Capo/King sections (Square Up, Payments, Spot Ledger) remain collapsible and laz
 |---|---|---|
 | Square Up | Capo/King | Payment form only (no prefetch) |
 | Payments | Capo/King | `GET .../payments` |
-| Spot Ledger | Capo/King | `GET .../transactions` (credit-moving rows only — excludes offer/retract audit entries) |
+| Spot Ledger | Capo/King | `GET .../transactions` (credit-moving rows only — excludes offer/retract audit entries). Client-side filters: by game and by player, with row count + clear |
 | Balances | All members | `GET .../credits` (loaded on tab mount) |
 
 CSV export buttons (Balances / Transactions / Payments) remain in the admin card header. Recording a payment refreshes balances and the payments list when those sections have already been loaded.
@@ -430,8 +469,11 @@ POST   /api/groups/[id]/events/bulk                 # recurring series
 POST   /api/groups/[id]/events/round-robin          # rotation series (+preview)
 POST   /api/groups/[id]/events/batch-assign         # batch assign
 POST   .../events/[eventId]/claim|offer|retract|release|reassign|unassign|waitlist
+                                                    # offer/retract: Capo/King may act on a player's behalf via attendeeId
+                                                    # reassign (non-admin) + assign-guest (non-admin): LD player-spot-reassignment
 DELETE .../events/[eventId]/waitlist              # leave bench (self) or remove player (Capo/King)
-POST   .../events/[eventId]/assign-guest            # guest spot (Capo/King; LD guest-spots)
+POST   .../events/[eventId]/no-show                 # mark/unmark no-show (Capo/King; after tip-off; no credit effect)
+POST   .../events/[eventId]/assign-guest            # guest spot (LD guest-spots; players also need player-spot-reassignment)
 POST   .../events/[eventId]/bench-promotion/[id]/approve|decline
 POST   .../events/[eventId]/claim-rider     # bring a +1 (Rider) into the game
 POST   .../events/[eventId]/drop-rider      # remove your Rider spot (refund)

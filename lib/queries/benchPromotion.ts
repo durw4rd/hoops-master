@@ -137,6 +137,15 @@ export async function assignOpeningToBenchHeadOrPending(
   openingRow: AttendeeRow,
   options: TransferOptions
 ): Promise<BenchAssignResult & { pendingApproval?: boolean }> {
+  // Past games never bench-match: the run already happened. Reporting
+  // matched:false makes handleSpotOpening dissolve vacant openings into
+  // capacity slack (and mark holder-funded ones offered) instead of minting
+  // promotions or pending approvals for a game nobody can join anymore.
+  // (isWithin24HoursOfEvent is also true for past dates — this must come first.)
+  if (event.startsAt.getTime() < Date.now()) {
+    return { matched: false };
+  }
+
   if (!isWithin24HoursOfEvent(event)) {
     return assignOpeningToBenchHead(tx, event, openingRow, options);
   }

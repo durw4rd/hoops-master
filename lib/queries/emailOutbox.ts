@@ -16,7 +16,7 @@ import { db } from '@/lib/db';
 import { emailOutbox, events, groups, users } from '@/lib/db/schema';
 import { isEmailNotificationsEnabled, sendEmail } from '@/lib/email/send';
 import { benchPromotionEmail, benchPromotionPendingEmail } from '@/lib/email/templates';
-import { utcToZonedParts } from '@/lib/datetime';
+import { utcToZonedFriendlyParts } from '@/lib/datetime';
 import type { Tx } from './_tx';
 
 export type OutboxEmailType = 'bench_promotion' | 'bench_promotion_pending';
@@ -74,7 +74,7 @@ export async function drainEmailOutbox(limit = 20): Promise<number> {
       const [group] = await db.select().from(groups).where(eq(groups.id, row.group_id)).limit(1);
       if (!group) continue;
 
-      const { date, time } = utcToZonedParts(event.startsAt, group.timezone);
+      const { date, time } = utcToZonedFriendlyParts(event.startsAt, group.timezone);
       const ctx = {
         crewName: group.name,
         eventName: event.name,

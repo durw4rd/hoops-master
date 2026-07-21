@@ -25,12 +25,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'Guest spots are not enabled' }, { status: 403 });
   }
 
+  const isAdmin = isCrewManager(ctx.member.groupRole);
+
+  // Player-initiated guest handover lives inside the "Hand over" UI, so it is
+  // additionally governed by the player-spot-reassignment flag (fail-closed).
+  if (!isAdmin) {
+    const handoverEnabled = await evalServerFlag('player-spot-reassignment', ctx.user.email, false);
+    if (!handoverEnabled) {
+      return NextResponse.json({ error: 'Spot handover is not enabled' }, { status: 403 });
+    }
+  }
+
   try {
     const eventRow = await getEventRowById(eventId);
     if (!eventRow || eventRow.groupId !== groupId) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-    const blocked = spotMutationBlockedMessage(eventRow);
+    const blocked = spotMutationBlockedMessage(eventRow, { actorIsManager: isAdmin });
     if (blocked) {
       return NextResponse.json({ error: blocked }, { status: 400 });
     }
@@ -41,8 +52,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!attendeeId || !guestName) {
       return NextResponse.json({ error: 'attendeeId and guestName are required' }, { status: 400 });
     }
-
-    const isAdmin = isCrewManager(ctx.member.groupRole);
     await assignSpotToGuest({
       eventId,
       attendeeId,

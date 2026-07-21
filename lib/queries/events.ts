@@ -218,6 +218,8 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
     assignedAt: a.assignedAt.toISOString(),
     parentAttendeeId: a.parentAttendeeId ?? null,
     isPlusOne: a.parentAttendeeId !== null,
+    noShow: a.noShowAt !== null,
+    noShowAt: a.noShowAt ? a.noShowAt.toISOString() : null,
   }));
 }
 
@@ -733,15 +735,18 @@ export async function claimSpot(params: {
 
 /**
  * Mark a spot as offered. Pass `attendeeId` to target a specific row (e.g. a
- * rider row). Without `attendeeId`, targets the caller's primary.
+ * rider row). Without `attendeeId`, targets the caller's primary. Capo/King
+ * can offer any player's spot on their behalf (`isAdmin`) — identical bench
+ * and credit semantics; the HOLDER keeps funding until someone takes over.
  *
- * Offering the primary is blocked while a rider row is still confirmed — the
- * rider must be offered or released first so both can be managed independently.
+ * Offering a primary is blocked while the holder's rider row is still
+ * confirmed — the rider must be offered or released first.
  */
 export async function offerSpot(params: {
   eventId: string;
   userId: string;
   attendeeId?: string;
+  isAdmin?: boolean;
 }): Promise<AttendeeRow> {
   return withEventLock(params.eventId, async (tx, event) => {
     let attendee: AttendeeRow | null;
@@ -754,32 +759,46 @@ export async function offerSpot(params: {
       attendee = row ?? null;
     } else {
       attendee = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
-
-      // Guard: cannot offer primary while rider row is still confirmed.
-      const rider = await getRiderAttendeeInTx(tx, params.eventId, params.userId);
-      if (rider && rider.status === 'confirmed') {
-        throw new SpotError('Offer or release your +1 first before offering your own spot', 400);
-      }
-
-      // Auto-cancel own bench entry when offering primary (leaving the event flow).
-      await removeUserFromBench(tx, params.eventId, params.userId);
     }
     if (!attendee) throw new SpotError('Spot not found', 404);
-    if (attendee.userId !== params.userId) throw new SpotError('Not your spot', 403);
+
+    const holderId = attendee.userId;
+    if (holderId === null) {
+      throw new SpotError('This spot is held for a pending bench promotion', 400);
+    }
+    if (!params.isAdmin && holderId !== params.userId) {
+      throw new SpotError('Not your spot', 403);
+    }
     if (attendee.status !== 'confirmed') throw new SpotError('Spot is not confirmed', 400);
     if (attendee.guestDisplayName?.trim()) {
       throw new SpotError('Clear the guest assignment before offering this spot', 400);
     }
 
+    // Guard: a primary cannot be offered while the holder's rider is still
+    // confirmed (row-based so the attendeeId path is covered too).
+    if (attendee.parentAttendeeId === null) {
+      const rider = await getRiderAttendeeInTx(tx, params.eventId, holderId);
+      if (rider && rider.status === 'confirmed') {
+        throw new SpotError('Offer or release the +1 first before offering the main spot', 400);
+      }
+      // Offering the primary means leaving the event flow — clear the
+      // holder's bench entries.
+      await removeUserFromBench(tx, params.eventId, holderId);
+    }
+
+    const onBehalf = !!params.isAdmin && holderId !== params.userId;
+    const isRiderRow = attendee.parentAttendeeId !== null;
     const result = await handleSpotOpening(tx, event, attendee, {
-      funding: { kind: 'holder_funded', fromUserId: params.userId },
+      funding: { kind: 'holder_funded', fromUserId: holderId },
       transactionType: 'claim',
-      notes: params.attendeeId ? 'Offered +1 auto-matched to bench' : 'Offered spot auto-matched to bench',
-      excludeUserId: params.userId,
+      notes: onBehalf
+        ? `Offered by admin — ${isRiderRow ? '+1 ' : ''}auto-matched to bench`
+        : isRiderRow ? 'Offered +1 auto-matched to bench' : 'Offered spot auto-matched to bench',
+      excludeUserId: holderId,
       notifyPreviousHolder: true,
     });
 
-    // 'pending_approval' keeps the spot confirmed with the offerer until the
+    // 'pending_approval' keeps the spot confirmed with the holder until the
     // invited bench player accepts; 'vacated' cannot happen (holder-funded).
     if (result.outcome === 'vacated') throw new SpotError('Spot not found', 404);
     return result.attendee;
@@ -789,11 +808,14 @@ export async function offerSpot(params: {
 /**
  * Retract an offered spot before anyone claims it.
  * Pass `attendeeId` to target a specific row (e.g. a rider row).
+ * Capo/King can retract on a player's behalf (`isAdmin`) — the zero-amount
+ * audit row stays on the HOLDER's line either way.
  */
 export async function retractOffer(params: {
   eventId: string;
   userId: string;
   attendeeId?: string;
+  isAdmin?: boolean;
 }): Promise<AttendeeRow> {
   return withEventLock(params.eventId, async (tx, event) => {
     let attendee: AttendeeRow | null;
@@ -808,8 +830,15 @@ export async function retractOffer(params: {
       attendee = await getPrimaryAttendeeInTx(tx, params.eventId, params.userId);
     }
     if (!attendee) throw new SpotError('Spot not found', 404);
-    if (attendee.userId !== params.userId) throw new SpotError('Not your spot', 403);
-    if (attendee.status !== 'offered') throw new SpotError('Your spot is not currently offered', 400);
+
+    const holderId = attendee.userId;
+    if (holderId === null) {
+      throw new SpotError('This spot is held for a pending bench promotion', 400);
+    }
+    if (!params.isAdmin && holderId !== params.userId) {
+      throw new SpotError('Not your spot', 403);
+    }
+    if (attendee.status !== 'offered') throw new SpotError('This spot is not currently offered', 400);
 
     const [updated] = await tx
       .update(eventAttendees)
@@ -817,15 +846,16 @@ export async function retractOffer(params: {
       .where(eq(eventAttendees.id, attendee.id))
       .returning();
 
+    const onBehalf = !!params.isAdmin && holderId !== params.userId;
     await recordTransaction(tx, {
       eventId: params.eventId,
       groupId: event.groupId,
       attendeeId: updated.id,
       type: 'retract',
-      fromUserId: params.userId,
-      toUserId: params.userId,
+      fromUserId: holderId,
+      toUserId: holderId,
       amount: 0,
-      notes: 'Retracted offered spot',
+      notes: onBehalf ? 'Offer retracted by admin' : 'Retracted offered spot',
     });
     return updated;
   });
@@ -1234,6 +1264,47 @@ export async function adminUnassignSpot(params: {
     }
 
     return { refunded: refund };
+  });
+}
+
+/**
+ * Toggle a no-show marker on a confirmed attendee row (Capo/King, after
+ * tip-off). Pure record-keeping: no ledger entry, no bench interaction, no
+ * credit effect — the holder stays charged for the spot they burned.
+ */
+export async function setAttendeeNoShow(params: {
+  eventId: string;
+  attendeeId: string;
+  noShow: boolean;
+  byUserId: string;
+}): Promise<AttendeeRow> {
+  return withEventLock(params.eventId, async (tx, event) => {
+    if (event.startsAt.getTime() > Date.now()) {
+      throw new SpotError('No-shows can only be marked after tip-off', 400);
+    }
+
+    const [attendee] = await tx
+      .select()
+      .from(eventAttendees)
+      .where(and(eq(eventAttendees.id, params.attendeeId), eq(eventAttendees.eventId, params.eventId)))
+      .limit(1);
+    if (!attendee) throw new SpotError('Spot not found for this game', 404);
+    if (attendee.userId === null) {
+      throw new SpotError('Cannot mark a held-open spot as a no-show', 400);
+    }
+    if (attendee.status !== 'confirmed') {
+      throw new SpotError('Only confirmed spots can be marked as no-show', 400);
+    }
+
+    const [updated] = await tx
+      .update(eventAttendees)
+      .set({
+        noShowAt: params.noShow ? new Date() : null,
+        noShowBy: params.noShow ? params.byUserId : null,
+      })
+      .where(eq(eventAttendees.id, attendee.id))
+      .returning();
+    return updated;
   });
 }
 

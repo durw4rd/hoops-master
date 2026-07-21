@@ -147,6 +147,8 @@ export interface EventAttendee {
   assignedAt: string;           // ISO timestamp when assigned
   parentAttendeeId: string | null; // null = primary spot; non-null = Rider row (FK to owner's primary)
   isPlusOne: boolean;              // convenience: parentAttendeeId !== null
+  noShow: boolean;                 // convenience: noShowAt !== null
+  noShowAt: string | null;         // ISO timestamp when marked a no-show
 }
 
 // 'open' = held-open placeholder (no holder) while a bench promotion approval is pending.

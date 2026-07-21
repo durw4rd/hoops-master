@@ -73,6 +73,9 @@ export async function assertBenchInvariant(eventId: string): Promise<void> {
   if (bench.length === 0) return;
 
   const [event] = await db.select().from(events).where(eq(events.id, eventId)).limit(1);
+  // Bench matching is skipped for past events — capacity slack next to an
+  // occupied bench is legal once the game has been played.
+  if (event.startsAt.getTime() < Date.now()) return;
   const attendeeRows = await db
     .select()
     .from(eventAttendees)

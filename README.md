@@ -98,6 +98,12 @@ Server APIs (`guest-spots`, `app-admins` on routes) need **`EDGE_CONFIG`**. Inst
 [Vercel LaunchDarkly integration](docs/launchdarkly-vercel-setup.md), then
 `npx vercel env pull .env.local` and `pnpm tsx scripts/verify-launchdarkly-server.ts`.
 
+The app uses five LaunchDarkly flags (`app-admins`, `guest-spots`,
+`player-spot-reassignment`, `email-notifications`, `app-version-upgrade-banner`)
+— all additive and fail-closed. See the flag inventory table in
+[`APP_ARCHITECTURE.md`](./APP_ARCHITECTURE.md#feature-flags) for types, defaults,
+and which are per-user targetable.
+
 ### Install & run
 
 ```bash

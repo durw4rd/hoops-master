@@ -59,6 +59,25 @@ interface ZonedParts {
 /**
  * Render an absolute instant into local date/time parts for `timeZone`.
  */
+/**
+ * Human-friendly local date/time parts for emails: date like "Wed Jul 22",
+ * time like "18:00".
+ */
+export function utcToZonedFriendlyParts(instant: Date, timeZone: string): ZonedParts {
+  const { time } = utcToZonedParts(instant, timeZone);
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  const map: Record<string, string> = {};
+  for (const p of dtf.formatToParts(instant)) {
+    if (p.type !== 'literal') map[p.type] = p.value;
+  }
+  return { date: `${map.weekday} ${map.month} ${map.day}`, time };
+}
+
 export function utcToZonedParts(instant: Date, timeZone: string): ZonedParts {
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone,

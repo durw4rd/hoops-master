@@ -1,6 +1,6 @@
 /**
  * Plain-HTML email templates. Dates/times are pre-formatted by the caller in
- * the crew's timezone (utcToZonedParts).
+ * the crew's timezone (utcToZonedFriendlyParts — e.g. "Wed Jul 22", "18:00").
  */
 
 export interface GameEmailContext {
@@ -14,7 +14,7 @@ export interface GameEmailContext {
 function gameLine(p: GameEmailContext): string {
   const title = p.eventName?.trim() ? `${p.eventName} — ` : '';
   const loc = p.location?.trim() ? ` @ ${p.location}` : '';
-  return `${title}${p.date} ${p.time}${loc}`;
+  return `${title}${p.date}, ${p.time}${loc}`;
 }
 
 function wrap(body: string): string {
@@ -29,7 +29,7 @@ function wrap(body: string): string {
 
 export function gameReminderEmail(p: GameEmailContext): { subject: string; html: string } {
   return {
-    subject: `Game in 2 days — ${p.crewName}, ${p.date} ${p.time}`,
+    subject: `Game in 2 days — ${p.crewName}, ${p.date}, ${p.time}`,
     html: wrap(`
       <h2 style="margin: 0 0 12px;">Ball in 2 days 🏀</h2>
       <p>You're in the run with <strong>${p.crewName}</strong>:</p>
@@ -45,8 +45,8 @@ export function benchPromotionEmail(
   const isPlusOne = p.spotKind === 'plus_one';
   return {
     subject: isPlusOne
-      ? `Your +1 is in — ${p.crewName}, ${p.date} ${p.time}`
-      : `You're in — ${p.crewName}, ${p.date} ${p.time}`,
+      ? `Your +1 is in — ${p.crewName}, ${p.date}, ${p.time}`
+      : `You're in — ${p.crewName}, ${p.date}, ${p.time}`,
     html: wrap(`
       <h2 style="margin: 0 0 12px;">${isPlusOne ? 'Your +1 is off the bench 🏀' : "You're off the bench 🏀"}</h2>
       <p>${isPlusOne ? 'Your +1 just got' : 'You just got'} promoted into the game with <strong>${p.crewName}</strong>:</p>
@@ -60,7 +60,7 @@ export function benchPromotionPendingEmail(
 ): { subject: string; html: string } {
   const spotLabel = p.spotKind === 'plus_one' ? 'A +1 spot' : 'A spot';
   return {
-    subject: `Spot waiting on you — ${p.crewName}, ${p.date} ${p.time}`,
+    subject: `Spot waiting on you — ${p.crewName}, ${p.date}, ${p.time}`,
     html: wrap(`
       <h2 style="margin: 0 0 12px;">Spot waiting on you ⏳</h2>
       <p>${spotLabel} opened up last-minute in the game with <strong>${p.crewName}</strong>:</p>

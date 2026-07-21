@@ -22,8 +22,16 @@ APP_ARCHITECTURE.md → "Spot lifecycle & credit invariants".
    `split_unsettle`) — never `DELETE` ledger rows.
 3. **A spot never sits open while a seatable player waits on the bench**
    (auto-match always; within 24h of tip-off via a pending approval request).
+   Bench matching is **skipped for past events** — openings on played games
+   dissolve into capacity slack or sit offered; no promotions or pending
+   requests are ever created after tip-off.
 4. **Admin- and player-initiated actions follow identical credit rules.**
-   Sole exception: guest assignment is credit-neutral.
+   Sole exception: guest assignment is credit-neutral. Capo/King may act on a
+   player's behalf (offer/retract/reassign) and edit past games
+   (`spotMutationBlockedMessage(event, { actorIsManager })`); the HOLDER is
+   always the funding party on audit/transfer rows.
+   **No-show is record-keeping only** (`setAttendeeNoShow`) — it never writes
+   ledger rows; the player stays charged.
 5. **Whoever lands a spot leaves the bench** (all fill paths call
    `removeUserFromBench`).
 6. **Emails are never sent inline inside DB transactions** — enqueue in

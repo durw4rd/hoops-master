@@ -154,6 +154,10 @@ export const eventAttendees = pgTable(
     parentAttendeeId: uuid('parent_attendee_id').references((): AnyPgColumn => eventAttendees.id),
     /** Non-crew placeholder name; when set, UI shows this instead of holder display name. */
     guestDisplayName: text('guest_display_name'),
+    // No-show marker (Capo/King, after tip-off). Record-keeping only — the
+    // holder stays charged; never touches the ledger or the bench.
+    noShowAt: timestamp('no_show_at', { withTimezone: true }),
+    noShowBy: uuid('no_show_by').references(() => users.id),
   },
   (t) => ({
     // Partial unique index: one primary spot per user per event.

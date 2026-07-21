@@ -41,6 +41,7 @@ import {
   ChevronDown,
   UserPlus,
   UserMinus,
+  UserX,
 } from "lucide-react";
 import { isCapo as isCapoRole, isCrewManager } from "@/lib/roles";
 import PlayerAvatar from "@/components/PlayerAvatar";
@@ -61,6 +62,7 @@ interface EventDetail {
   date: string;
   startTime: string;
   endTime: string;
+  startsAt: string;
   totalSpots: number;
   slotCost: number;
   pricingMode?: 'per_spot' | 'split_total';
@@ -135,6 +137,7 @@ export default function EventDetailModal({
 
   const flags = useFlags();
   const guestSpotsEnabled = flags?.guestSpots === true;
+  const playerReassignEnabled = flags?.playerSpotReassignment === true;
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -690,9 +693,14 @@ export default function EventDetailModal({
   const isPricingFinalized = !!event?.pricingFinalizedAt;
   const spotsLocked = isSplitPricing && isPricingFinalized;
   const canModifySpots = isSignupOpen && !spotsLocked;
+  // Players can only act on upcoming games; Capo/King may edit past games
+  // retroactively (cancelled + cost-finalized stay locked for everyone).
+  const isPastGame = !!event?.startsAt && new Date(event.startsAt).getTime() < Date.now();
+  const canPlayerModifySpots = canModifySpots && !isPastGame;
+  const canAdminEdit = canManage && !spotsLocked && event?.status !== 'cancelled';
   const splitPreview = event?.splitPreview ?? null;
   const canClaimOfferedSpot =
-    canModifySpots &&
+    canPlayerModifySpots &&
     !!earliestOffered &&
     (waitlist.length === 0 || isBenchHead);
   const wantsSecondSpot = isConfirmed && !myRiderAttendance;
@@ -890,7 +898,7 @@ export default function EventDetailModal({
                 )}
 
                 {/* Not attending → CLAIM SPOT */}
-                {!event.isAttending && availableSpots > 0 && canModifySpots && (
+                {!event.isAttending && availableSpots > 0 && canPlayerModifySpots && (
                   <button
                     onClick={() => handleClaim()}
                     disabled={actionLoading === 'claim'}
@@ -905,7 +913,7 @@ export default function EventDetailModal({
                 )}
 
                 {/* Not attending, event full → claim offered spot or join bench */}
-                {!event.isAttending && isFull && canModifySpots && !onBench && (
+                {!event.isAttending && isFull && canPlayerModifySpots && !onBench && (
                   canClaimOfferedSpot ? (
                     <button
                       onClick={() => handleClaim(earliestOffered!.attendeeId)}
@@ -934,7 +942,7 @@ export default function EventDetailModal({
                 )}
 
                 {/* On the bench */}
-                {onBench && (
+                {onBench && !isPastGame && (
                   <div className="space-y-1.5">
                     <div className="bg-slate-blue/10 border-2 border-slate-blue p-3 text-center font-graffiti text-slate-blue">
                       {onRiderBench
@@ -968,8 +976,8 @@ export default function EventDetailModal({
                   </div>
                 )}
 
-                {/* Attending, confirmed */}
-                {isConfirmed && (
+                {/* Attending, confirmed (self-service only for upcoming games) */}
+                {isConfirmed && !isPastGame && (
                   <div className="space-y-1.5">
 
                     {/* ── Rider controls ── */}
@@ -1015,7 +1023,7 @@ export default function EventDetailModal({
                           <><Undo2 className="w-4 h-4" /><span>RETRACT OFFER</span></>
                         )}
                       </button>
-                    ) : canModifySpots && !onBench ? (
+                    ) : canPlayerModifySpots && !onBench ? (
                       availableSpots > 0 ? (
                         <button
                           onClick={handleAddRider}
@@ -1087,7 +1095,8 @@ export default function EventDetailModal({
                       </button>
                     )}
 
-                    {riderIsConfirmed && myRiderAttendance ? (
+                    {/* Player self-handover is feature-flagged (player-spot-reassignment) */}
+                    {playerReassignEnabled && riderIsConfirmed && myRiderAttendance ? (
                       <div className="space-y-1.5">
                         <p className="text-xs text-asphalt/70 font-body">
                           Hand over your <span className="font-graffiti">2nd spot</span>
@@ -1122,7 +1131,7 @@ export default function EventDetailModal({
                           Hand over your main spot after you&apos;ve handed off your 2nd spot.
                         </p>
                       </div>
-                    ) : isConfirmed && myAttendance ? (
+                    ) : playerReassignEnabled && isConfirmed && myAttendance ? (
                       <div className="space-y-1.5">
                         <p className="text-xs text-asphalt/70 font-body">
                           Hand over your <span className="font-graffiti">spot</span>
@@ -1159,7 +1168,7 @@ export default function EventDetailModal({
                 )}
 
                 {/* Attending, offered → RETRACT OFFER */}
-                {isOffered && (
+                {isOffered && !isPastGame && (
                   <button
                     onClick={handleRetract}
                     disabled={actionLoading === 'retract'}
@@ -1224,10 +1233,15 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Manager: assign to open spot */}
-              {canManage && availableSpots > 0 && (
+              {/* Manager: assign to open spot (past games allowed — retroactive fixes) */}
+              {canAdminEdit && availableSpots > 0 && (
                 <div className="border-2 border-dashed border-asphalt/40 p-3 space-y-2">
                   <h3 className="font-graffiti text-sm text-asphalt">Assign a player</h3>
+                  {isPastGame && (
+                    <p className="text-[10px] text-asphalt/50 font-body">
+                      Editing a past game — roster and credit changes apply retroactively.
+                    </p>
+                  )}
                   <div className="flex gap-2">
                     <Select value={assignEmail} onValueChange={setAssignEmail}>
                       <SelectTrigger className="flex-1 bg-white border-2 border-asphalt rounded-none font-body text-sm focus:ring-0 focus:ring-offset-0 shadow-sticker-sm">
@@ -1252,8 +1266,8 @@ export default function EventDetailModal({
                 </div>
               )}
 
-              {/* Manager: Manage Squad */}
-              {canManage && allAttendees.length > 0 && (
+              {/* Manager: Manage Squad (past games allowed — retroactive fixes) */}
+              {canAdminEdit && allAttendees.length > 0 && (
                 <div className="border-2 border-dashed border-asphalt/40">
                   <button
                     type="button"
@@ -1269,6 +1283,11 @@ export default function EventDetailModal({
                   </button>
                   {manageSquadOpen && (
                     <div className="border-t-2 border-dashed border-asphalt/40 p-3 space-y-2">
+                      {isPastGame && (
+                        <p className="text-[10px] text-asphalt/50 font-body">
+                          Editing a past game — roster and credit changes apply retroactively.
+                        </p>
+                      )}
                       {/* Show primary attendees first, then riders grouped below their owner */}
                       {[...primaryAttendees, ...allAttendees.filter(a => a.isPlusOne)].map((attendee) => {
                         const busy =
@@ -1310,6 +1329,11 @@ export default function EventDetailModal({
                               {attendee.status === 'open' && (
                                 <span className="text-[10px] font-graffiti bg-slate-blue text-white px-1 py-0.5 leading-none shrink-0">
                                   ON HOLD
+                                </span>
+                              )}
+                              {attendee.noShow && (
+                                <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
+                                  NO-SHOW
                                 </span>
                               )}
                             </span>
@@ -1386,6 +1410,54 @@ export default function EventDetailModal({
                                   <Trash2 className="w-4 h-4" />
                                 )}
                               </button>
+                            </div>
+                            )}
+                            {attendee.status !== 'open' && (
+                            <div className="flex gap-2">
+                              {/* Mark the spot available on the player's behalf (upcoming games only) */}
+                              {attendee.status === 'confirmed' && !attendee.isGuestSpot && !isPastGame && (
+                                <button
+                                  onClick={() => runAction(`offer-${attendee.attendeeId}`, 'offer', 'POST', { attendeeId: attendee.attendeeId })}
+                                  disabled={!!actionLoading}
+                                  title="Mark this spot as available — goes to the bench first, else open for claims"
+                                  className="bg-dull-gold text-asphalt border-2 border-asphalt font-graffiti text-xs py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  {actionLoading === `offer-${attendee.attendeeId}` ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <><Hand className="w-3.5 h-3.5" /><span>OFFER</span></>
+                                  )}
+                                </button>
+                              )}
+                              {attendee.status === 'offered' && (
+                                <button
+                                  onClick={() => runAction(`retract-${attendee.attendeeId}`, 'retract', 'POST', { attendeeId: attendee.attendeeId })}
+                                  disabled={!!actionLoading}
+                                  title="Take the offer back — the spot returns to its holder"
+                                  className="bg-white text-asphalt border-2 border-asphalt font-graffiti text-xs py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center gap-1"
+                                >
+                                  {actionLoading === `retract-${attendee.attendeeId}` ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <><Undo2 className="w-3.5 h-3.5" /><span>RETRACT</span></>
+                                  )}
+                                </button>
+                              )}
+                              {/* No-show is record-keeping only; toggleable after tip-off */}
+                              {isPastGame && attendee.status === 'confirmed' && (
+                                <button
+                                  onClick={() => runAction(`no-show-${attendee.attendeeId}`, 'no-show', 'POST', { attendeeId: attendee.attendeeId, noShow: !attendee.noShow })}
+                                  disabled={!!actionLoading}
+                                  title={attendee.noShow ? 'Clear the no-show marker' : "Mark as no-show (they still pay for the spot)"}
+                                  className={`border-2 border-asphalt font-graffiti text-xs py-1 px-2.5 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 flex items-center gap-1 ${attendee.noShow ? 'bg-white text-asphalt' : 'bg-terracotta text-white'}`}
+                                >
+                                  {actionLoading === `no-show-${attendee.attendeeId}` ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <><UserX className="w-3.5 h-3.5" /><span>{attendee.noShow ? 'CLEAR NO-SHOW' : 'NO-SHOW'}</span></>
+                                  )}
+                                </button>
+                              )}
                             </div>
                             )}
                           </div>
@@ -1524,6 +1596,11 @@ export default function EventDetailModal({
                               {attendee.status === 'open' && (
                                 <span className="text-[10px] font-graffiti bg-slate-blue text-white px-1 py-0.5 leading-none shrink-0">
                                   ON HOLD
+                                </span>
+                              )}
+                              {attendee.noShow && (
+                                <span className="text-[10px] font-graffiti bg-terracotta text-white px-1 py-0.5 leading-none shrink-0">
+                                  NO-SHOW
                                 </span>
                               )}
                             </span>

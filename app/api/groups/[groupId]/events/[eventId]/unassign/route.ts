@@ -28,7 +28,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!eventRow || eventRow.groupId !== groupId) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-    const blocked = spotMutationBlockedMessage(eventRow);
+    // Route is Capo/King-only — past-game removals are allowed (refund applies
+    // retroactively); cancelled + cost-finalized games stay locked.
+    const blocked = spotMutationBlockedMessage(eventRow, { actorIsManager: true });
     if (blocked) {
       return NextResponse.json({ error: blocked }, { status: 400 });
     }

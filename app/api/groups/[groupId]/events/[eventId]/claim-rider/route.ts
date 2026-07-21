@@ -36,7 +36,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (eventRow.status === 'cancelled') {
       return NextResponse.json({ error: 'This event has been cancelled' }, { status: 400 });
     }
-    const blocked = spotMutationBlockedMessage(eventRow);
+    // Dual-mode route: only the admin-assign path (targetUserEmail set, caller
+    // is Capo/King) may edit past games — an admin SELF-claiming a rider on a
+    // played game is still blocked.
+    const isAdminAssign = !!targetUserEmail && isCrewManager(ctx.member.groupRole);
+    const blocked = spotMutationBlockedMessage(eventRow, { actorIsManager: isAdminAssign });
     if (blocked) {
       return NextResponse.json({ error: blocked }, { status: 400 });
     }

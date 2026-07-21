@@ -15,6 +15,7 @@ import { getActiveMembersWithUsers } from '@/lib/queries/groups';
 import { SpotError } from '@/lib/queries/_tx';
 import { spotMutationBlockedMessage } from '@/lib/eventRules';
 import { isCrewManager } from '@/lib/roles';
+import { evalServerFlag } from '@/lib/launchdarkly';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -30,9 +31,21 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!eventRow || eventRow.groupId !== groupId) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
-    const blocked = spotMutationBlockedMessage(eventRow);
+
+    // Crew Capo and King both wield manager powers over spots (and may fix
+    // past-game rosters retroactively).
+    const isAdmin = isCrewManager(ctx.member.groupRole);
+    const blocked = spotMutationBlockedMessage(eventRow, { actorIsManager: isAdmin });
     if (blocked) {
       return NextResponse.json({ error: blocked }, { status: 400 });
+    }
+
+    // Player self-handover is feature-flagged (fail-closed); admin swaps are not.
+    if (!isAdmin) {
+      const enabled = await evalServerFlag('player-spot-reassignment', ctx.user.email, false);
+      if (!enabled) {
+        return NextResponse.json({ error: 'Spot handover is not enabled' }, { status: 403 });
+      }
     }
 
     const body = await request.json();
@@ -52,8 +65,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Crew Capo and King both wield manager powers over spots.
-    const isAdmin = isCrewManager(ctx.member.groupRole);
     const fromUserId = fromUserEmail ? emailToId.get(String(fromUserEmail).toLowerCase()) : undefined;
 
     // Non-admins may only reassign their own spot (ownership verified in reassignSpot).

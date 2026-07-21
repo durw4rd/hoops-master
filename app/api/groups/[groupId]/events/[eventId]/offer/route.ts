@@ -16,6 +16,7 @@ import { requireMember } from '@/lib/apiGuards';
 import { getEventRowById, offerSpot } from '@/lib/queries/events';
 import { SpotError } from '@/lib/queries/_tx';
 import { spotMutationBlockedMessage } from '@/lib/eventRules';
+import { isCrewManager } from '@/lib/roles';
 
 interface RouteParams {
   params: Promise<{ groupId: string; eventId: string }>;
@@ -39,7 +40,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body = await request.json().catch(() => ({}));
     const attendeeId: string | undefined = body?.attendeeId;
 
-    const attendee = await offerSpot({ eventId, userId: ctx.user.id, attendeeId });
+    // Capo/King may offer any player's spot on their behalf (identical bench
+    // + credit semantics; the holder keeps funding until claimed). Offering
+    // stays blocked on past games for everyone — the marketplace is
+    // meaningless once the game has been played.
+    const isAdmin = isCrewManager(ctx.member.groupRole);
+    const attendee = await offerSpot({ eventId, userId: ctx.user.id, attendeeId, isAdmin });
     return NextResponse.json({
       success: true,
       message: 'Spot is now available for others to claim',
