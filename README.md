@@ -139,8 +139,10 @@ Ensure `NEXTAUTH_URL` matches your production domain
 shipping schema changes, then seed/role scripts as needed.
 
 For emails, set `RESEND_API_KEY`, `EMAIL_FROM`, and `CRON_SECRET` in Vercel — the
-48h-reminder cron in `vercel.json` activates on the next deploy (Hobby plan limits
-crons to once daily; trigger the same URL from an external scheduler if needed).
+reminder cron in `vercel.json` activates on the next deploy. It runs once daily
+(07:00 UTC): the Hobby plan rejects deploys with sub-daily cron schedules. For a
+tighter cadence, upgrade to Pro or hit the same URL from an external scheduler
+with the `Authorization: Bearer $CRON_SECRET` header — the route is idempotent.
 After each release, update the `app-version-upgrade-banner` flag's targeting rule
 (`appVersion` semVerLessThan the new version → true) so stale tabs get the
 reload banner.

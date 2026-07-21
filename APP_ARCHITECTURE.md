@@ -237,9 +237,13 @@ Notes for agents:
   **Do not send emails inline inside transactions.** New email types go through
   the outbox, not direct sends.
 - **48h game reminders** (`lib/queries/eventReminders.ts`): Vercel Cron hits
-  `GET /api/cron/event-reminders` every 15 min (`vercel.json`), guarded by
+  `GET /api/cron/event-reminders` once daily at 07:00 UTC (`vercel.json` —
+  the Hobby plan rejects deployments with sub-daily cron schedules; players
+  effectively get their reminder 1–2 days before tip-off). Guarded by
   `Authorization: Bearer $CRON_SECRET`. Idempotent: due events are claimed
-  atomically (`reminder_sent_at` set in the same UPDATE that selects them).
+  atomically (`reminder_sent_at` set in the same UPDATE that selects them), so
+  the schedule can be tightened (Pro plan or an external scheduler hitting the
+  same URL with the Bearer secret) without any code change.
   Recipients: distinct non-removed spot holders with `email_game_reminders=true`.
 - **Preferences**: `users.email_game_reminders` / `users.email_bench_promotions`
   (default true; both `bench_promotion` types share the latter). Edited via the
