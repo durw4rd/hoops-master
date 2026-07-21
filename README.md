@@ -33,9 +33,9 @@ subway-graffiti skin.
   toggles in profile settings. Gated behind the LD boolean flag
   `email-notifications` (fail-closed) — deploy first, flip the flag when your
   Resend domain is verified.
-- **Upgrade banner** — the LD boolean flag `app-version-upgrade-banner` (targeting
-  rule on the `appVersion` context attribute, e.g. semVerLessThan the latest
-  release) prompts users on stale bundles to reload; version shown in the footer.
+- **Upgrade banner** — tabs running an older bundle than the live deploy are
+  prompted to reload (compares build ids via `/api/version`, fully automatic);
+  version shown in the footer.
 - **Invite-only auth** — Google sign-in restricted to pre-invited/seeded emails,
   with a first-login username picker and an editable handle ("Your Tag").
 - **Player pieces** — upload your profile picture ("Your Piece", stored in Vercel
@@ -98,9 +98,9 @@ Server APIs (`guest-spots`, `app-admins` on routes) need **`EDGE_CONFIG`**. Inst
 [Vercel LaunchDarkly integration](docs/launchdarkly-vercel-setup.md), then
 `npx vercel env pull .env.local` and `pnpm tsx scripts/verify-launchdarkly-server.ts`.
 
-The app uses five LaunchDarkly flags (`app-admins`, `guest-spots`,
-`player-spot-reassignment`, `email-notifications`, `app-version-upgrade-banner`)
-— all additive and fail-closed. See the flag inventory table in
+The app uses four LaunchDarkly flags (`app-admins`, `guest-spots`,
+`player-spot-reassignment`, `email-notifications`) — all additive and
+fail-closed. See the flag inventory table in
 [`APP_ARCHITECTURE.md`](./APP_ARCHITECTURE.md#feature-flags) for types, defaults,
 and which are per-user targetable.
 
@@ -143,6 +143,9 @@ the Vercel project (connect a Neon store for `DATABASE_URL`, and a Blob store fo
 Ensure `NEXTAUTH_URL` matches your production domain
 (no trailing slash). Run `pnpm db:migrate` against production `DATABASE_URL` when
 shipping schema changes, then seed/role scripts as needed.
+
+Full email setup (Resend domain verification, DNS records, ImprovMX inbound) is in
+[`docs/email-setup.md`](docs/email-setup.md).
 
 For emails, set `RESEND_API_KEY`, `EMAIL_FROM`, and `CRON_SECRET` in Vercel — the
 reminder cron in `vercel.json` activates on the next deploy. It runs once daily

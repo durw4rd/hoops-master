@@ -52,7 +52,7 @@ components/
   OnboardingScreen.tsx     # First-login username picker
   LaunchDarklyProvider.tsx # Client LD init (session context) + mounts LDIdentify
   LDIdentify.tsx           # Syncs LD context with auth (session-only → session+user)
-  UpdateBanner.tsx         # "Reload to update" banner (LD flag app-version-upgrade-banner)
+  UpdateBanner.tsx         # "Reload to update" banner (polls /api/version, compares build id)
 lib/
   design-tokens.ts         # JS mirror of CSS palette (for non-Tailwind use)
   db/schema.ts             # Drizzle schema (source of truth for tables)
@@ -272,18 +272,26 @@ Notes for agents:
 
 ## App version & upgrade banner
 
-`lib/appVersion.ts` exports `APP_VERSION` (from `package.json`) — bundled at build
-time. It travels as: LD application metadata (client init), an `appVersion`
-attribute on every LD context (client `session`/`user` kinds and server contexts
-in `lib/launchdarkly.ts`), and a subtle `v{X.Y.Z}` label in the footer.
-`components/UpdateBanner.tsx` reads the LD **boolean flag
-`app-version-upgrade-banner`** and shows a dismissible "reload to update" banner
-whenever it evaluates true — all version logic lives in the flag's targeting
-rules, not in the app. Recommended rule: `appVersion` **semVerLessThan** the
-latest released version → serve `true`; default/fallthrough `false`.
-Release flow: bump `package.json` version → deploy → update the rule's version
-number in LD. Stale tabs (old `appVersion` in their context) match the rule and
-get the banner; freshly reloaded bundles don't.
+`lib/appVersion.ts` exports two identifiers:
+- `APP_VERSION` — human semver from `package.json`. Shown as `v{X.Y.Z}` in the
+  footer, sent as LD application metadata + the `appVersion` context attribute
+  (telemetry/targeting only), and bumped **only at releases** (see below).
+- `APP_BUILD_ID` — the Vercel git commit SHA (`dev` locally), stamped at build
+  by `next.config.mjs` (`NEXT_PUBLIC_APP_BUILD_ID` ← `VERCEL_GIT_COMMIT_SHA`).
+  Changes **every deploy**, even when semver doesn't.
+
+**Upgrade banner (fully automatic, no LaunchDarkly).** `GET /api/version` returns
+`{ version, buildId }` for the live deployment (force-dynamic, no-store).
+`components/UpdateBanner.tsx` polls it (mount, window focus, every 5 min) and
+compares `buildId` to its own baked-in `APP_BUILD_ID`; a mismatch means the tab
+is running an older bundle, so it shows the dismissible "reload to update"
+banner. No per-deploy action, no flag — any new deploy auto-invalidates old
+tabs. Locally both ids are `dev`, so the banner never shows.
+
+**Release process.** Bump the semver with `pnpm version {patch|minor|major}`
+(edits `package.json` + creates a `vX.Y.Z` git commit and tag), then
+`git push --follow-tags`. The footer version updates; the upgrade banner fires
+on its own from the new commit SHA regardless.
 
 ## Automated tests (`test/`)
 
@@ -347,7 +355,9 @@ missing/unreachable LD → the default column below.
 | `guest-spots` | bool | server + client | `false` (off) | yes | Enables assigning a spot to an outside-crew guest (credit-neutral). Server gate in `assign-guest`; client shows the "Guest (outside crew)" option. |
 | `player-spot-reassignment` | bool | server + client | `false` (off) | yes | Enables **player** self-service handover: the "Hand over spot/2nd spot" UI + the non-admin paths of `reassign` and `assign-guest`. Admin SWAP/ASSIGN is never gated by this. |
 | `email-notifications` | bool | server | `false` (off) | **no** (kill-switch) | Master on/off for ALL outgoing email; checked at dispatch time (`isEmailNotificationsEnabled()`). Outbox keeps enqueueing while off. |
-| `app-version-upgrade-banner` | bool | client | `false` (off) | yes | Shows the "reload to update" banner. Intended targeting rule: `appVersion` semVerLessThan the latest release → true. |
+
+The upgrade banner is **not** flag-controlled — it compares build ids against
+`/api/version` (see below).
 
 ## Crew member management
 
@@ -493,6 +503,7 @@ GET    /api/admin/users/removal-warnings            # pre-buff warnings (app-adm
 PATCH  /api/admin/role                              # change app role (app-admin)
 
 GET    /api/cron/event-reminders                    # 48h reminders + outbox sweep (Bearer CRON_SECRET; Vercel Cron)
+GET    /api/version                                  # { version, buildId } for the upgrade banner (public, uncached)
 ```
 
 ## Environment variables

@@ -1,23 +1,46 @@
 "use client";
 
-import { useState } from "react";
-import { useFlags } from "launchdarkly-react-client-sdk";
+import { useEffect, useState } from "react";
 import { RefreshCw, X } from "lucide-react";
-import { APP_VERSION } from "@/lib/appVersion";
+import { APP_BUILD_ID } from "@/lib/appVersion";
 
 /**
- * "New version available" banner, driven by the LaunchDarkly BOOLEAN flag
- * `app-version-upgrade-banner`. The running bundle's version travels on every
- * LD context as the `appVersion` attribute (see LDIdentify/LaunchDarklyProvider),
- * so the flag's targeting rule decides who is outdated — e.g.
- * `appVersion semVerLessThan <latest release>` → serve true; default off.
- * The app just renders the banner whenever the flag evaluates true.
+ * "New version available" banner — fully automatic, no LaunchDarkly.
+ * Polls /api/version (on mount, on window focus, every 5 min) and compares the
+ * live deployment's build id against this tab's baked-in APP_BUILD_ID. On a
+ * mismatch the tab is running an older bundle, so prompt a reload. In dev both
+ * ids are 'dev', so the banner never shows locally.
  */
 export default function UpdateBanner() {
-  const flags = useFlags();
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
-  const updateAvailable = flags?.appVersionUpgradeBanner === true;
+  useEffect(() => {
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const res = await fetch("/api/version", { cache: "no-store" });
+        if (!res.ok) return;
+        const { buildId } = await res.json();
+        if (!cancelled && buildId && APP_BUILD_ID && buildId !== APP_BUILD_ID) {
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // Offline / transient — ignore; we retry on focus + interval.
+      }
+    };
+
+    check();
+    const onFocus = () => check();
+    window.addEventListener("focus", onFocus);
+    const interval = setInterval(check, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+    };
+  }, []);
 
   if (!updateAvailable || dismissed) return null;
 
@@ -25,7 +48,7 @@ export default function UpdateBanner() {
     <div className="bg-dull-gold border-b-4 border-asphalt">
       <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
         <p className="font-graffiti text-sm text-asphalt">
-          Fresh drop: a new version is out — you&apos;re on v{APP_VERSION}.
+          Fresh drop: a new version is out — reload to catch up.
         </p>
         <div className="flex items-center gap-2 shrink-0">
           <button
