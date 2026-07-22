@@ -261,6 +261,11 @@ Notes for agents:
 - **Sending** (`lib/email/send.ts`): Resend wrapper; graceful no-op with a log line
   when `RESEND_API_KEY`/`EMAIL_FROM` are unset. Never throws — email failure must
   never break a spot mutation or cron run. Templates in `lib/email/templates.ts`.
+  To stay under Resend's **10 req/s** rate limit, both dispatch paths use
+  `sendBatchEmails()` — the **Batch API** (≤100 messages per HTTP request; entries
+  can each differ) rather than one request per recipient. All calls go through
+  `withResendRetry` (exponential backoff on 429 / 5xx). Prefer `sendBatchEmails`
+  for any multi-recipient send; `sendEmail` remains for one-offs.
 - **Bench promotion emails** (`bench_promotion`, `bench_promotion_pending`) use a
   **transactional outbox** (`email_outbox` table, `lib/queries/emailOutbox.ts`):
   rows are enqueued INSIDE the serializable spot-mutation transaction (in
@@ -280,6 +285,12 @@ Notes for agents:
   the schedule can be tightened (Pro plan or an external scheduler hitting the
   same URL with the Bearer secret) without any code change.
   Recipients: distinct non-removed spot holders with `email_game_reminders=true`.
+  Relative timing ("today"/"tomorrow"/"in N days") is computed **at send** per
+  game via `relativeDayLabel` in the crew timezone (not hardcoded). Entries are
+  consolidated by `buildReminderEmails` into **one email per player** listing all
+  their due games (soonest first, across crews); a player's primary + rider
+  collapse to a single game line with a `· +1` marker (never a second email).
+  The whole run goes out via one `sendBatchEmails` call (one HTTP request per 100).
 - **Preferences**: `users.email_game_reminders` / `users.email_bench_promotions`
   (default true; both `bench_promotion` types share the latter). Edited via the
   "Mail Drops" toggles in `ProfileSettingsModal` → `PATCH /api/user/profile`.

@@ -78,6 +78,29 @@ export function utcToZonedFriendlyParts(instant: Date, timeZone: string): ZonedP
   return { date: `${map.weekday} ${map.month} ${map.day}`, time };
 }
 
+/** Whole days between two crew-tz calendar dates (YYYY-MM-DD), b − a. */
+function calendarDayDiff(aDate: string, bDate: string): number {
+  const [ay, am, ad] = aDate.split('-').map(Number);
+  const [by, bm, bd] = bDate.split('-').map(Number);
+  const aUtc = Date.UTC(ay, am - 1, ad);
+  const bUtc = Date.UTC(by, bm - 1, bd);
+  return Math.round((bUtc - aUtc) / (24 * 60 * 60 * 1000));
+}
+
+/**
+ * Human-friendly relative day of `instant` vs `now`, in the crew timezone:
+ * "today" / "tomorrow" / "in N days". Compared by calendar date (not raw
+ * hours), so a game later the same local day reads "today". Past → "today".
+ */
+export function relativeDayLabel(instant: Date, now: Date, timeZone: string): string {
+  const nowDate = utcToZonedParts(now, timeZone).date;
+  const eventDate = utcToZonedParts(instant, timeZone).date;
+  const days = calendarDayDiff(nowDate, eventDate);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'tomorrow';
+  return `in ${days} days`;
+}
+
 export function utcToZonedParts(instant: Date, timeZone: string): ZonedParts {
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone,

@@ -14,7 +14,7 @@ import { sql } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { emailOutbox, events, groups, users } from '@/lib/db/schema';
-import { isEmailNotificationsEnabled, sendEmail } from '@/lib/email/send';
+import { isEmailNotificationsEnabled, sendBatchEmails, type OutgoingEmail } from '@/lib/email/send';
 import { benchPromotionEmail, benchPromotionPendingEmail } from '@/lib/email/templates';
 import { utcToZonedFriendlyParts } from '@/lib/datetime';
 import type { Tx } from './_tx';
@@ -54,7 +54,10 @@ export async function drainEmailOutbox(limit = 20): Promise<number> {
     RETURNING id, user_id, group_id, event_id, email_type, spot_kind
   `);
 
-  let sent = 0;
+  // Build the messages that still pass their send-time checks, then dispatch
+  // them in one Batch API request (≤100) instead of one HTTP call per row —
+  // keeps promotion bursts (cascades, capacity bumps) under Resend's rate limit.
+  const outgoing: OutgoingEmail[] = [];
   for (const raw of claimed.rows) {
     const row = raw as unknown as {
       user_id: string;
@@ -88,12 +91,13 @@ export async function drainEmailOutbox(limit = 20): Promise<number> {
           ? benchPromotionPendingEmail(ctx)
           : benchPromotionEmail(ctx);
 
-      const result = await sendEmail({ to: user.email, subject: email.subject, html: email.html });
-      if (result.sent) sent += 1;
+      outgoing.push({ to: user.email, subject: email.subject, html: email.html });
     } catch (err) {
       // Row already claimed — log and move on rather than failing the batch.
       console.error('[email] outbox row failed:', err);
     }
   }
+
+  const { sent } = await sendBatchEmails(outgoing);
   return sent;
 }
