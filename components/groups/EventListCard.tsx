@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Clock, MapPin, Users, ChevronRight } from "lucide-react";
+import { Clock, MapPin, Users, ChevronRight, Layers } from "lucide-react";
 import type { BannerOrientation, EventType } from "@/lib/types";
 
 export interface EventListCardData {
@@ -23,6 +23,8 @@ export interface EventListCardData {
   isAttending?: boolean;
   onWaitlist?: boolean;
   hasRider?: boolean;
+  /** Same-day scheduling clash for the viewing player: 0 none, 1 subtle, 2 rostered-in-both. */
+  sameDayTier?: 0 | 1 | 2;
 }
 
 interface EventListCardProps {
@@ -65,7 +67,20 @@ function EventDetails({ event }: { event: EventListCardData }) {
             </>
           )}
           {!event.isAttending && event.onWaitlist && (
-            <span className="badge-blue text-[10px]">ON THE BENCH</span>
+            <span className="badge-blue-outline text-[10px]">ON THE BENCH</span>
+          )}
+          {(event.sameDayTier ?? 0) > 0 && (
+            <span
+              title="You're booked in another game this day"
+              className={
+                event.sameDayTier === 2
+                  ? "inline-flex items-center gap-1 text-[10px] font-graffiti bg-dull-gold text-asphalt px-1.5 py-0.5 border-2 border-asphalt"
+                  : "inline-flex items-center gap-1 text-[10px] font-graffiti bg-sticker-white text-dull-gold px-1.5 py-0.5 border-2 border-dull-gold"
+              }
+            >
+              <Layers className="w-3 h-3" />
+              SAME DAY
+            </span>
           )}
         </div>
 

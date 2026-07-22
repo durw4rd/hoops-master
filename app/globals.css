@@ -311,6 +311,18 @@ body {
   font-size: 0.75rem;
 }
 
+/* Inverted slate-blue: the viewing player's own bench status, distinct from the
+   solid badge-blue crowd count. Matches the outlined bench block in the game
+   detail view. */
+.badge-blue-outline {
+  background: var(--sticker-white);
+  color: var(--slate-blue);
+  border: 2px solid var(--slate-blue);
+  font-family: var(--font-bangers), Impact, 'Arial Black', cursive;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+}
+
 .badge-purple {
   background: var(--purple-accent);
   color: white;

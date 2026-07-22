@@ -42,7 +42,7 @@ components/
     CrewMuralHero.tsx      # Crew banner hero (or default wall placeholder)
     GroupDashboard.tsx     # Crew tabs, mural, games, settings (sticky back + settings row)
     GroupList.tsx          # Poster-frame crew cards
-    EventListCard.tsx      # Game list cards — poster-frame for special/burner games, marker-card for regular
+    EventListCard.tsx      # Game list cards — poster-frame for special/burner games, marker-card for regular; per-card status badges + same-day clash chip (see UI cues below)
     ...                    # Modals, LineupEditor, CreditDashboard, BannerUploadField, etc.
   ui/GraffitiDialog.tsx    # Shared modal chrome for graffiti-styled dialogs
   Header.tsx               # Legacy header (superseded by LogoBanner + in-dashboard nav)
@@ -71,7 +71,8 @@ lib/
   session.ts               # getSessionUser() — id/email/globalRole from JWT
   launchdarkly.ts          # isAppAdmin() + server flag eval (fail-closed)
   roles.ts                 # Role labels + capability helpers (client + server)
-  appVersion.ts / version.ts  # APP_VERSION (from package.json) + semver compare
+  appVersion.ts            # APP_VERSION (package.json semver) + APP_BUILD_ID (deploy SHA)
+  sameDayClash.ts          # per-player same-day multi-game tier (game-list chip)
   datetime.ts / eventTiming.ts / eventRules.ts  # timezone + signup/24h/48h-window logic
 test/                      # Vitest suite on embedded Postgres (see Automated tests)
 scripts/
@@ -79,6 +80,20 @@ scripts/
   setRole.ts               # Set a user's global role (owner|admin|user)
   audit-unassign-credits.ts # Read-only credit/ledger consistency audit (prod)
 ```
+
+### Game-list UI cues (`EventListCard.tsx`)
+
+Per-card badges are colour-coded by meaning:
+- **`YOU'RE IN`** (solid moss-green) — you hold a spot; **`+1`** dull-gold chip if you also brought a rider.
+- **Bench** (slate-blue family, two treatments to disambiguate): **`ON THE BENCH`**
+  *outlined* (`badge-blue-outline`) = *your own* bench status; **`N ON THE BENCH`**
+  *solid* (`badge-blue`) = crowd count on a full game. Outlined = you, solid = the crowd.
+- **`SAME DAY`** dull-gold chip (`Layers` icon) — you're involved in 2+ games the same
+  crew-timezone day (`lib/sameDayClash.ts`). Two tiers: *outlined* (tier 1 — rostered in
+  one + benched in another, or benched in both) and *solid fill* (tier 2 — rostered in
+  both+). Dull-gold is deliberately distinct from the green/blue status accents so it
+  reads as a scheduling signal, not a spot-status one.
+- Left border accent: moss-green (attending) / slate-blue (benched), unchanged.
 
 ## Data model (`lib/db/schema.ts`)
 

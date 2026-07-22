@@ -1,7 +1,7 @@
 "use client";
 
 import type { Session } from "next-auth";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Group, Event, UserProfile } from "@/lib/types";
 import { 
   Calendar, 
@@ -20,6 +20,7 @@ import {
   UserPlus,
   History,
 } from "lucide-react";
+import { sameDayTierByEvent } from "@/lib/sameDayClash";
 import CreateEventModal from "./CreateEventModal";
 import EventDetailModal from "./EventDetailModal";
 import EventListCard from "./EventListCard";
@@ -162,6 +163,10 @@ export default function GroupDashboard({
   const visibleEvents = (gameFilter === 'mine' ? events.filter((e) => e.isAttending || e.onWaitlist) : events)
     .slice()
     .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+
+  // Same-day scheduling clashes for the viewing player (computed over all loaded
+  // events so the tier is stable regardless of the mine/past filters).
+  const sameDayTiers = useMemo(() => sameDayTierByEvent(events), [events]);
 
   // Fetch events
   const fetchEvents = useCallback(async () => {
@@ -533,7 +538,7 @@ export default function GroupDashboard({
                 {visibleEvents.map((event, index) => (
                   <EventListCard
                     key={event.eventId}
-                    event={event}
+                    event={{ ...event, sameDayTier: sameDayTiers.get(event.eventId) ?? 0 }}
                     index={index}
                     onClick={() => setSelectedEventId(event.eventId)}
                   />
