@@ -265,7 +265,9 @@ Notes for agents:
   `sendBatchEmails()` — the **Batch API** (≤100 messages per HTTP request; entries
   can each differ) rather than one request per recipient. All calls go through
   `withResendRetry` (exponential backoff on 429 / 5xx). Prefer `sendBatchEmails`
-  for any multi-recipient send; `sendEmail` remains for one-offs.
+  for any multi-recipient send; `sendEmail` remains for one-offs. When
+  `EMAIL_REPLY_TO` is set, both paths attach it as Reply-To so player replies
+  reach a monitored inbox (the from-address is unmonitored); omitted if unset.
 - **Bench promotion emails** (`bench_promotion`, `bench_promotion_pending`) use a
   **transactional outbox** (`email_outbox` table, `lib/queries/emailOutbox.ts`):
   rows are enqueued INSIDE the serializable spot-mutation transaction (in
@@ -548,6 +550,7 @@ NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID=
 # Email (optional locally — sending no-ops without these)
 RESEND_API_KEY=           # Resend API key
 EMAIL_FROM=               # verified sender, e.g. "Hoops Master <notifications@domain.com>"
+EMAIL_REPLY_TO=           # optional Reply-To (real inbox for player replies); omitted if unset
 CRON_SECRET=              # Bearer secret for /api/cron/event-reminders (Vercel Cron sends it)
 ```
 

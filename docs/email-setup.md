@@ -38,6 +38,7 @@ Set locally in `.env.local` and in the Vercel project (all three), then redeploy
 ```bash
 RESEND_API_KEY=re_xxx                                        # Resend → API Keys
 EMAIL_FROM="Hoops Master <hoopsmaster@mail.michalfasanek.cz>" # in Vercel: paste WITHOUT quotes
+EMAIL_REPLY_TO=misa.fasa+hoopsmaster@gmail.com               # optional; where player replies land (from-address is unmonitored)
 CRON_SECRET=xxxxxxxx                                          # openssl rand -hex 32 — same literal value both places
 ```
 

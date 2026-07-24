@@ -72,17 +72,24 @@ async function withResendRetry(fn: ResendCall, attempts = 3): Promise<boolean> {
   return false;
 }
 
+/** Optional Reply-To so player replies reach a real inbox (from-address is unmonitored). */
+function replyToOrUndefined(): string | undefined {
+  return process.env.EMAIL_REPLY_TO || undefined;
+}
+
 export async function sendEmail(params: OutgoingEmail): Promise<{ sent: boolean }> {
   if (!isEmailEnabled()) {
     console.log(`[email] disabled — skipping "${params.subject}" to ${params.to}`);
     return { sent: false };
   }
+  const replyTo = replyToOrUndefined();
   const sent = await withResendRetry(() =>
     getClient().emails.send({
       from: process.env.EMAIL_FROM!,
       to: params.to,
       subject: params.subject,
       html: params.html,
+      ...(replyTo ? { replyTo } : {}),
     })
   );
   return { sent };
@@ -103,12 +110,19 @@ export async function sendBatchEmails(emails: OutgoingEmail[]): Promise<{ sent: 
     return { sent: 0 };
   }
   const from = process.env.EMAIL_FROM!;
+  const replyTo = replyToOrUndefined();
   let sent = 0;
   for (let i = 0; i < emails.length; i += BATCH_MAX) {
     const chunk = emails.slice(i, i + BATCH_MAX);
     const ok = await withResendRetry(() =>
       getClient().batch.send(
-        chunk.map((e) => ({ from, to: e.to, subject: e.subject, html: e.html }))
+        chunk.map((e) => ({
+          from,
+          to: e.to,
+          subject: e.subject,
+          html: e.html,
+          ...(replyTo ? { replyTo } : {}),
+        }))
       )
     );
     if (ok) sent += chunk.length;
