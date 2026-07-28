@@ -211,6 +211,9 @@ export async function getEventAttendees(eventId: string): Promise<EventAttendee[
     userName: a.guestDisplayName?.trim() || holderName || 'Held for bench decision',
     guestDisplayName: a.guestDisplayName ?? null,
     isGuestSpot: !!a.guestDisplayName?.trim(),
+    // The funding holder behind a guest spot (userId stays the holder), so the
+    // UI can show "Guest (Host)". Null for non-guest rows.
+    hostName: a.guestDisplayName?.trim() ? holderName ?? null : null,
     originalUserEmail: originalEmail ?? '',
     status: a.status as AttendeeStatus,
     offeredAt: a.offeredAt ? a.offeredAt.toISOString() : null,

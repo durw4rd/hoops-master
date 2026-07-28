@@ -105,6 +105,20 @@ interface EventDetail {
 }
 
 const GUEST_ASSIGN_VALUE = '__guest__';
+/** Shared graffiti avatar for all guest spots (see public/). */
+const GUEST_PIECE_URL = '/guest-piece.webp';
+
+/** Label a spot holder, folding in a guest's host and the +1 suffix. */
+function attendeeDisplayName(a: {
+  userName: string;
+  isPlusOne: boolean;
+  isGuestSpot: boolean;
+  hostName: string | null;
+}): string {
+  const base =
+    a.isGuestSpot && a.hostName ? `${a.userName} (${a.hostName})` : a.userName;
+  return a.isPlusOne ? `${base}'s +1` : base;
+}
 
 export default function EventDetailModal({
   open,
@@ -1294,9 +1308,7 @@ export default function EventDetailModal({
                           actionLoading === `reassign-${attendee.attendeeId}` ||
                           actionLoading === `unassign-${attendee.attendeeId}`;
                         const isRiderRow = attendee.isPlusOne;
-                        const displayName = isRiderRow
-                          ? `${attendee.userName}'s +1`
-                          : attendee.userName;
+                        const displayName = attendeeDisplayName(attendee);
 
                         const hasRiderAlready = isRiderRow
                           ? false
@@ -1556,9 +1568,7 @@ export default function EventDetailModal({
                     <div className="grid grid-cols-2 gap-2">
                       {displayList.map((attendee, index) => {
                         const isMe = attendee.userEmail.toLowerCase() === userEmail.toLowerCase();
-                        const displayName = attendee.isPlusOne
-                          ? `${attendee.userName}'s +1`
-                          : attendee.userName;
+                        const displayName = attendeeDisplayName(attendee);
                         return (
                           <div
                             key={attendee.attendeeId}
@@ -1580,9 +1590,11 @@ export default function EventDetailModal({
                               )}
                               {!attendee.isPlusOne && !attendee.isGuestSpot && renderRoleIcon(attendee.userEmail)}
                               {!attendee.isPlusOne && attendee.isGuestSpot && (
-                                <span className="h-6 w-6 shrink-0 rounded-full border-2 border-asphalt bg-asphalt/10 flex items-center justify-center text-[10px] font-graffiti">
-                                  G
-                                </span>
+                                <PlayerAvatar
+                                  pieceUrl={GUEST_PIECE_URL}
+                                  name={attendee.userName}
+                                  className="h-6 w-6 shrink-0"
+                                />
                               )}
                               <span className="truncate">{displayName}</span>
                               {isMe && !attendee.isPlusOne && (

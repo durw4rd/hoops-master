@@ -149,6 +149,7 @@ export interface EventAttendee {
   isPlusOne: boolean;              // convenience: parentAttendeeId !== null
   noShow: boolean;                 // convenience: noShowAt !== null
   noShowAt: string | null;         // ISO timestamp when marked a no-show
+  hostName: string | null;         // for guest spots: the funding player's display name
 }
 
 // 'open' = held-open placeholder (no holder) while a bench promotion approval is pending.

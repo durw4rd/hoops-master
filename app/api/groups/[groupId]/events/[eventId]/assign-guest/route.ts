@@ -20,7 +20,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const ctx = await requireMember(groupId);
   if (ctx instanceof NextResponse) return ctx;
 
-  const enabled = await evalServerFlag('guest-spots', ctx.user.email, false);
+  const roleAttrs = { crewRole: ctx.member.groupRole, appRole: ctx.user.globalRole };
+
+  const enabled = await evalServerFlag('guest-spots', ctx.user.email, false, roleAttrs);
   if (!enabled) {
     return NextResponse.json({ error: 'Guest spots are not enabled' }, { status: 403 });
   }
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   // Player-initiated guest handover lives inside the "Hand over" UI, so it is
   // additionally governed by the player-spot-reassignment flag (fail-closed).
   if (!isAdmin) {
-    const handoverEnabled = await evalServerFlag('player-spot-reassignment', ctx.user.email, false);
+    const handoverEnabled = await evalServerFlag('player-spot-reassignment', ctx.user.email, false, roleAttrs);
     if (!handoverEnabled) {
       return NextResponse.json({ error: 'Spot handover is not enabled' }, { status: 403 });
     }

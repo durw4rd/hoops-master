@@ -111,14 +111,17 @@ export function getLaunchDarklyServerConfigStatus(): {
 export async function evalServerFlag<T>(
   flagKey: string,
   email: string,
-  defaultValue: T
+  defaultValue: T,
+  attrs?: Record<string, string>
 ): Promise<T> {
   const client = getClient();
   if (!client) return defaultValue;
 
   try {
     await client.waitForInitialization();
-    const context = { kind: 'user', key: email, email, appVersion: APP_VERSION } as const;
+    // Optional role attributes (crewRole/appRole) let flags target by role.
+    // They inform targeting only — authorization stays DB-authoritative in code.
+    const context = { kind: 'user', key: email, email, appVersion: APP_VERSION, ...attrs } as const;
     return (await client.variation(flagKey, context, defaultValue as never)) as T;
   } catch (err) {
     console.warn(`[launchdarkly] flag ${flagKey} eval failed:`, err);

@@ -1,8 +1,10 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useFlags } from "launchdarkly-react-client-sdk";
+import { useFlags, useLDClient } from "launchdarkly-react-client-sdk";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { buildLdContext } from "@/lib/ldContext";
+import { getDeviceType, getBrowserName, getOrCreateSessionId } from "@/lib/utils";
 import AppShell from "@/components/AppShell";
 import LogoBanner from "@/components/LogoBanner";
 import GroupList from "@/components/groups/GroupList";
@@ -50,6 +52,7 @@ const logoBannerProps = (
 export default function HoopsMaster() {
   const { data: session, status } = useSession();
   const flags = useFlags();
+  const ldClient = useLDClient();
   const appAdmins: string[] = Array.isArray(flags?.appAdmins) ? flags.appAdmins : [];
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -147,6 +150,27 @@ export default function HoopsMaster() {
       // ignore
     }
   }, [selectedGroup]);
+
+  // Enrich the LD user context with the viewing player's role in the open crew
+  // (LDIdentify sets the base context + global appRole; this adds crewRole so
+  // flags can target Capos/Kings). Targeting only — authz stays server-side.
+  useEffect(() => {
+    if (!ldClient || !session?.user?.email) return;
+    const crewRole = selectedGroup
+      ? userProfile?.groups.find((g) => g.groupId === selectedGroup.groupId)?.groupRole ?? "none"
+      : "none";
+    ldClient.identify(
+      buildLdContext({
+        sessionId: getOrCreateSessionId(),
+        deviceType: getDeviceType(),
+        browser: getBrowserName(),
+        email: session.user.email,
+        name: session.user.name,
+        appRole: session.user.globalRole,
+        crewRole,
+      })
+    );
+  }, [ldClient, session?.user?.email, session?.user?.name, session?.user?.globalRole, selectedGroup, userProfile]);
 
   const handleGroupCreated = (newGroup: Group) => {
     setGroups((prev) => [...prev, newGroup]);
