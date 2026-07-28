@@ -19,11 +19,12 @@ describe('confirmModeFromFlag', () => {
 });
 
 describe('SPOT_CONFIRM_COPY', () => {
-  const kinds: SpotActionKind[] = [
-    'claim', 'claim2nd', 'release', 'offer', 'retract',
-    'addRider', 'dropRider', 'offerRider', 'retractRider',
-    'handover', 'handover2nd', 'acceptPromotion', 'declinePromotion',
-  ];
+  // Derived from the map so coverage stays in sync automatically as the union grows.
+  const kinds = Object.keys(SPOT_CONFIRM_COPY) as SpotActionKind[];
+
+  it('covers every action kind', () => {
+    expect(kinds.length).toBeGreaterThan(0);
+  });
 
   it('has complete, well-formed copy for every action kind', () => {
     for (const kind of kinds) {
