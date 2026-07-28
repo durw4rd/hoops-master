@@ -397,6 +397,7 @@ missing/unreachable LD → the default column below.
 | `guest-spots` | bool | server + client | `false` (off) | yes | Enables assigning a spot to an outside-crew guest (credit-neutral). Server gate in `assign-guest`; client shows the "Guest (outside crew)" option. |
 | `player-spot-reassignment` | bool | server + client | `false` (off) | yes | Enables **player** self-service handover: the "Hand over spot/2nd spot" UI + the non-admin paths of `reassign` and `assign-guest`. Admin SWAP/ASSIGN is never gated by this. |
 | `email-notifications` | bool | server | `false` (off) | **no** (kill-switch) | Master on/off for ALL outgoing email; checked at dispatch time (`isEmailNotificationsEnabled()`). Outbox keeps enqueueing while off. |
+| `spot-confirmation` | string (`disabled`/`single`/`double`) | client | `disabled` | yes | Mis-click guard for **player** roster actions (claim/release/offer/retract/+1/hand-over/accept-decline). `single` = one confirm modal, `double` = a second "really, really sure?". Pure UX (`lib/spotConfirm.ts` + `useConfirmGate`); no server enforcement — the API still authorizes/validates every action. Bench join/leave + admin Manage-Squad actions are not gated. |
 
 The upgrade banner is **not** flag-controlled — it compares build ids against
 `/api/version` (see below).
