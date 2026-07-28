@@ -20,6 +20,8 @@ import {
 import Image from "next/image";
 import EditEventModal from "./EditEventModal";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { useConfirmGate } from "@/components/ui/useConfirmGate";
+import { confirmModeFromFlag } from "@/lib/spotConfirm";
 import { GraffitiDialog } from "@/components/ui/GraffitiDialog";
 import type { BannerOrientation, EventType, RemainderPolicy } from "@/lib/types";
 import { 
@@ -105,6 +107,20 @@ interface EventDetail {
 }
 
 const GUEST_ASSIGN_VALUE = '__guest__';
+/** Shared graffiti avatar for all guest spots (see public/). */
+const GUEST_PIECE_URL = '/guest-piece.webp';
+
+/** Label a spot holder, folding in a guest's host and the +1 suffix. */
+function attendeeDisplayName(a: {
+  userName: string;
+  isPlusOne: boolean;
+  isGuestSpot: boolean;
+  hostName: string | null;
+}): string {
+  const base =
+    a.isGuestSpot && a.hostName ? `${a.userName} (${a.hostName})` : a.userName;
+  return a.isPlusOne ? `${base}'s +1` : base;
+}
 
 export default function EventDetailModal({
   open,
@@ -138,6 +154,8 @@ export default function EventDetailModal({
   const flags = useFlags();
   const guestSpotsEnabled = flags?.guestSpots === true;
   const playerReassignEnabled = flags?.playerSpotReassignment === true;
+  // Mis-click guard for player spot actions (disabled | single | double).
+  const spotConfirm = useConfirmGate(confirmModeFromFlag(flags?.spotConfirmation));
 
   const fetchEvent = useCallback(async () => {
     setLoading(true);
@@ -857,7 +875,7 @@ export default function EventDetailModal({
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={handleApprovePromotion}
+                        onClick={() => spotConfirm.request('acceptPromotion', handleApprovePromotion)}
                         disabled={
                           actionLoading === 'approve-promotion' ||
                           actionLoading === 'decline-promotion'
@@ -872,7 +890,7 @@ export default function EventDetailModal({
                       </button>
                       <button
                         type="button"
-                        onClick={handleDeclinePromotion}
+                        onClick={() => spotConfirm.request('declinePromotion', handleDeclinePromotion)}
                         disabled={
                           actionLoading === 'approve-promotion' ||
                           actionLoading === 'decline-promotion'
@@ -900,7 +918,7 @@ export default function EventDetailModal({
                 {/* Not attending → CLAIM SPOT */}
                 {!event.isAttending && availableSpots > 0 && canPlayerModifySpots && (
                   <button
-                    onClick={() => handleClaim()}
+                    onClick={() => spotConfirm.request('claim', () => handleClaim())}
                     disabled={actionLoading === 'claim'}
                     className="w-full bg-moss-green text-asphalt border-4 border-asphalt font-graffiti text-xl py-4 px-6 shadow-[6px_6px_0_var(--asphalt-black)] hover:shadow-sticker-lg hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                   >
@@ -916,7 +934,7 @@ export default function EventDetailModal({
                 {!event.isAttending && isFull && canPlayerModifySpots && !onBench && (
                   canClaimOfferedSpot ? (
                     <button
-                      onClick={() => handleClaim(earliestOffered!.attendeeId)}
+                      onClick={() => spotConfirm.request('claim', () => handleClaim(earliestOffered!.attendeeId))}
                       disabled={actionLoading === 'claim'}
                       className="w-full bg-moss-green text-asphalt border-4 border-asphalt font-graffiti text-xl py-4 px-6 shadow-[6px_6px_0_var(--asphalt-black)] hover:shadow-sticker-lg hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                     >
@@ -951,7 +969,7 @@ export default function EventDetailModal({
                     </div>
                     {canClaimOfferedSpot && (
                       <button
-                        onClick={() => handleClaim(earliestOffered!.attendeeId)}
+                        onClick={() => spotConfirm.request(wantsSecondSpot ? 'claim2nd' : 'claim', () => handleClaim(earliestOffered!.attendeeId))}
                         disabled={actionLoading === 'claim'}
                         className="w-full bg-moss-green text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
@@ -985,7 +1003,7 @@ export default function EventDetailModal({
                       <div className="flex gap-2">
                         {hasBench ? (
                           <button
-                            onClick={handleDropRider}
+                            onClick={() => spotConfirm.request('dropRider', handleDropRider)}
                             disabled={actionLoading === 'drop-rider'}
                             title="Pass your +1 to the next player on the bench"
                             className="flex-1 bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-4 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -998,7 +1016,7 @@ export default function EventDetailModal({
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleOfferRider(myRiderAttendance!.attendeeId)}
+                            onClick={() => spotConfirm.request('offerRider', () => handleOfferRider(myRiderAttendance!.attendeeId))}
                             disabled={actionLoading === 'offer-rider'}
                             title="Offer your +1 for the next person on the bench"
                             className="flex-1 bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-4 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -1013,7 +1031,7 @@ export default function EventDetailModal({
                       </div>
                     ) : riderIsOffered ? (
                       <button
-                        onClick={() => handleRetractRiderOffer(myRiderAttendance!.attendeeId)}
+                        onClick={() => spotConfirm.request('retractRider', () => handleRetractRiderOffer(myRiderAttendance!.attendeeId))}
                         disabled={actionLoading === 'retract-rider'}
                         className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-sm py-2.5 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       >
@@ -1026,7 +1044,7 @@ export default function EventDetailModal({
                     ) : canPlayerModifySpots && !onBench ? (
                       availableSpots > 0 ? (
                         <button
-                          onClick={handleAddRider}
+                          onClick={() => spotConfirm.request('addRider', handleAddRider)}
                           disabled={actionLoading === 'add-rider'}
                           className="w-full bg-dull-gold text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
@@ -1038,7 +1056,7 @@ export default function EventDetailModal({
                         </button>
                       ) : canClaimOfferedSpot ? (
                         <button
-                          onClick={() => handleClaim(earliestOffered!.attendeeId)}
+                          onClick={() => spotConfirm.request('claim2nd', () => handleClaim(earliestOffered!.attendeeId))}
                           disabled={actionLoading === 'claim'}
                           className="w-full bg-moss-green text-asphalt border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                         >
@@ -1069,7 +1087,7 @@ export default function EventDetailModal({
                       </p>
                     ) : hasBench ? (
                       <button
-                        onClick={handleRelease}
+                        onClick={() => spotConfirm.request('release', handleRelease)}
                         disabled={actionLoading === 'release'}
                         title="Passes your spot to the next player on the bench"
                         className="w-full bg-slate-blue text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -1082,7 +1100,7 @@ export default function EventDetailModal({
                       </button>
                     ) : (
                       <button
-                        onClick={handleOffer}
+                        onClick={() => spotConfirm.request('offer', handleOffer)}
                         disabled={actionLoading === 'offer'}
                         title="Opens your spot for anyone in the crew to claim"
                         className="w-full bg-terracotta text-white border-[3px] border-asphalt font-graffiti text-base py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -1120,7 +1138,12 @@ export default function EventDetailModal({
                             </SelectContent>
                           </Select>
                           <button
-                            onClick={() => handleSelfHandover(myRiderAttendance.attendeeId, handoverSecondSpotEmail)}
+                            onClick={() => {
+                              const run = () => handleSelfHandover(myRiderAttendance.attendeeId, handoverSecondSpotEmail);
+                              // Guest hand-over opens its own name dialog — don't double-prompt.
+                              if (handoverSecondSpotEmail === GUEST_ASSIGN_VALUE) run();
+                              else spotConfirm.request('handover2nd', run);
+                            }}
                             disabled={!handoverSecondSpotEmail || actionLoading === 'handover'}
                             className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
                           >
@@ -1155,7 +1178,12 @@ export default function EventDetailModal({
                             </SelectContent>
                           </Select>
                           <button
-                            onClick={() => handleSelfHandover(myAttendance.attendeeId, handoverPrimaryEmail)}
+                            onClick={() => {
+                              const run = () => handleSelfHandover(myAttendance.attendeeId, handoverPrimaryEmail);
+                              // Guest hand-over opens its own name dialog — don't double-prompt.
+                              if (handoverPrimaryEmail === GUEST_ASSIGN_VALUE) run();
+                              else spotConfirm.request('handover', run);
+                            }}
                             disabled={!handoverPrimaryEmail || actionLoading === 'handover'}
                             className="bg-slate-blue text-white border-2 border-asphalt font-graffiti text-xs py-1 px-3 shadow-sticker-sm hover:shadow-[3px_3px_0_var(--asphalt-black)] active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50 whitespace-nowrap"
                           >
@@ -1170,7 +1198,7 @@ export default function EventDetailModal({
                 {/* Attending, offered → RETRACT OFFER */}
                 {isOffered && !isPastGame && (
                   <button
-                    onClick={handleRetract}
+                    onClick={() => spotConfirm.request('retract', handleRetract)}
                     disabled={actionLoading === 'retract'}
                     className="w-full bg-white text-asphalt border-[3px] border-asphalt font-graffiti text-lg py-3 px-5 shadow-sticker-md hover:shadow-[6px_6px_0_var(--asphalt-black)] hover:translate-y-[-2px] active:shadow-sticker-sm active:translate-y-[1px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
@@ -1294,9 +1322,7 @@ export default function EventDetailModal({
                           actionLoading === `reassign-${attendee.attendeeId}` ||
                           actionLoading === `unassign-${attendee.attendeeId}`;
                         const isRiderRow = attendee.isPlusOne;
-                        const displayName = isRiderRow
-                          ? `${attendee.userName}'s +1`
-                          : attendee.userName;
+                        const displayName = attendeeDisplayName(attendee);
 
                         const hasRiderAlready = isRiderRow
                           ? false
@@ -1521,7 +1547,7 @@ export default function EventDetailModal({
                             </button>
                           ) : canClaim ? (
                             <button
-                              onClick={() => handleClaim(attendee.attendeeId)}
+                              onClick={() => spotConfirm.request(wantsSecondSpot ? 'claim2nd' : 'claim', () => handleClaim(attendee.attendeeId))}
                               disabled={actionLoading === 'claim'}
                               className="bg-moss-green text-asphalt border-2 border-asphalt font-graffiti text-sm py-1.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md active:shadow-[1px_1px_0_var(--asphalt-black)] transition-all disabled:opacity-50"
                             >
@@ -1556,9 +1582,7 @@ export default function EventDetailModal({
                     <div className="grid grid-cols-2 gap-2">
                       {displayList.map((attendee, index) => {
                         const isMe = attendee.userEmail.toLowerCase() === userEmail.toLowerCase();
-                        const displayName = attendee.isPlusOne
-                          ? `${attendee.userName}'s +1`
-                          : attendee.userName;
+                        const displayName = attendeeDisplayName(attendee);
                         return (
                           <div
                             key={attendee.attendeeId}
@@ -1580,9 +1604,11 @@ export default function EventDetailModal({
                               )}
                               {!attendee.isPlusOne && !attendee.isGuestSpot && renderRoleIcon(attendee.userEmail)}
                               {!attendee.isPlusOne && attendee.isGuestSpot && (
-                                <span className="h-6 w-6 shrink-0 rounded-full border-2 border-asphalt bg-asphalt/10 flex items-center justify-center text-[10px] font-graffiti">
-                                  G
-                                </span>
+                                <PlayerAvatar
+                                  pieceUrl={GUEST_PIECE_URL}
+                                  name={attendee.userName}
+                                  className="h-6 w-6 shrink-0"
+                                />
                               )}
                               <span className="truncate">{displayName}</span>
                               {isMe && !attendee.isPlusOne && (
@@ -1845,6 +1871,19 @@ export default function EventDetailModal({
         !!benchRemoveTarget &&
         actionLoading === `bench-remove-${benchRemoveTarget.userEmail}-${benchRemoveTarget.forRider}`
       }
+    />
+
+    {/* Flag-gated mis-click guard for player spot actions (spot-confirmation). */}
+    <ConfirmDialog
+      open={spotConfirm.dialogProps.open}
+      onOpenChange={(open) => { if (!open) spotConfirm.dialogProps.onCancel(); }}
+      title={spotConfirm.dialogProps.title}
+      message={spotConfirm.dialogProps.message}
+      confirmLabel={spotConfirm.dialogProps.confirmLabel}
+      cancelLabel="Nevermind"
+      variant={spotConfirm.dialogProps.variant}
+      onConfirm={spotConfirm.dialogProps.onConfirm}
+      loading={spotConfirm.dialogProps.loading}
     />
     </>
   );

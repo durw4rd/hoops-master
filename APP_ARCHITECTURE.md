@@ -207,9 +207,12 @@ Notes for agents:
   bench rows via `DELETE .../waitlist` (`removeFromBench`) — removing a pending
   target cancels + re-matches the opening.
 - **Guest spots:** When LD flag `guest-spots` is on (client + server), Capo/King
-  assign via `POST .../assign-guest` with a display name; `guest_display_name` is set,
-  `user_id` points at the assignee for ledger purposes, and `guest_assign` ledger
-  rows are recorded like other spot charges.
+  (and players, if `player-spot-reassignment` is also on) assign via
+  `POST .../assign-guest` with a display name; `guest_display_name` is set,
+  `user_id` points at the funding holder (ledger stays with them, credit-neutral),
+  and `guest_assign` ledger rows are recorded like other spot charges. The roster
+  shows a guest as **"Guest (Host)"** (`getEventAttendees` exposes `hostName` = the
+  holder's display name) with a shared graffiti guest avatar (`public/guest-piece.webp`).
 - **Self-reassign (non-admin):** Non-admin players can hand over their own spot via
   "Hand It Over" in `EventDetailModal`. The reassign route previously blocked any
   `attendeeId` param for non-admins; it now allows it and instead `reassignSpot`
@@ -358,12 +361,23 @@ API guards (`lib/apiGuards.ts`): `requireAuth`, `requireMember`,
 without `EDGE_CONFIG` (or on any eval error) every server flag returns its
 default. See the flag inventory below.
 
-**LD client context** (`components/LaunchDarklyProvider.tsx` + `LDIdentify.tsx`):
-pre-login the app evaluates a single `session` context (key = persisted session id,
-plus `deviceType`/`browser`/`appVersion`). On login, `LDIdentify` re-identifies to a
-`multi` context adding a `user` kind (key = email, with `email`/`name`/`deviceType`/
-`browser`/`appVersion`). This is for targeting/analytics only — it does not grant
-authorization.
+**LD context — role attributes for targeting** (built via `lib/ldContext.ts`
+`buildLdContext`, shared by all callers). Every context carries two role
+attributes so flags can target by role — **targeting only; authorization stays
+DB-authoritative in code** (`isCrewManager`/`requireCrewManager` are never
+replaced by a flag):
+- `appRole` — global `users.global_role` (owner/admin/user). Stable per user.
+- `crewRole` — the viewing player's role in the **currently-open crew**
+  (admin=Capo / coleader=King / member), or `'none'`. Per-crew, so it's set by
+  the dashboard on crew switch, not fixed to the user.
+
+Client: pre-login a single `session` context (persisted session id +
+`deviceType`/`browser`/`appVersion`). On login `LDIdentify` adds the `user` kind
+(`email`/`name`/`appRole`, `crewRole='none'`); `app/page.tsx` re-identifies with
+the active `crewRole` when a crew is opened. Server: `evalServerFlag(key, email,
+default, attrs?)` merges `{ crewRole, appRole }` (from `ctx.member.groupRole` /
+`ctx.user.globalRole`) at the per-crew flag call sites, so server enforcement
+matches client targeting.
 
 ## Feature flags
 
@@ -383,6 +397,7 @@ missing/unreachable LD → the default column below.
 | `guest-spots` | bool | server + client | `false` (off) | yes | Enables assigning a spot to an outside-crew guest (credit-neutral). Server gate in `assign-guest`; client shows the "Guest (outside crew)" option. |
 | `player-spot-reassignment` | bool | server + client | `false` (off) | yes | Enables **player** self-service handover: the "Hand over spot/2nd spot" UI + the non-admin paths of `reassign` and `assign-guest`. Admin SWAP/ASSIGN is never gated by this. |
 | `email-notifications` | bool | server | `false` (off) | **no** (kill-switch) | Master on/off for ALL outgoing email; checked at dispatch time (`isEmailNotificationsEnabled()`). Outbox keeps enqueueing while off. |
+| `spot-confirmation` | string (`disabled`/`single`/`double`) | client | `disabled` | yes | Mis-click guard for **player** roster actions (claim/release/offer/retract/+1/hand-over/accept-decline). `single` = one confirm modal, `double` = a second "really, really sure?". Pure UX (`lib/spotConfirm.ts` + `useConfirmGate`); no server enforcement — the API still authorizes/validates every action. Bench join/leave + admin Manage-Squad actions are not gated. |
 
 The upgrade banner is **not** flag-controlled — it compares build ids against
 `/api/version` (see below).

@@ -42,7 +42,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Player self-handover is feature-flagged (fail-closed); admin swaps are not.
     if (!isAdmin) {
-      const enabled = await evalServerFlag('player-spot-reassignment', ctx.user.email, false);
+      const enabled = await evalServerFlag('player-spot-reassignment', ctx.user.email, false, {
+        crewRole: ctx.member.groupRole,
+        appRole: ctx.user.globalRole,
+      });
       if (!enabled) {
         return NextResponse.json({ error: 'Spot handover is not enabled' }, { status: 403 });
       }
