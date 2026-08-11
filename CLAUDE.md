@@ -9,6 +9,25 @@ spec. Read the relevant sections before making structural changes, and update it
 in the same change when you alter the architecture.** App voice/copy conventions
 live in [`VOCABULARY.md`](./VOCABULARY.md).
 
+## `.env.local` points at the PRODUCTION database
+
+There is no dev or staging database. `DATABASE_URL` in `.env.local` is the live
+Neon database with real crews, players, and ledger rows — and `pnpm dev` runs
+against it too. Treat every command that reads that file as production access:
+
+- **Ask before running anything that writes.** That includes `pnpm db:migrate`,
+  seed/backfill scripts, and anything invoked via `node --env-file=.env.local`.
+  Read-only investigation (`SELECT`) is fine without asking; say which database
+  you queried when you report the results.
+- **Migrations must be backward-compatible (expand-only):** new tables, new
+  nullable columns, relaxed constraints. Production keeps running the OLD code
+  until the deploy lands, so anything the old code can't tolerate — a new
+  `NOT NULL` without a default, a renamed or dropped column, a tightened
+  constraint — breaks the live app during that gap. Split those into
+  expand → deploy → contract across two changes.
+- **Never point the test suite at it.** `pnpm test` boots its own embedded
+  Postgres on port 55432; that isolation is why the suite is safe to run freely.
+
 ## Hard invariants (do not deviate)
 
 These rules are enforced by the test suite; the full rationale is in
@@ -43,7 +62,9 @@ APP_ARCHITECTURE.md → "Spot lifecycle & credit invariants".
 - All DB access via `lib/queries/*`; authz via `lib/apiGuards.ts` helpers.
 - Schema changes: edit `lib/db/schema.ts` → `pnpm db:generate` → review SQL →
   `pnpm db:migrate` (needs `DATABASE_URL` exported from `.env.local` — drizzle-kit
-  does not read `.env.local` itself). Never reference unapplied columns.
+  does not read `.env.local` itself). **That migrates production — see the warning
+  above; confirm first and keep the migration expand-only.** Never reference
+  unapplied columns.
 - Spot mutations run inside `withEventLock` (serializable + `SELECT FOR UPDATE`).
 - No native `window.confirm`/`alert` — use `components/ui/ConfirmDialog`.
 - Currency is €; show `display_name`, never raw emails. LD flags are additive,
