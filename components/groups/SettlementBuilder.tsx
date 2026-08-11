@@ -1,9 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Euro, Loader2, Plus, X } from "lucide-react";
 import type { CreditBalance } from "@/lib/types";
-import { formatCents, remainingCentsByPlayer, toCents } from "@/lib/settlement";
+import {
+  allocateGreedy,
+  formatCents,
+  mergeProposals,
+  remainingCentsByPlayer,
+  toSettlementBalances,
+  type PairingProposal,
+} from "@/lib/settlement";
 
 export interface DraftPairing {
   debtorEmail: string;
@@ -15,24 +22,42 @@ interface SettlementBuilderProps {
   balances: CreditBalance[];
   displayNameFor: (email: string) => string;
   submitting: boolean;
+  /** Controlled by the parent so drafts survive the modal being closed. */
+  drafts: DraftPairing[];
+  onDraftsChange: (drafts: DraftPairing[]) => void;
   onSubmit: (drafts: DraftPairing[]) => void;
 }
 
+const toProposal = (d: DraftPairing): PairingProposal => ({
+  debtorUserId: d.debtorEmail,
+  creditorUserId: d.creditorEmail,
+  amountCents: d.amountCents,
+});
+
+const toDraft = (p: PairingProposal): DraftPairing => ({
+  debtorEmail: p.debtorUserId,
+  creditorEmail: p.creditorUserId,
+  amountCents: p.amountCents,
+});
+
 /**
  * Hand-built pairing sheet: the manager matches players in the black with
- * players in the red, one draft at a time. Nothing is persisted until "Lock It
- * In" — until then this is all local state, and every remaining figure updates
- * as drafts come and go so it stays obvious who still needs a match.
+ * players in the red. Pick one from each side to set an exact amount, or several
+ * on either side and the biggest debts get matched to the biggest credits in one
+ * move. Nothing is persisted until "Lock It In" — until then it is all draft
+ * state, and every remaining figure updates as drafts come and go so it stays
+ * obvious who still needs a match.
  */
 export default function SettlementBuilder({
   balances,
   displayNameFor,
   submitting,
+  drafts,
+  onDraftsChange,
   onSubmit,
 }: SettlementBuilderProps) {
-  const [drafts, setDrafts] = useState<DraftPairing[]>([]);
-  const [creditorEmail, setCreditorEmail] = useState<string | null>(null);
-  const [debtorEmail, setDebtorEmail] = useState<string | null>(null);
+  const [creditorEmails, setCreditorEmails] = useState<string[]>([]);
+  const [debtorEmails, setDebtorEmails] = useState<string[]>([]);
   const [amountInput, setAmountInput] = useState("");
   const [hint, setHint] = useState<string | null>(null);
 
@@ -46,88 +71,136 @@ export default function SettlementBuilder({
     [balances]
   );
 
+  const settlementBalances = useMemo(() => toSettlementBalances(balances), [balances]);
+  const draftProposals = useMemo(() => drafts.map(toProposal), [drafts]);
   // Shared with the server-side validator, keyed by email here.
   const remainingCents = useMemo(
-    () =>
-      remainingCentsByPlayer(
-        balances.map((b) => ({ userId: b.userEmail, balanceCents: toCents(b.balance) })),
-        drafts.map((d) => ({
-          debtorUserId: d.debtorEmail,
-          creditorUserId: d.creditorEmail,
-          amountCents: d.amountCents,
-        }))
-      ),
-    [balances, drafts]
+    () => remainingCentsByPlayer(settlementBalances, draftProposals),
+    [settlementBalances, draftProposals]
   );
 
-  const creditorRemaining = creditorEmail ? remainingCents.get(creditorEmail) ?? 0 : 0;
-  const debtorRemaining = debtorEmail ? remainingCents.get(debtorEmail) ?? 0 : 0;
-  const suggestedCents = Math.min(creditorRemaining, debtorRemaining);
+  const sidesOf = useCallback(
+    (emails: string[]) =>
+      emails.map((email) => ({ userId: email, remainingCents: remainingCents.get(email) ?? 0 })),
+    [remainingCents]
+  );
 
-  // Pre-fill with whatever fully squares one of the two sides.
-  useEffect(() => {
-    if (creditorEmail && debtorEmail && suggestedCents > 0) {
-      setAmountInput(formatCents(suggestedCents));
-      setHint(null);
+  const isSingle = creditorEmails.length === 1 && debtorEmails.length === 1;
+  const singleSuggestedCents = isSingle
+    ? Math.min(remainingCents.get(creditorEmails[0]) ?? 0, remainingCents.get(debtorEmails[0]) ?? 0)
+    : 0;
+
+  /** What "Match Up" will create — also drives the preview, so no surprises. */
+  const planned = useMemo<DraftPairing[]>(() => {
+    if (creditorEmails.length === 0 || debtorEmails.length === 0) return [];
+    if (isSingle) {
+      const cents = Math.round(parseFloat(amountInput) * 100);
+      if (!Number.isFinite(cents) || cents <= 0) return [];
+      return [{ debtorEmail: debtorEmails[0], creditorEmail: creditorEmails[0], amountCents: cents }];
     }
-  }, [creditorEmail, debtorEmail, suggestedCents]);
+    return allocateGreedy(sidesOf(creditorEmails), sidesOf(debtorEmails)).map(toDraft);
+  }, [creditorEmails, debtorEmails, amountInput, isSingle, sidesOf]);
+
+  // One-on-one gets an editable amount, pre-filled with whatever squares one of
+  // the two off. Any other selection is computed, so the box is cleared rather
+  // than left showing a stale figure behind a disabled control.
+  useEffect(() => {
+    if (isSingle && singleSuggestedCents > 0) {
+      setAmountInput(formatCents(singleSuggestedCents));
+      setHint(null);
+    } else if (!isSingle) {
+      setAmountInput("");
+    }
+  }, [isSingle, singleSuggestedCents]);
+
+  // A player can be squared off by a different draft while still selected —
+  // drop them so a row is never both disabled and picked.
+  useEffect(() => {
+    const prune = (prev: string[]) => {
+      const next = prev.filter((email) => (remainingCents.get(email) ?? 0) > 0);
+      return next.length === prev.length ? prev : next;
+    };
+    setCreditorEmails(prune);
+    setDebtorEmails(prune);
+  }, [remainingCents]);
 
   const unmatched = useMemo(
-    () =>
-      [...creditors, ...debtors].filter((b) => (remainingCents.get(b.userEmail) ?? 0) > 0),
+    () => [...creditors, ...debtors].filter((b) => (remainingCents.get(b.userEmail) ?? 0) > 0),
     [creditors, debtors, remainingCents]
   );
 
   const totalCents = drafts.reduce((sum, d) => sum + d.amountCents, 0);
+  const plannedTotalCents = planned.reduce((sum, d) => sum + d.amountCents, 0);
+  const pickedCreditorCents = creditorEmails.reduce((s, e) => s + (remainingCents.get(e) ?? 0), 0);
+  const pickedDebtorCents = debtorEmails.reduce((s, e) => s + (remainingCents.get(e) ?? 0), 0);
+  const leftoverCents = Math.abs(pickedCreditorCents - pickedDebtorCents);
 
-  const addDraft = () => {
-    if (!creditorEmail || !debtorEmail) return;
-    const cents = Math.round(parseFloat(amountInput) * 100);
-    if (!Number.isFinite(cents) || cents <= 0) {
-      setHint("Enter an amount above zero.");
-      return;
-    }
-    if (cents > creditorRemaining) {
+  const toggleIn =
+    (setter: React.Dispatch<React.SetStateAction<string[]>>) => (email: string) => {
+      setHint(null);
+      setter((prev) =>
+        prev.includes(email) ? prev.filter((e) => e !== email) : [...prev, email]
+      );
+    };
+
+  const applyPlanned = () => {
+    if (creditorEmails.length === 0 || debtorEmails.length === 0) return;
+    if (planned.length === 0) {
       setHint(
-        `${displayNameFor(creditorEmail)} is only owed €${formatCents(creditorRemaining)} more.`
+        isSingle
+          ? "Enter an amount above zero."
+          : "Nothing left to match — the players you picked are already squared."
       );
-      return;
-    }
-    if (cents > debtorRemaining) {
-      setHint(`${displayNameFor(debtorEmail)} only owes €${formatCents(debtorRemaining)} more.`);
       return;
     }
 
-    setDrafts((prev) => {
-      // One pairing per pair of players — top up the existing one instead.
-      const existing = prev.findIndex(
-        (d) => d.debtorEmail === debtorEmail && d.creditorEmail === creditorEmail
-      );
-      if (existing >= 0) {
-        const next = [...prev];
-        next[existing] = { ...next[existing], amountCents: next[existing].amountCents + cents };
-        return next;
+    // Only the hand-typed amount can overshoot; the allocator is capped by
+    // whatever each player has left.
+    if (isSingle) {
+      const creditorRemaining = remainingCents.get(creditorEmails[0]) ?? 0;
+      const debtorRemaining = remainingCents.get(debtorEmails[0]) ?? 0;
+      const cents = planned[0].amountCents;
+      if (cents > creditorRemaining) {
+        setHint(
+          `${displayNameFor(creditorEmails[0])} is only owed €${formatCents(creditorRemaining)} more.`
+        );
+        return;
       }
-      return [...prev, { debtorEmail, creditorEmail, amountCents: cents }];
-    });
-    setCreditorEmail(null);
-    setDebtorEmail(null);
+      if (cents > debtorRemaining) {
+        setHint(`${displayNameFor(debtorEmails[0])} only owes €${formatCents(debtorRemaining)} more.`);
+        return;
+      }
+    }
+
+    // One pairing per pair of players — top up the existing one instead.
+    const merged = mergeProposals(draftProposals, planned.map(toProposal));
+    if ([...remainingCentsByPlayer(settlementBalances, merged).values()].some((v) => v < 0)) {
+      setHint("Balances moved — clear a pairing and try again.");
+      return;
+    }
+
+    onDraftsChange(merged.map(toDraft));
+    setCreditorEmails([]);
+    setDebtorEmails([]);
     setAmountInput("");
     setHint(null);
   };
 
   const removeDraft = (index: number) =>
-    setDrafts((prev) => prev.filter((_, i) => i !== index));
+    onDraftsChange(drafts.filter((_, i) => i !== index));
 
   const column = (
     title: string,
     rows: CreditBalance[],
-    selected: string | null,
-    onSelect: (email: string | null) => void,
+    selected: string[],
+    onToggle: (email: string) => void,
     tone: "success" | "terracotta"
   ) => (
     <div className="space-y-1">
-      <p className="text-xs font-graffiti text-asphalt/70">{title}</p>
+      <p className="text-xs font-graffiti text-asphalt/70">
+        {title}
+        {selected.length > 0 && ` (${selected.length} picked)`}
+      </p>
       <div className="border-2 border-asphalt bg-white divide-y divide-asphalt/10 max-h-56 overflow-y-auto">
         {rows.length === 0 ? (
           <p className="text-sm text-asphalt/50 font-body p-3">Nobody here</p>
@@ -135,13 +208,14 @@ export default function SettlementBuilder({
           rows.map((b) => {
             const remaining = remainingCents.get(b.userEmail) ?? 0;
             const squared = remaining <= 0;
-            const isSelected = selected === b.userEmail;
+            const isSelected = selected.includes(b.userEmail);
             return (
               <button
                 key={b.userEmail}
                 type="button"
                 disabled={squared}
-                onClick={() => onSelect(isSelected ? null : b.userEmail)}
+                aria-pressed={isSelected}
+                onClick={() => onToggle(b.userEmail)}
                 className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm font-body text-left transition-colors ${
                   isSelected ? "bg-dull-gold/40" : squared ? "opacity-40" : "hover:bg-sticker-white"
                 } ${squared ? "cursor-default" : "cursor-pointer"}`}
@@ -180,42 +254,74 @@ export default function SettlementBuilder({
   return (
     <div className="space-y-3">
       <div className="grid sm:grid-cols-2 gap-3">
-        {column("Owed money — pick one", creditors, creditorEmail, setCreditorEmail, "success")}
-        {column("Owes money — pick one", debtors, debtorEmail, setDebtorEmail, "terracotta")}
+        {column(
+          "Owed money — pick who collects",
+          creditors,
+          creditorEmails,
+          toggleIn(setCreditorEmails),
+          "success"
+        )}
+        {column(
+          "Owes money — pick who pays",
+          debtors,
+          debtorEmails,
+          toggleIn(setDebtorEmails),
+          "terracotta"
+        )}
       </div>
 
-      <div className="flex flex-wrap items-end gap-2 border-2 border-dashed border-asphalt/30 p-3">
-        <div className="space-y-1">
-          <label className="text-xs font-graffiti text-asphalt">Amount (€)</label>
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            value={amountInput}
-            onChange={(e) => setAmountInput(e.target.value)}
-            disabled={!creditorEmail || !debtorEmail}
-            className="sketch-input w-28 text-sm disabled:opacity-50"
-            placeholder="0.00"
-          />
+      <div className="border-2 border-dashed border-asphalt/30 p-3 space-y-2">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1">
+            <label className="text-xs font-graffiti text-asphalt">Amount (€)</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={amountInput}
+              onChange={(e) => setAmountInput(e.target.value)}
+              disabled={!isSingle}
+              className="sketch-input w-28 text-sm disabled:opacity-50"
+              placeholder={isSingle ? "0.00" : "auto"}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={applyPlanned}
+            disabled={creditorEmails.length === 0 || debtorEmails.length === 0}
+            className="sticker-btn flex items-center gap-1 text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="w-4 h-4" /> Match Up
+          </button>
+          <p className="text-xs font-body text-asphalt/60 flex-1 min-w-[12rem]">
+            {creditorEmails.length === 0 || debtorEmails.length === 0 ? (
+              "Pick players from each side — one or more on either."
+            ) : isSingle ? (
+              <>
+                {displayNameFor(debtorEmails[0])} pays {displayNameFor(creditorEmails[0])}. Defaults
+                to whatever squares one of them.
+              </>
+            ) : (
+              "Biggest debts get matched to the biggest credits first."
+            )}
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={addDraft}
-          disabled={!creditorEmail || !debtorEmail}
-          className="sticker-btn flex items-center gap-1 text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Plus className="w-4 h-4" /> Match Up
-        </button>
-        <p className="text-xs font-body text-asphalt/60 flex-1 min-w-[12rem]">
-          {creditorEmail && debtorEmail ? (
-            <>
-              {displayNameFor(debtorEmail)} pays {displayNameFor(creditorEmail)}. Defaults to
-              whatever squares one of them off.
-            </>
-          ) : (
-            "Pick a player from each side to match them up."
-          )}
-        </p>
+
+        {!isSingle && planned.length > 0 && (
+          <ul className="text-xs font-body space-y-0.5 border-t-2 border-asphalt/10 pt-2">
+            {planned.map((p) => (
+              <li key={`${p.debtorEmail}>${p.creditorEmail}`}>
+                {displayNameFor(p.debtorEmail)} → {displayNameFor(p.creditorEmail)}{" "}
+                <span className="font-graffiti">€{formatCents(p.amountCents)}</span>
+              </li>
+            ))}
+            <li className="text-asphalt/60">
+              {planned.length} pairing{planned.length === 1 ? "" : "s"} · €
+              {formatCents(plannedTotalCents)}
+              {leftoverCents > 0 && ` — €${formatCents(leftoverCents)} stays unmatched`}
+            </li>
+          </ul>
+        )}
       </div>
 
       {hint && (

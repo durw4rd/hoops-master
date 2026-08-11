@@ -10,7 +10,15 @@ import {
   SettlementPairingDTO,
   TransactionType,
 } from "@/lib/types";
-import { Loader2, Download, Euro, ChevronDown, ChevronRight, Check, Handshake } from "lucide-react";
+import {
+  Loader2,
+  Download,
+  Euro,
+  ChevronDown,
+  ChevronRight,
+  Handshake,
+  AlertTriangle,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -20,7 +28,9 @@ import {
 } from "@/components/ui/select";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { GraffitiDialog } from "@/components/ui/GraffitiDialog";
-import SettlementBuilder, { type DraftPairing } from "./SettlementBuilder";
+import SettlementModal from "./SettlementModal";
+import { type DraftPairing } from "./SettlementBuilder";
+import { crewBalanceTotalCents, formatCents, toSettlementBalances } from "@/lib/settlement";
 
 interface CreditDashboardProps {
   groupId: string;
@@ -117,16 +127,23 @@ export default function CreditDashboard({
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [recording, setRecording] = useState(false);
 
-  // --- Squash the Beef (crew settlement, LD flag: group-settlement) ---
+  // --- Squash the Beef (crew settlement) ---
+  // Two flags on purpose. The UI is gated by `group-settlement-ui`, read by the
+  // client SDK straight from LaunchDarkly, so per-player entitlement takes effect
+  // instantly. The API is gated by `group-settlement`, which the server reads from
+  // a Vercel Edge Config snapshot that can lag a flag version — sharing one key
+  // meant a live UI could sit on top of an API still answering 403.
   const flags = useFlags();
-  const settlementEnabled = flags?.groupSettlement === true;
+  const settlementEnabled = flags?.groupSettlementUi === true;
   const [settlement, setSettlement] = useState<SettlementDTO | null>(null);
   const [settlementLoading, setSettlementLoading] = useState(false);
   const [settlementLoaded, setSettlementLoaded] = useState(false);
-  const [showSettlement, setShowSettlement] = useState(true);
+  const [settlementModalOpen, setSettlementModalOpen] = useState(false);
   const [creatingSettlement, setCreatingSettlement] = useState(false);
+  const [builderDrafts, setBuilderDrafts] = useState<DraftPairing[]>([]);
   const [pendingDrafts, setPendingDrafts] = useState<DraftPairing[] | null>(null);
   const [settlementError, setSettlementError] = useState<string | null>(null);
+  const [settlementGateError, setSettlementGateError] = useState<string | null>(null);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [cancellingSettlement, setCancellingSettlement] = useState(false);
   const [payingPairing, setPayingPairing] = useState<SettlementPairingDTO | null>(null);
@@ -198,20 +215,32 @@ export default function CreditDashboard({
     }
   }, [groupId]);
 
-  const fetchSettlement = useCallback(async () => {
+  const fetchSettlement = useCallback(async (): Promise<SettlementDTO | null> => {
     setSettlementLoading(true);
     try {
       const res = await fetch(`/api/groups/${groupId}/settlement`);
       if (res.ok) {
         const data = await res.json();
-        setSettlement(data.data ?? null);
-        setSettlementLoaded(true);
+        const next: SettlementDTO | null = data.data ?? null;
+        setSettlement(next);
+        setSettlementGateError(null);
+        return next;
       }
+      // The UI flag is on but the API gate says no — surface it instead of
+      // leaving the entry point in a permanent loading state.
+      setSettlementGateError(
+        res.status === 403
+          ? "Squaring up is switched off on the server right now."
+          : "Couldn't load the settlement."
+      );
     } catch (err) {
       console.error("Failed to fetch settlement:", err);
+      setSettlementGateError("Couldn't load the settlement.");
     } finally {
       setSettlementLoading(false);
+      setSettlementLoaded(true);
     }
+    return null;
   }, [groupId]);
 
   useEffect(() => {
@@ -270,8 +299,11 @@ export default function CreditDashboard({
   };
 
   /** Everything the settlement touches: pairings, balances, and the payment log. */
-  const refreshAfterSettlement = () => {
-    fetchSettlement();
+  const refreshAfterSettlement = async () => {
+    const next = await fetchSettlement();
+    // Squaring the last pairing auto-completes the settlement server-side, so the
+    // modal would otherwise drop a manager into an empty builder.
+    if (!next) setSettlementModalOpen(false);
     if (balancesLoaded) fetchBalances();
     if (paymentsLoaded) fetchPayments();
   };
@@ -292,6 +324,7 @@ export default function CreditDashboard({
         return;
       }
       setPendingDrafts(null);
+      setBuilderDrafts([]);
       refreshAfterSettlement();
     } catch {
       setSettlementError("Failed to lock in the settlement");
@@ -346,6 +379,7 @@ export default function CreditDashboard({
         return;
       }
       setConfirmCancelOpen(false);
+      setBuilderDrafts([]);
       refreshAfterSettlement();
     } catch {
       setSettlementError("Failed to tear up the settlement");
@@ -358,8 +392,38 @@ export default function CreditDashboard({
     window.open(`/api/groups/${groupId}/export?type=${type}`, "_blank");
   };
 
+  // Only compares against zero, so it reads cents as happily as euros.
   const balanceColor = (balance: number) =>
     balance > 0 ? "text-success" : balance < 0 ? "text-terracotta" : "text-asphalt";
+
+  // The crew's books should net to zero. They don't when someone holding credit
+  // has left — the balance view only counts active members.
+  const crewTotalCents = useMemo(
+    () => crewBalanceTotalCents(toSettlementBalances(balances)),
+    [balances]
+  );
+  const booksAreOff = balancesLoaded && balances.length > 0 && crewTotalCents !== 0;
+
+  const openPairingCount =
+    settlement?.pairings.filter((p) => p.status === "open").length ?? 0;
+  // Server-filtered by role: crew-wide for a manager, own-only for a player.
+  const myOpenPairings = useMemo(
+    () =>
+      (settlement?.pairings ?? []).filter(
+        (p) =>
+          p.status === "open" && (p.debtorEmail === userEmail || p.creditorEmail === userEmail)
+      ),
+    [settlement, userEmail]
+  );
+  // Managers always get the entry point; a player only once they're in a
+  // settlement (the API returns null when they have no pairings).
+  const canSeeSettlement = settlementEnabled && (isGroupAdmin || settlement !== null);
+
+  const openMarkPaid = (pairing: SettlementPairingDTO) => {
+    setPayingPairing(pairing);
+    setPayingNote("");
+    setMarkPaidError(null);
+  };
 
   // Includes tip-off time — crews often run multiple games on the same day.
   const formatGameDate = (iso: string) =>
@@ -697,143 +761,81 @@ export default function CreditDashboard({
         </div>
       )}
 
-      {settlementEnabled && (settlement || isGroupAdmin) && (
-        <div className="marker-card p-4 space-y-3">
-          <CollapsibleHeader
-            title="Squash the Beef"
-            open={showSettlement}
-            onToggle={() => setShowSettlement((v) => !v)}
-          />
-          {showSettlement && (
-            <div className="pl-6 space-y-3">
-              <p className="text-xs text-asphalt/50 font-body">
-                {settlement
-                  ? "Each player in the black collects from the players matched to them. Mark it here once the money moves."
-                  : "Match players in the black with players in the red so the whole crew gets square."}
-              </p>
-
-              {settlementLoading && !settlementLoaded ? (
-                <div className="flex items-center gap-2 text-asphalt/60 font-body py-4 justify-center">
-                  <Loader2 className="w-5 h-5 animate-spin" /> Loading settlement…
-                </div>
-              ) : settlement ? (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-left font-graffiti text-asphalt/70 border-b-2 border-asphalt/20">
-                          <th className="py-2 pr-2">Who pays who</th>
-                          <th className="py-2 px-2 text-right">Amount</th>
-                          <th className="py-2 pl-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {settlement.pairings.map((p) => {
-                          const youPay = p.debtorEmail === userEmail;
-                          const youCollect = p.creditorEmail === userEmail;
-                          const canMarkPaid =
-                            p.status === "open" && (isGroupAdmin || youPay || youCollect);
-                          return (
-                            <tr
-                              key={p.pairingId}
-                              className={`border-b border-asphalt/10 ${
-                                youPay || youCollect ? "bg-moss-green/20" : ""
-                              }`}
-                            >
-                              <td className="py-2 pr-2 font-body">
-                                {youPay ? (
-                                  <>
-                                    You owe <span className="font-marker">{p.creditorName}</span>
-                                  </>
-                                ) : youCollect ? (
-                                  <>
-                                    <span className="font-marker">{p.debtorName}</span> owes you
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="font-marker">{p.debtorName}</span> pays{" "}
-                                    <span className="font-marker">{p.creditorName}</span>
-                                  </>
-                                )}
-                              </td>
-                              <td className="py-2 px-2 text-right font-graffiti whitespace-nowrap">
-                                €{p.amount.toFixed(2)}
-                              </td>
-                              <td className="py-2 pl-2 font-body">
-                                {p.status === "paid" ? (
-                                  <span className="flex items-center gap-1 text-success whitespace-nowrap">
-                                    <Check className="w-4 h-4" />
-                                    Squared
-                                    {p.markedPaidByName && (
-                                      <span className="text-asphalt/50 text-xs">
-                                        by {p.markedPaidByName}
-                                      </span>
-                                    )}
-                                  </span>
-                                ) : p.status === "cancelled" ? (
-                                  <span className="text-asphalt/50 text-xs">Torn up</span>
-                                ) : canMarkPaid ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setPayingPairing(p);
-                                      setPayingNote("");
-                                      setMarkPaidError(null);
-                                    }}
-                                    className="flex items-center gap-1 bg-asphalt text-sticker-white px-2 py-1 border-2 border-asphalt font-graffiti text-xs hover:bg-terracotta transition-colors whitespace-nowrap"
-                                  >
-                                    <Handshake className="w-3.5 h-3.5" /> Mark Paid
-                                  </button>
-                                ) : (
-                                  <span className="text-asphalt/50 text-xs">Waiting</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  {isGroupAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSettlementError(null);
-                        setConfirmCancelOpen(true);
-                      }}
-                      className="bg-terracotta text-white px-3 py-1.5 border-2 border-asphalt font-graffiti text-xs hover:bg-asphalt transition-colors"
-                    >
-                      Tear It Up
-                    </button>
-                  )}
-                </>
-              ) : isGroupAdmin ? (
-                <SettlementBuilder
-                  balances={balances}
-                  displayNameFor={(email) => displayNameFor(email, members)}
-                  submitting={creatingSettlement}
-                  onSubmit={(drafts) => {
-                    setSettlementError(null);
-                    setPendingDrafts(drafts);
-                  }}
-                />
-              ) : null}
-
-              {settlementError && (
-                <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
-                  <p className="text-sm text-terracotta font-body">{settlementError}</p>
-                </div>
+      <div className="marker-card p-4">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h2 className="font-graffiti text-xl text-asphalt">Balances</h2>
+          {canSeeSettlement && (
+            <button
+              type="button"
+              onClick={() => {
+                setSettlementError(null);
+                setSettlementModalOpen(true);
+              }}
+              disabled={!settlementLoaded}
+              className="sticker-btn flex items-center gap-2 text-sm py-2 disabled:opacity-50"
+            >
+              {settlementLoaded ? (
+                <Handshake className="w-4 h-4" />
+              ) : (
+                <Loader2 className="w-4 h-4 animate-spin" />
               )}
-            </div>
+              {settlement
+                ? openPairingCount > 0
+                  ? `See the Beef (${openPairingCount} open)`
+                  : "See the Beef (all squared)"
+                : "Squash the Beef"}
+            </button>
           )}
         </div>
-      )}
-
-      <div className="marker-card p-4">
-        <h2 className="font-graffiti text-xl text-asphalt">Balances</h2>
         <p className="text-xs text-asphalt/50 font-body mt-3 mb-3">
           Balance = paid − spots received + spots given up. Positive means credit available.
         </p>
+
+        {settlementEnabled && settlementGateError && (
+          <p className="text-xs font-body text-terracotta mb-3">{settlementGateError}</p>
+        )}
+
+        {myOpenPairings.length > 0 && (
+          <div className="border-2 border-dashed border-asphalt/30 p-3 mb-3 space-y-1">
+            <p className="text-xs font-graffiti text-asphalt/70">Your beef</p>
+            <ul className="divide-y divide-asphalt/10">
+              {myOpenPairings.map((p) => (
+                <li key={p.pairingId} className="flex items-center justify-between gap-2 py-1.5">
+                  <span className="font-body text-sm">
+                    {p.debtorEmail === userEmail ? (
+                      <>
+                        You owe <span className="font-marker">{p.creditorName}</span>{" "}
+                        <span className="font-graffiti">€{p.amount.toFixed(2)}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-marker">{p.debtorName}</span> owes you{" "}
+                        <span className="font-graffiti">€{p.amount.toFixed(2)}</span>
+                      </>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openMarkPaid(p)}
+                    className="flex items-center gap-1 bg-asphalt text-sticker-white px-2 py-1 border-2 border-asphalt font-graffiti text-xs hover:bg-terracotta transition-colors whitespace-nowrap"
+                  >
+                    <Handshake className="w-3.5 h-3.5" /> Mark Paid
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {isGroupAdmin && booksAreOff && (
+          <div className="bg-dull-gold/20 border-2 border-asphalt p-2 mb-3 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-asphalt shrink-0" />
+            <p className="font-graffiti text-xs text-asphalt">
+              Books are off by €{formatCents(Math.abs(crewTotalCents))}
+            </p>
+          </div>
+        )}
+
         {balancesLoading ? (
           <div className="flex items-center gap-2 text-asphalt/60 font-body py-6 justify-center">
             <Loader2 className="w-5 h-5 animate-spin" /> Loading balances…
@@ -875,10 +877,55 @@ export default function CreditDashboard({
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-asphalt/20">
+                  <td colSpan={4} className="py-2 pr-2 font-graffiti text-asphalt/70">
+                    Crew total
+                  </td>
+                  <td
+                    className={`py-2 pl-2 text-right font-graffiti ${balanceColor(crewTotalCents)}`}
+                  >
+                    €{formatCents(crewTotalCents)}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         )}
       </div>
+
+      {/*
+        These four are siblings, not nested. They share z-50, so DOM order decides
+        what paints on top: the mark-paid dialog is last because it can be opened
+        from inside the settlement modal AND from the strip above.
+      */}
+      <SettlementModal
+        open={settlementModalOpen}
+        onOpenChange={(open) => {
+          setSettlementModalOpen(open);
+          if (!open) setSettlementError(null);
+        }}
+        mode={settlement ? "view" : "build"}
+        settlement={settlement}
+        balances={balances}
+        displayNameFor={(email) => displayNameFor(email, members)}
+        userEmail={userEmail}
+        isGroupAdmin={isGroupAdmin}
+        loading={settlementLoading && !settlementLoaded}
+        submitting={creatingSettlement}
+        error={settlementError}
+        drafts={builderDrafts}
+        onDraftsChange={setBuilderDrafts}
+        onSubmitDrafts={(drafts) => {
+          setSettlementError(null);
+          setPendingDrafts(drafts);
+        }}
+        onMarkPaid={openMarkPaid}
+        onTearUp={() => {
+          setSettlementError(null);
+          setConfirmCancelOpen(true);
+        }}
+      />
 
       <ConfirmDialog
         open={pendingDrafts !== null}
