@@ -27,8 +27,6 @@ vi.mock('@/lib/launchdarkly', () => ({
     if (flagKey === 'email-notifications') return true as T;
     return defaultValue;
   }),
-  isAppAdmin: vi.fn(async () => false),
-  getAppAdminEmails: vi.fn(async () => []),
   isServerLdConfigured: () => false,
   getLaunchDarklyServerConfigStatus: () => ({
     hasClientSideId: false,

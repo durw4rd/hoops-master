@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useFlags, useLDClient } from "launchdarkly-react-client-sdk";
+import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { buildLdContext } from "@/lib/ldContext";
 import { getDeviceType, getBrowserName, getOrCreateSessionId } from "@/lib/utils";
@@ -16,6 +16,7 @@ import InvitePlayerModal from "@/components/InvitePlayerModal";
 import ProfileSettingsModal from "@/components/ProfileSettingsModal";
 import VocabModal from "@/components/VocabModal";
 import { Group, UserProfile } from "@/lib/types";
+import { isAppAdminRole } from "@/lib/roles";
 import { Plus, Users } from "lucide-react";
 import Image from "next/image";
 
@@ -51,9 +52,7 @@ const logoBannerProps = (
 
 export default function HoopsMaster() {
   const { data: session, status } = useSession();
-  const flags = useFlags();
   const ldClient = useLDClient();
-  const appAdmins: string[] = Array.isArray(flags?.appAdmins) ? flags.appAdmins : [];
 
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -221,11 +220,8 @@ export default function HoopsMaster() {
     [groups]
   );
 
-  const userEmail = session?.user?.email?.toLowerCase() || "";
-  const canCreateCrew =
-    userProfile?.globalRole === "admin" ||
-    userProfile?.globalRole === "owner" ||
-    appAdmins.map((e) => e.toLowerCase()).includes(userEmail);
+  // App-admin comes from the DB role only, managed in the Black Book.
+  const canCreateCrew = isAppAdminRole(userProfile?.globalRole ?? "");
 
   const profileModal = session ? (
     <ProfileSettingsModal
