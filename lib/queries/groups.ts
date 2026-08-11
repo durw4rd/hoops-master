@@ -4,7 +4,17 @@
 
 import { and, eq, gt, inArray, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
-import { groups, groupMembers, users, spotTransactions, payments, events, eventAttendees } from '@/lib/db/schema';
+import {
+  groups,
+  groupMembers,
+  users,
+  spotTransactions,
+  payments,
+  events,
+  eventAttendees,
+  settlements,
+  settlementPairings,
+} from '@/lib/db/schema';
 import { getUserRowByEmail } from './users';
 import type {
   Group,
@@ -170,6 +180,21 @@ export async function updateGroupStatus(groupId: string, status: GroupStatus): P
  */
 export async function deleteGroup(groupId: string): Promise<boolean> {
   return db.transaction(async (tx) => {
+    // Dependency order matters: pairings FK to both their settlement and the two
+    // payment rows a squared pairing wrote, and settlements FK to the group.
+    const settlementRows = await tx
+      .select({ id: settlements.id })
+      .from(settlements)
+      .where(eq(settlements.groupId, groupId));
+    if (settlementRows.length > 0) {
+      await tx.delete(settlementPairings).where(
+        inArray(
+          settlementPairings.settlementId,
+          settlementRows.map((s) => s.id)
+        )
+      );
+      await tx.delete(settlements).where(eq(settlements.groupId, groupId));
+    }
     await tx.delete(spotTransactions).where(eq(spotTransactions.groupId, groupId));
     await tx.delete(payments).where(eq(payments.groupId, groupId));
     const deleted = await tx.delete(groups).where(eq(groups.id, groupId)).returning();

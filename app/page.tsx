@@ -321,7 +321,16 @@ export default function HoopsMaster() {
   if (selectedGroup) {
     return (
       <AppShell {...shellProps(session, userProfile)}>
+        {/*
+          Keyed by crew so switching crews remounts the dashboard. Without it,
+          child state survives the switch — a settlement notification can jump
+          straight from one crew's Balances tab to another's, and CreditDashboard
+          would keep its already-loaded flags and show the previous crew's
+          balances. The initialTab/initialOpenEventId props are consumed by the
+          fresh mount's effects, so deep links still land.
+        */}
         <GroupDashboard
+          key={selectedGroup.groupId}
           group={selectedGroup}
           userEmail={session.user?.email || ""}
           userProfile={userProfile}

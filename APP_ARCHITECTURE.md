@@ -243,9 +243,11 @@ Notes for agents:
   via `eventRules.ts`).
 - **Cascades:** deleting a `group` cascades `group_members`, `events`
   (→ `event_attendees`, `event_waitlist`), and `round_robin_rosters`.
-  `spot_transactions` and `payments` have **no** cascade FK — `deleteGroup()`
-  removes them first inside a transaction (the only sanctioned ledger deletion,
-  since the whole crew's books go with it).
+  `spot_transactions`, `payments`, `settlements`, and `settlement_pairings` have
+  **no** cascade FK — `deleteGroup()` removes them first inside a transaction (the
+  only sanctioned ledger deletion, since the whole crew's books go with it). Order
+  matters: pairings FK to both their settlement and the two payment rows a squared
+  pairing wrote, so pairings → settlements → ledger → payments → group.
 - **In-app notifications:** persisted rows in `notifications`, created inside spot
   mutations via `notifySpotChange()` in `lib/queries/notifications.ts`. Triggers:
   (1) someone claims your offered primary or Rider spot; (2) you (or your Rider

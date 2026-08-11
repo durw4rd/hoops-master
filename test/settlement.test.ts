@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db } from '@/lib/db';
 import { notifications, payments, settlementPairings, settlements } from '@/lib/db/schema';
 import { getGroupBalances } from '@/lib/queries/credits';
+import { deleteGroup } from '@/lib/queries/groups';
 import {
   cancelSettlement,
   createSettlement,
@@ -394,5 +395,34 @@ describe('cancelSettlement', () => {
   it('404s when there is nothing in play', async () => {
     const { group, capo } = scenario;
     await expect(cancelSettlement(group.id, capo.id)).rejects.toBeInstanceOf(SpotError);
+  });
+});
+
+describe('deleteGroup with settlement history', () => {
+  // Settlements FK to the group and paid pairings FK to payment rows, so the
+  // crew-deletion transaction has to clear them in dependency order.
+  it('burns down a crew that has open, paid, and cancelled pairings', async () => {
+    const { group, capo, credA, credB, debtX, debtZ } = scenario;
+
+    const first = await createSettlement(group.id, capo.id, [
+      pair(debtX, credA, 2000),
+      pair(debtZ, credB, 750),
+    ]);
+    await markPairingPaid({
+      groupId: group.id,
+      pairingId: first.pairings[0].pairingId,
+      actorId: capo.id,
+      isManager: true,
+    });
+    await cancelSettlement(group.id, capo.id); // leaves one paid + one cancelled
+    const second = await createSettlement(group.id, capo.id, [pair(debtZ, credB, 750)]);
+
+    expect(await deleteGroup(group.id)).toBe(true);
+
+    expect(await db.select().from(settlements).where(eq(settlements.groupId, group.id))).toHaveLength(0);
+    for (const id of [first.settlementId, second.settlementId]) {
+      expect(await pairingRows(id)).toHaveLength(0);
+    }
+    expect(await paymentRowsFor(group.id)).toHaveLength(0);
   });
 });
