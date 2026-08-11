@@ -39,8 +39,12 @@ synonyms for the same concept.**
 | Pool of all known players | **The Yard** | Search placeholder: "Search the yard…". |
 | Credits / balances tab | **Balances** | |
 | Record a payment (toggle) | **Square Up** | Collapsible form. |
-| Crew credit settlement (section) | **Squash the Beef** | Pair players in the black with players in the red so the crew gets square. |
-| Add a pairing (builder button) | **Match Up** | One player from each side; amount defaults to whatever squares one of them. |
+| Crew credit settlement (section) | **Squash the Beef** | Pair players in the black with players in the red so the crew gets square. Button in the Balances card. |
+| Open a running settlement (button) | **See the Beef (N open)** | Same button once a settlement is in play; "all squared" when nothing is open. |
+| Viewer's own pairings (Balances card) | **Your beef** | "You owe X €Y" / "X owes you €Y" + a Mark Paid shortcut. |
+| Sum of every balance (Balances table) | **Crew total** | Footer row; should read €0.00. |
+| Balances don't sum to zero (Capo/King) | **Books are off by €X** | Terse chip — a player who left is usually still holding credit. |
+| Add a pairing (builder button) | **Match Up** | Pick one or more players on each side; one-on-one lets you set the amount, otherwise biggest debts match the biggest credits. |
 | Submit the pairings (button) | **Lock It In** | Persists the settlement and tags everyone involved. |
 | Player fully matched (builder) | **squared** | Dimmed row — nothing left to pair. |
 | Mark a pairing paid (confirm) | **Squared** | Row action stays plain "Mark Paid"; writes both payment records. |
