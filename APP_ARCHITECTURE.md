@@ -108,8 +108,10 @@ Per-card badges are colour-coded by meaning:
 | `bench_promotion_requests` | Pending bench handoff | Any opening arising within 24h of `starts_at` requires the target's approval; unique pending row per `attendee_id` |
 | `round_robin_rosters` | Rotation order | `sort_key` (gapped doubles), `is_active` |
 | `spot_transactions` | **Append-only** credit ledger | `from_user_id` (nullable), `to_user_id`, `amount`, `type` (audit only), `attendee_id` (FK `ON DELETE SET NULL` — ledger rows outlive attendee rows). **Never deleted** — reversals are compensating entries |
-| `payments` | Admin-recorded cash in | `user_id`, `amount`, `payment_date` |
-| `notifications` | In-app inbox (per user) | `user_id`, `group_id`, `event_id`, `type` (`spot_offered_claimed` / `bench_promoted` / `bench_promotion_pending`), `title`, `body`, `read_at`; partial index on unread |
+| `payments` | Admin-recorded cash in | `user_id`, `amount` (sign-unconstrained — settlement writes a +/− pair), `payment_date`, `description` (the UI's "Note") |
+| `settlements` | Crew credit squash | `status` (`open`/`completed`/`cancelled`), `created_by`, `resolved_at`/`resolved_by`; partial unique index on `(group_id) WHERE status='open'` — at most one in play per crew |
+| `settlement_pairings` | Who pays who | `debtor_user_id`, `creditor_user_id`, `amount` (positive snapshot), `status` (`open`/`paid`/`cancelled`), `paid_at`/`marked_paid_by`, `debtor_payment_id`/`creditor_payment_id` (the two zero-sum `payments` rows) |
+| `notifications` | In-app inbox (per user) | `user_id`, `group_id`, `event_id` (**nullable** — NULL for crew-scoped tags like settlements), `type` (`spot_offered_claimed` / `bench_promoted` / `bench_promotion_pending` / `settlement_created` / `settlement_paid` / `settlement_cancelled`), `title`, `body`, `read_at`; partial index on unread |
 | `email_outbox` | Transactional email queue | Enqueued inside spot-mutation transactions, drained after commit; `email_type` (`bench_promotion` / `bench_promotion_pending`), `sent_at` |
 | `users` (email prefs) | Opt-outs | `email_game_reminders`, `email_bench_promotions` — both default `true`, checked at send time |
 | `player_credit_balances` | **View** | `balance = paid − spent(to_user) + earned(from_user)` per active member |
@@ -241,17 +243,22 @@ Notes for agents:
   via `eventRules.ts`).
 - **Cascades:** deleting a `group` cascades `group_members`, `events`
   (→ `event_attendees`, `event_waitlist`), and `round_robin_rosters`.
-  `spot_transactions` and `payments` have **no** cascade FK — `deleteGroup()`
-  removes them first inside a transaction (the only sanctioned ledger deletion,
-  since the whole crew's books go with it).
+  `spot_transactions`, `payments`, `settlements`, and `settlement_pairings` have
+  **no** cascade FK — `deleteGroup()` removes them first inside a transaction (the
+  only sanctioned ledger deletion, since the whole crew's books go with it). Order
+  matters: pairings FK to both their settlement and the two payment rows a squared
+  pairing wrote, so pairings → settlements → ledger → payments → group.
 - **In-app notifications:** persisted rows in `notifications`, created inside spot
   mutations via `notifySpotChange()` in `lib/queries/notifications.ts`. Triggers:
   (1) someone claims your offered primary or Rider spot; (2) you (or your Rider
   slot) are promoted off the bench; (3) a last-minute spot is pending your approval.
   Recipient is always the primary account holder; copy differs by slot kind only.
+  Settlement tags (`settlement_created` / `settlement_paid` / `settlement_cancelled`)
+  are crew-scoped and written with `event_id = NULL` by `lib/queries/settlements.ts`.
   Badge + **Fresh tags** panel in `SettingsMenu` (`hooks/useNotifications.ts`:
   fetch on mount, window focus, 60s poll). Tapping a tag marks it read and deep-links
-  to the game (`app/page.tsx` → `GroupDashboard` → `EventDetailModal`).
+  to the game (`app/page.tsx` → `GroupDashboard` → `EventDetailModal`), or — when
+  `event_id` is NULL — to the crew's Balances tab (`GroupDashboard` `initialTab`).
 
 ## Email notifications (Resend + Vercel Cron)
 
@@ -398,6 +405,7 @@ missing/unreachable LD → the default column below.
 | `player-spot-reassignment` | bool | server + client | `false` (off) | yes | Enables **player** self-service handover: the "Hand over spot/2nd spot" UI + the non-admin paths of `reassign` and `assign-guest`. Admin SWAP/ASSIGN is never gated by this. |
 | `email-notifications` | bool | server | `false` (off) | **no** (kill-switch) | Master on/off for ALL outgoing email; checked at dispatch time (`isEmailNotificationsEnabled()`). Outbox keeps enqueueing while off. |
 | `spot-confirmation` | string (`disabled`/`single`/`double`) | client | `disabled` | yes | Mis-click guard for **player** roster actions (claim/release/offer/retract/+1/hand-over/accept-decline). `single` = one confirm modal, `double` = a second "really, really sure?". Pure UX (`lib/spotConfirm.ts` + `useConfirmGate`); no server enforcement — the API still authorizes/validates every action. Bench join/leave + admin Manage-Squad actions are not gated. |
+| `group-settlement` | bool | server + client | `false` (off) | yes | Enables **Squash the Beef** (crew credit settlement) — the manager's pairing builder, the pairing list, mark-paid, and tear-up. Gated on all four handlers (`settlement` GET/POST/DELETE + `pairings/[id]/paid`) and on the Balances-tab section. |
 
 The upgrade banner is **not** flag-controlled — it compares build ids against
 `/api/version` (see below).
@@ -439,8 +447,41 @@ Capo/King sections (Square Up, Payments, Spot Ledger) remain collapsible and laz
 | Payments | Capo/King | `GET .../payments` |
 | Spot Ledger | Capo/King | `GET .../transactions` (credit-moving rows only — excludes offer/retract audit entries). Client-side filters: by game and by player, with row count + clear |
 | Balances | All members | `GET .../credits` (loaded on tab mount) |
+| Squash the Beef | All members (LD `group-settlement`) | `GET .../settlement` (loaded on tab mount — players must see their pairings without hunting) |
 
 CSV export buttons (Balances / Transactions / Payments) remain in the admin card header. Recording a payment refreshes balances and the payments list when those sections have already been loaded.
+
+### Squash the Beef (crew credit settlement)
+
+Balances sum to zero across a crew, so squaring up is a matching problem. A
+Capo/King builds the pairings **by hand** in `SettlementBuilder.tsx`: two columns
+(owed money / owes money), pick one from each side, and the amount pre-fills with
+whatever fully squares one of them (editable). Every **remaining** figure updates
+as drafts are added or removed, and a player matched for their whole balance is
+dimmed and marked "squared" — so it stays obvious who still needs a match.
+Nothing is persisted until **Lock It In**.
+
+- **Partial settlements are allowed.** Remainders stay on the books for next time,
+  which is also the only workable answer when active-member balances don't sum to
+  zero (e.g. a departed member still holding credit).
+- **Server re-validates** the submitted set against balances read inside the
+  transaction (`validatePairingProposals` in `lib/settlement.ts`, integer cents):
+  right-sign roles, active membership, no duplicate pair, and no player allocated
+  beyond their balance. A stale builder therefore 400s instead of writing junk.
+- **One open settlement per crew** — checked under a `groups`-row `FOR UPDATE`
+  lock (there is no `withGroupLock`), with a partial unique index as the backstop.
+  A manager must tear up the open one before cutting a new one.
+- **Marking a pairing paid writes two zero-sum `payments` rows** (+X for the
+  debtor who sent the money, −X for the creditor who received it), so the crew's
+  balances still sum to zero. Both rows carry the same description: who paid whom,
+  how much, who recorded it, and the optional note. The pairing keeps FK links to
+  both rows. Either player in the pairing or a Capo/King may record it; the row
+  lock plus the status check makes a double-click a 409, not a double payment.
+- **Completion** is automatic: when the last open pairing is squared the
+  settlement flips to `completed`. Tearing up cancels only the open pairings —
+  paid ones and their payments stand as history.
+- Visibility: managers see every pairing; a player sees only the pairings they are
+  a party to (and the section is hidden entirely if they're in none).
 
 ## Auth flow (invite-only)
 
@@ -539,6 +580,10 @@ GET    /api/groups/[id]/credits/[userId]/transactions
 GET    /api/groups/[id]/transactions                # group spot ledger JSON (Capo/King)
 POST   /api/groups/[id]/payments                    # record payment (Capo/King); GET lists payments (members)
 GET    /api/groups/[id]/export                      # CSV export (balances / transactions / payments)
+GET    /api/groups/[id]/settlement                  # settlement in play (members; players see only their pairings)
+POST   /api/groups/[id]/settlement                  # lock in hand-built pairings (Capo/King) — LD group-settlement
+DELETE /api/groups/[id]/settlement                  # tear up the open settlement (Capo/King)
+POST   .../settlement/pairings/[pairingId]/paid      # mark squared (either player or Capo/King) → 2 zero-sum payments
 
 GET    /api/admin/invite  POST /api/admin/invite    # Black Book invites (app-admin)
 PATCH  /api/admin/invite  DELETE /api/admin/invite  # email edit / buff player

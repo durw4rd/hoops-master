@@ -18,6 +18,8 @@ import {
   eventAttendees,
   eventWaitlist,
   events,
+  playerCreditBalances,
+  settlementPairings,
   spotTransactions,
 } from '@/lib/db/schema';
 import { getSpotChargeAmount } from '@/lib/queries/pricing';
@@ -109,4 +111,68 @@ export async function assertInvariants(
 ): Promise<void> {
   await assertLedgerInvariant(eventId, opts);
   await assertBenchInvariant(eventId);
+}
+
+/** Sum of every active member's crew balance — settlement must never move it. */
+export async function groupBalanceSum(groupId: string): Promise<number> {
+  const rows = await db
+    .select({ balance: playerCreditBalances.balance })
+    .from(playerCreditBalances)
+    .where(eq(playerCreditBalances.groupId, groupId));
+  return rows.reduce((sum, r) => sum + Number(r.balance), 0);
+}
+
+/**
+ * Settlement invariants, valid at any point in a settlement's life:
+ *
+ * 1. Every live pairing carries a positive amount.
+ * 2. No player is on the hook for more than the balance they had when the
+ *    settlement was cut. Their balance at that moment is reconstructed from the
+ *    current one by undoing the paid pairings (a paid pairing moves the debtor
+ *    up and the creditor down by the same amount).
+ * 3. Squaring up is zero-sum: the crew's balances still add to `expectedSum`.
+ */
+export async function assertSettlementInvariant(
+  groupId: string,
+  settlementId: string,
+  opts: { expectedSum?: number } = {}
+): Promise<void> {
+  const pairings = await db
+    .select()
+    .from(settlementPairings)
+    .where(eq(settlementPairings.settlementId, settlementId));
+
+  const balanceRows = await db
+    .select({ userId: playerCreditBalances.userId, balance: playerCreditBalances.balance })
+    .from(playerCreditBalances)
+    .where(eq(playerCreditBalances.groupId, groupId));
+  const currentBalance = new Map(balanceRows.map((r) => [r.userId, Number(r.balance)]));
+
+  const allocated = new Map<string, number>();
+  const paidDelta = new Map<string, number>();
+  for (const p of pairings) {
+    if (p.status === 'cancelled') continue;
+    const amount = Number(p.amount);
+    expect(amount, `pairing ${p.id} amount is positive`).toBeGreaterThan(0);
+    allocated.set(p.debtorUserId, (allocated.get(p.debtorUserId) ?? 0) + amount);
+    allocated.set(p.creditorUserId, (allocated.get(p.creditorUserId) ?? 0) + amount);
+    if (p.status === 'paid') {
+      paidDelta.set(p.debtorUserId, (paidDelta.get(p.debtorUserId) ?? 0) + amount);
+      paidDelta.set(p.creditorUserId, (paidDelta.get(p.creditorUserId) ?? 0) - amount);
+    }
+  }
+
+  for (const [userId, total] of allocated) {
+    const balanceAtCreation =
+      (currentBalance.get(userId) ?? 0) - (paidDelta.get(userId) ?? 0);
+    expect(
+      Math.abs(balanceAtCreation) + 1e-9,
+      `user ${userId} is paired for ${total} against a ${balanceAtCreation} balance`
+    ).toBeGreaterThanOrEqual(total);
+  }
+
+  expect(await groupBalanceSum(groupId), 'crew balances stay zero-sum').toBeCloseTo(
+    opts.expectedSum ?? 0,
+    2
+  );
 }

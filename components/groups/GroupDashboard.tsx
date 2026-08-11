@@ -53,7 +53,10 @@ interface GroupDashboardProps {
   onLeftCrew?: (groupId: string) => void;
   initialOpenEventId?: string | null;
   onInitialEventConsumed?: () => void;
-  onNotificationNavigate?: (groupId: string, eventId: string) => void;
+  /** Land on a specific tab (crew-scoped notification deep-links). */
+  initialTab?: 'credits' | null;
+  onInitialTabConsumed?: () => void;
+  onNotificationNavigate?: (groupId: string, eventId: string | null) => void;
 }
 
 interface EventWithCounts extends Event {
@@ -100,6 +103,8 @@ export default function GroupDashboard({
   onLeftCrew,
   initialOpenEventId,
   onInitialEventConsumed,
+  initialTab,
+  onInitialTabConsumed,
   onNotificationNavigate,
 }: GroupDashboardProps) {
   const [events, setEvents] = useState<EventWithCounts[]>([]);
@@ -116,6 +121,13 @@ export default function GroupDashboard({
       onInitialEventConsumed?.();
     }
   }, [initialOpenEventId, onInitialEventConsumed]);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+      onInitialTabConsumed?.();
+    }
+  }, [initialTab, onInitialTabConsumed]);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [visibility, setVisibility] = useState(group.visibility);
   const [savingVisibility, setSavingVisibility] = useState(false);

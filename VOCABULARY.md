@@ -39,6 +39,13 @@ synonyms for the same concept.**
 | Pool of all known players | **The Yard** | Search placeholder: "Search the yard…". |
 | Credits / balances tab | **Balances** | |
 | Record a payment (toggle) | **Square Up** | Collapsible form. |
+| Crew credit settlement (section) | **Squash the Beef** | Pair players in the black with players in the red so the crew gets square. |
+| Add a pairing (builder button) | **Match Up** | One player from each side; amount defaults to whatever squares one of them. |
+| Submit the pairings (button) | **Lock It In** | Persists the settlement and tags everyone involved. |
+| Player fully matched (builder) | **squared** | Dimmed row — nothing left to pair. |
+| Mark a pairing paid (confirm) | **Squared** | Row action stays plain "Mark Paid"; writes both payment records. |
+| Cancel the settlement (button) | **Tear It Up** | Scraps unpaid pairings; anything already squared stands. |
+| Settlement notifications (titles) | **Beef to squash** / **Squared up** / **Beef's off** | Created / a pairing was paid / settlement torn up. |
 | Member/game counts (crew card) | **HEADS** / **GAMES** | Graffiti tag-style badges. |
 | Display name / handle | **Tag** / **Your Tag** | Edit in the settings menu. |
 | Profile picture / avatar | **Piece** / **Your Piece** | A writer's signature artwork → a player's avatar. Stored in Vercel Blob. |

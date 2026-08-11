@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CreditBalance, GroupTransaction, PaymentRecord, TransactionType } from "@/lib/types";
-import { Loader2, Download, Euro, ChevronDown, ChevronRight } from "lucide-react";
+import { useFlags } from "launchdarkly-react-client-sdk";
+import {
+  CreditBalance,
+  GroupTransaction,
+  PaymentRecord,
+  SettlementDTO,
+  SettlementPairingDTO,
+  TransactionType,
+} from "@/lib/types";
+import { Loader2, Download, Euro, ChevronDown, ChevronRight, Check, Handshake } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -10,6 +18,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { GraffitiDialog } from "@/components/ui/GraffitiDialog";
+import SettlementBuilder, { type DraftPairing } from "./SettlementBuilder";
 
 interface CreditDashboardProps {
   groupId: string;
@@ -106,6 +117,23 @@ export default function CreditDashboard({
   const [payDate, setPayDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [recording, setRecording] = useState(false);
 
+  // --- Squash the Beef (crew settlement, LD flag: group-settlement) ---
+  const flags = useFlags();
+  const settlementEnabled = flags?.groupSettlement === true;
+  const [settlement, setSettlement] = useState<SettlementDTO | null>(null);
+  const [settlementLoading, setSettlementLoading] = useState(false);
+  const [settlementLoaded, setSettlementLoaded] = useState(false);
+  const [showSettlement, setShowSettlement] = useState(true);
+  const [creatingSettlement, setCreatingSettlement] = useState(false);
+  const [pendingDrafts, setPendingDrafts] = useState<DraftPairing[] | null>(null);
+  const [settlementError, setSettlementError] = useState<string | null>(null);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [cancellingSettlement, setCancellingSettlement] = useState(false);
+  const [payingPairing, setPayingPairing] = useState<SettlementPairingDTO | null>(null);
+  const [payingNote, setPayingNote] = useState("");
+  const [markingPaid, setMarkingPaid] = useState(false);
+  const [markPaidError, setMarkPaidError] = useState<string | null>(null);
+
   const allSelected = members.length > 0 && selectedEmails.length === members.length;
   const toggleEmail = (email: string) =>
     setSelectedEmails((prev) =>
@@ -170,9 +198,31 @@ export default function CreditDashboard({
     }
   }, [groupId]);
 
+  const fetchSettlement = useCallback(async () => {
+    setSettlementLoading(true);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/settlement`);
+      if (res.ok) {
+        const data = await res.json();
+        setSettlement(data.data ?? null);
+        setSettlementLoaded(true);
+      }
+    } catch (err) {
+      console.error("Failed to fetch settlement:", err);
+    } finally {
+      setSettlementLoading(false);
+    }
+  }, [groupId]);
+
   useEffect(() => {
     if (!balancesLoaded) fetchBalances();
   }, [balancesLoaded, fetchBalances]);
+
+  // Players need to see their own pairings without hunting for them, so this
+  // loads with the tab rather than on expand.
+  useEffect(() => {
+    if (settlementEnabled && !settlementLoaded) fetchSettlement();
+  }, [settlementEnabled, settlementLoaded, fetchSettlement]);
 
   const togglePayments = () => {
     const next = !showPayments;
@@ -216,6 +266,91 @@ export default function CreditDashboard({
       setError("Failed to record payment");
     } finally {
       setRecording(false);
+    }
+  };
+
+  /** Everything the settlement touches: pairings, balances, and the payment log. */
+  const refreshAfterSettlement = () => {
+    fetchSettlement();
+    if (balancesLoaded) fetchBalances();
+    if (paymentsLoaded) fetchPayments();
+  };
+
+  const handleCreateSettlement = async () => {
+    if (!pendingDrafts) return;
+    setCreatingSettlement(true);
+    setSettlementError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/settlement`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pairings: pendingDrafts }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSettlementError(data.error || "Failed to lock in the settlement");
+        return;
+      }
+      setPendingDrafts(null);
+      refreshAfterSettlement();
+    } catch {
+      setSettlementError("Failed to lock in the settlement");
+    } finally {
+      setCreatingSettlement(false);
+    }
+  };
+
+  const handleMarkPaid = async () => {
+    if (!payingPairing) return;
+    setMarkingPaid(true);
+    setMarkPaidError(null);
+    try {
+      const res = await fetch(
+        `/api/groups/${groupId}/settlement/pairings/${payingPairing.pairingId}/paid`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note: payingNote || undefined }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        // 409 means someone already recorded it — reloading resolves the view.
+        if (res.status === 409) {
+          setPayingPairing(null);
+          setPayingNote("");
+          refreshAfterSettlement();
+          return;
+        }
+        setMarkPaidError(data.error || "Failed to mark it squared");
+        return;
+      }
+      setPayingPairing(null);
+      setPayingNote("");
+      refreshAfterSettlement();
+    } catch {
+      setMarkPaidError("Failed to mark it squared");
+    } finally {
+      setMarkingPaid(false);
+    }
+  };
+
+  const handleCancelSettlement = async () => {
+    setCancellingSettlement(true);
+    setSettlementError(null);
+    try {
+      const res = await fetch(`/api/groups/${groupId}/settlement`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setSettlementError(data.error || "Failed to tear up the settlement");
+        return;
+      }
+      setConfirmCancelOpen(false);
+      refreshAfterSettlement();
+    } catch {
+      setSettlementError("Failed to tear up the settlement");
+    } finally {
+      setCancellingSettlement(false);
     }
   };
 
@@ -562,6 +697,138 @@ export default function CreditDashboard({
         </div>
       )}
 
+      {settlementEnabled && (settlement || isGroupAdmin) && (
+        <div className="marker-card p-4 space-y-3">
+          <CollapsibleHeader
+            title="Squash the Beef"
+            open={showSettlement}
+            onToggle={() => setShowSettlement((v) => !v)}
+          />
+          {showSettlement && (
+            <div className="pl-6 space-y-3">
+              <p className="text-xs text-asphalt/50 font-body">
+                {settlement
+                  ? "Each player in the black collects from the players matched to them. Mark it here once the money moves."
+                  : "Match players in the black with players in the red so the whole crew gets square."}
+              </p>
+
+              {settlementLoading && !settlementLoaded ? (
+                <div className="flex items-center gap-2 text-asphalt/60 font-body py-4 justify-center">
+                  <Loader2 className="w-5 h-5 animate-spin" /> Loading settlement…
+                </div>
+              ) : settlement ? (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left font-graffiti text-asphalt/70 border-b-2 border-asphalt/20">
+                          <th className="py-2 pr-2">Who pays who</th>
+                          <th className="py-2 px-2 text-right">Amount</th>
+                          <th className="py-2 pl-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {settlement.pairings.map((p) => {
+                          const youPay = p.debtorEmail === userEmail;
+                          const youCollect = p.creditorEmail === userEmail;
+                          const canMarkPaid =
+                            p.status === "open" && (isGroupAdmin || youPay || youCollect);
+                          return (
+                            <tr
+                              key={p.pairingId}
+                              className={`border-b border-asphalt/10 ${
+                                youPay || youCollect ? "bg-moss-green/20" : ""
+                              }`}
+                            >
+                              <td className="py-2 pr-2 font-body">
+                                {youPay ? (
+                                  <>
+                                    You owe <span className="font-marker">{p.creditorName}</span>
+                                  </>
+                                ) : youCollect ? (
+                                  <>
+                                    <span className="font-marker">{p.debtorName}</span> owes you
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="font-marker">{p.debtorName}</span> pays{" "}
+                                    <span className="font-marker">{p.creditorName}</span>
+                                  </>
+                                )}
+                              </td>
+                              <td className="py-2 px-2 text-right font-graffiti whitespace-nowrap">
+                                €{p.amount.toFixed(2)}
+                              </td>
+                              <td className="py-2 pl-2 font-body">
+                                {p.status === "paid" ? (
+                                  <span className="flex items-center gap-1 text-success whitespace-nowrap">
+                                    <Check className="w-4 h-4" />
+                                    Squared
+                                    {p.markedPaidByName && (
+                                      <span className="text-asphalt/50 text-xs">
+                                        by {p.markedPaidByName}
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : p.status === "cancelled" ? (
+                                  <span className="text-asphalt/50 text-xs">Torn up</span>
+                                ) : canMarkPaid ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPayingPairing(p);
+                                      setPayingNote("");
+                                      setMarkPaidError(null);
+                                    }}
+                                    className="flex items-center gap-1 bg-asphalt text-sticker-white px-2 py-1 border-2 border-asphalt font-graffiti text-xs hover:bg-terracotta transition-colors whitespace-nowrap"
+                                  >
+                                    <Handshake className="w-3.5 h-3.5" /> Mark Paid
+                                  </button>
+                                ) : (
+                                  <span className="text-asphalt/50 text-xs">Waiting</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {isGroupAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettlementError(null);
+                        setConfirmCancelOpen(true);
+                      }}
+                      className="bg-terracotta text-white px-3 py-1.5 border-2 border-asphalt font-graffiti text-xs hover:bg-asphalt transition-colors"
+                    >
+                      Tear It Up
+                    </button>
+                  )}
+                </>
+              ) : isGroupAdmin ? (
+                <SettlementBuilder
+                  balances={balances}
+                  displayNameFor={(email) => displayNameFor(email, members)}
+                  submitting={creatingSettlement}
+                  onSubmit={(drafts) => {
+                    setSettlementError(null);
+                    setPendingDrafts(drafts);
+                  }}
+                />
+              ) : null}
+
+              {settlementError && (
+                <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+                  <p className="text-sm text-terracotta font-body">{settlementError}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="marker-card p-4">
         <h2 className="font-graffiti text-xl text-asphalt">Balances</h2>
         <p className="text-xs text-asphalt/50 font-body mt-3 mb-3">
@@ -612,6 +879,121 @@ export default function CreditDashboard({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingDrafts !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDrafts(null);
+            setSettlementError(null);
+          }
+        }}
+        title="Lock it in?"
+        message={
+          settlementError ??
+          `Set ${pendingDrafts?.length ?? 0} pairing${
+            (pendingDrafts?.length ?? 0) === 1 ? "" : "s"
+          } worth €${((pendingDrafts ?? []).reduce((s, d) => s + d.amountCents, 0) / 100).toFixed(
+            2
+          )} in stone? Everyone involved gets tagged, and the crew can't start another settlement until this one is done.`
+        }
+        confirmLabel={settlementError ? "OK" : "Lock It In"}
+        cancelLabel={settlementError ? "Close" : "Cancel"}
+        variant="default"
+        loading={creatingSettlement}
+        onConfirm={
+          settlementError
+            ? () => {
+                setPendingDrafts(null);
+                setSettlementError(null);
+              }
+            : handleCreateSettlement
+        }
+      />
+
+      <ConfirmDialog
+        open={confirmCancelOpen}
+        onOpenChange={(open) => {
+          setConfirmCancelOpen(open);
+          if (!open) setSettlementError(null);
+        }}
+        title="Tear it up?"
+        message={
+          settlementError ??
+          "Scrap every pairing nobody has paid yet. Anything already marked squared stays on the books."
+        }
+        confirmLabel={settlementError ? "OK" : "TEAR IT UP"}
+        loading={cancellingSettlement}
+        onConfirm={
+          settlementError
+            ? () => {
+                setConfirmCancelOpen(false);
+                setSettlementError(null);
+              }
+            : handleCancelSettlement
+        }
+      />
+
+      <GraffitiDialog
+        open={payingPairing !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPayingPairing(null);
+            setPayingNote("");
+            setMarkPaidError(null);
+          }
+        }}
+        title="Money moved?"
+        description={
+          payingPairing
+            ? `${payingPairing.debtorName} pays ${payingPairing.creditorName} €${payingPairing.amount.toFixed(2)}. This records the payment for both of them and squares the pairing off.`
+            : ""
+        }
+        className="max-w-sm"
+      >
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs font-graffiti text-asphalt">
+              How did it move? (optional)
+            </label>
+            <input
+              type="text"
+              value={payingNote}
+              onChange={(e) => setPayingNote(e.target.value)}
+              maxLength={200}
+              className="sketch-input w-full text-sm"
+              placeholder="e.g., Revolut, cash at the court"
+            />
+            <p className="text-xs text-asphalt/50 font-body">
+              Goes on both payment records along with your name.
+            </p>
+          </div>
+          {markPaidError && (
+            <div className="p-2 bg-terracotta/10 border-2 border-terracotta">
+              <p className="text-sm text-terracotta font-body">{markPaidError}</p>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setPayingPairing(null)}
+              disabled={markingPaid}
+              className="flex-1 bg-sticker-white text-asphalt border-3 border-asphalt font-graffiti text-base py-2.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md transition-all disabled:opacity-50"
+            >
+              Not Yet
+            </button>
+            <button
+              type="button"
+              onClick={handleMarkPaid}
+              disabled={markingPaid}
+              className="flex-1 bg-asphalt text-white border-3 border-asphalt font-graffiti text-base py-2.5 px-4 shadow-[3px_3px_0_var(--asphalt-black)] hover:shadow-sticker-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {markingPaid && <Loader2 className="w-4 h-4 animate-spin" />}
+              Squared
+            </button>
+          </div>
+        </div>
+      </GraffitiDialog>
     </div>
   );
 }

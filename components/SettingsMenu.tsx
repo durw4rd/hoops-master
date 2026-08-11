@@ -23,7 +23,8 @@ interface SettingsMenuProps {
   onSignIn: () => void;
   onSignOut: () => void;
   onOpenProfile?: () => void;
-  onNotificationNavigate?: (groupId: string, eventId: string) => void;
+  /** eventId is null for crew-scoped notifications (settlements). */
+  onNotificationNavigate?: (groupId: string, eventId: string | null) => void;
   /** Light backdrop behind trigger when overlaid on the logo */
   onLogo?: boolean;
 }

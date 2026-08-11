@@ -36,7 +36,7 @@ const logoBannerProps = (
     onOpenProfile?: () => void;
     onOpenBlackBook?: () => void;
     onOpenVocab?: () => void;
-    onNotificationNavigate?: (groupId: string, eventId: string) => void;
+    onNotificationNavigate?: (groupId: string, eventId: string | null) => void;
   }
 ) => ({
   session,
@@ -71,6 +71,7 @@ export default function HoopsMaster() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [chooseAccount, setChooseAccount] = useState(false);
   const [pendingOpenEventId, setPendingOpenEventId] = useState<string | null>(null);
+  const [pendingOpenTab, setPendingOpenTab] = useState<"credits" | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -208,12 +209,14 @@ export default function HoopsMaster() {
   };
 
   const handleNotificationNavigate = useCallback(
-    (groupId: string, eventId: string) => {
+    (groupId: string, eventId: string | null) => {
       const group = groups.find((g) => g.groupId === groupId);
-      if (group) {
-        setSelectedGroup(group);
-        setPendingOpenEventId(eventId);
-      }
+      if (!group) return;
+      setSelectedGroup(group);
+      // Crew-scoped notifications (settlements) have no game to open — land on
+      // the Balances tab instead.
+      if (eventId) setPendingOpenEventId(eventId);
+      else setPendingOpenTab("credits");
     },
     [groups]
   );
@@ -318,7 +321,16 @@ export default function HoopsMaster() {
   if (selectedGroup) {
     return (
       <AppShell {...shellProps(session, userProfile)}>
+        {/*
+          Keyed by crew so switching crews remounts the dashboard. Without it,
+          child state survives the switch — a settlement notification can jump
+          straight from one crew's Balances tab to another's, and CreditDashboard
+          would keep its already-loaded flags and show the previous crew's
+          balances. The initialTab/initialOpenEventId props are consumed by the
+          fresh mount's effects, so deep links still land.
+        */}
         <GroupDashboard
+          key={selectedGroup.groupId}
           group={selectedGroup}
           userEmail={session.user?.email || ""}
           userProfile={userProfile}
@@ -330,6 +342,8 @@ export default function HoopsMaster() {
           onGroupUpdated={handleGroupUpdated}
           initialOpenEventId={pendingOpenEventId}
           onInitialEventConsumed={() => setPendingOpenEventId(null)}
+          initialTab={pendingOpenTab}
+          onInitialTabConsumed={() => setPendingOpenTab(null)}
           onNotificationNavigate={handleNotificationNavigate}
           onGroupDeleted={() => {
             setSelectedGroup(null);

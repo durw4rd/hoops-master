@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { db } from '@/lib/db';
-import { events, groupMembers, groups, users } from '@/lib/db/schema';
+import { events, groupMembers, groups, payments, users } from '@/lib/db/schema';
 import type { PricingMode } from '@/lib/types';
 
 type UserRow = typeof users.$inferSelect;
@@ -45,6 +45,26 @@ export async function createCrew(): Promise<{ group: GroupRow; capo: UserRow }> 
     .returning();
   await addMember(group.id, capo, 'admin');
   return { group, capo };
+}
+
+/**
+ * Move a player's crew balance by `amount` € with a payment row — positive puts
+ * them in the black, negative in the red. Lets settlement scenarios seed
+ * balances without playing out whole games.
+ */
+export async function seedBalance(
+  groupId: string,
+  user: UserRow,
+  amount: number,
+  recordedBy?: UserRow
+): Promise<void> {
+  await db.insert(payments).values({
+    groupId,
+    userId: user.id,
+    amount: amount.toFixed(2),
+    recordedBy: (recordedBy ?? user).id,
+    description: 'test seed',
+  });
 }
 
 export interface CreateEventOpts {

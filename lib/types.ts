@@ -229,6 +229,35 @@ export interface PaymentRecord {
   createdAt: string;
 }
 
+// =============================================================================
+// SETTLEMENT TYPES
+// =============================================================================
+
+export type SettlementStatus = 'open' | 'completed' | 'cancelled';
+export type SettlementPairingStatus = 'open' | 'paid' | 'cancelled';
+
+export interface SettlementPairingDTO {
+  pairingId: string;
+  debtorEmail: string;
+  debtorName: string;
+  creditorEmail: string;
+  creditorName: string;
+  amount: number;
+  status: SettlementPairingStatus;
+  paidAt: string | null;
+  markedPaidByName: string | null;
+}
+
+export interface SettlementDTO {
+  settlementId: string;
+  status: SettlementStatus;
+  createdByName: string;
+  createdAt: string;
+  resolvedAt: string | null;
+  /** Filtered to the viewer's own pairings for non-managers. */
+  pairings: SettlementPairingDTO[];
+}
+
 export interface CreditTransaction {
   transactionId: string;
   eventId: string;
@@ -406,12 +435,19 @@ export type TransactionRow = [string, string, string, string, string, string, st
 // NOTIFICATIONS
 // =============================================================================
 
-export type NotificationType = 'spot_offered_claimed' | 'bench_promoted' | 'bench_promotion_pending';
+export type NotificationType =
+  | 'spot_offered_claimed'
+  | 'bench_promoted'
+  | 'bench_promotion_pending'
+  | 'settlement_created'
+  | 'settlement_paid'
+  | 'settlement_cancelled';
 
 export interface Notification {
   id: string;
   groupId: string;
-  eventId: string;
+  /** Null for crew-scoped notifications (settlements) that hang off no game. */
+  eventId: string | null;
   type: NotificationType;
   title: string;
   body: string;
