@@ -287,6 +287,56 @@ export const payments = pgTable(
 );
 
 // =============================================================================
+// SETTLEMENTS (crew-wide credit squash: creditors paired with debtors)
+// =============================================================================
+// Financial history, so no cascade FKs — same choice as payments/spot_transactions.
+
+export const settlements = pgTable(
+  'settlements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    groupId: uuid('group_id').notNull().references(() => groups.id),
+    status: text('status').notNull().default('open'), // 'open' | 'completed' | 'cancelled'
+    createdBy: uuid('created_by').notNull().references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    // Canceller, or the actor whose mark-paid closed the last open pairing.
+    resolvedBy: uuid('resolved_by').references(() => users.id),
+  },
+  (t) => ({
+    // At most one open settlement per crew; the app checks first, this is the backstop.
+    openUnique: uniqueIndex('settlements_group_open_unique')
+      .on(t.groupId)
+      .where(sql`${t.status} = 'open'`),
+    groupIdx: index('idx_settlements_group').on(t.groupId, t.createdAt),
+  })
+);
+
+export const settlementPairings = pgTable(
+  'settlement_pairings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    settlementId: uuid('settlement_id').notNull().references(() => settlements.id),
+    debtorUserId: uuid('debtor_user_id').notNull().references(() => users.id),
+    creditorUserId: uuid('creditor_user_id').notNull().references(() => users.id),
+    // Snapshot of the agreed amount, always positive.
+    amount: numeric('amount', { precision: 10, scale: 2 }).notNull(),
+    status: text('status').notNull().default('open'), // 'open' | 'paid' | 'cancelled'
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    markedPaidBy: uuid('marked_paid_by').references(() => users.id),
+    // The two zero-sum payment rows written when the pairing is marked paid.
+    debtorPaymentId: uuid('debtor_payment_id').references(() => payments.id),
+    creditorPaymentId: uuid('creditor_payment_id').references(() => payments.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    settlementIdx: index('idx_settlement_pairings_settlement').on(t.settlementId),
+    debtorIdx: index('idx_settlement_pairings_debtor').on(t.debtorUserId),
+    creditorIdx: index('idx_settlement_pairings_creditor').on(t.creditorUserId),
+  })
+);
+
+// =============================================================================
 // IN-APP NOTIFICATIONS
 // =============================================================================
 
@@ -296,8 +346,9 @@ export const notifications = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     groupId: uuid('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
-    eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
-    type: text('type').notNull(), // 'spot_offered_claimed' | 'bench_promoted'
+    // Null for crew-scoped notifications (settlements) that hang off no game.
+    eventId: uuid('event_id').references(() => events.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(), // 'spot_offered_claimed' | 'bench_promoted' | 'settlement_*'
     title: text('title').notNull(),
     body: text('body').notNull(),
     readAt: timestamp('read_at', { withTimezone: true }),

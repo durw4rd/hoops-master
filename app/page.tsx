@@ -36,7 +36,7 @@ const logoBannerProps = (
     onOpenProfile?: () => void;
     onOpenBlackBook?: () => void;
     onOpenVocab?: () => void;
-    onNotificationNavigate?: (groupId: string, eventId: string) => void;
+    onNotificationNavigate?: (groupId: string, eventId: string | null) => void;
   }
 ) => ({
   session,
@@ -71,6 +71,7 @@ export default function HoopsMaster() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [chooseAccount, setChooseAccount] = useState(false);
   const [pendingOpenEventId, setPendingOpenEventId] = useState<string | null>(null);
+  const [pendingOpenTab, setPendingOpenTab] = useState<"credits" | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -208,12 +209,14 @@ export default function HoopsMaster() {
   };
 
   const handleNotificationNavigate = useCallback(
-    (groupId: string, eventId: string) => {
+    (groupId: string, eventId: string | null) => {
       const group = groups.find((g) => g.groupId === groupId);
-      if (group) {
-        setSelectedGroup(group);
-        setPendingOpenEventId(eventId);
-      }
+      if (!group) return;
+      setSelectedGroup(group);
+      // Crew-scoped notifications (settlements) have no game to open — land on
+      // the Balances tab instead.
+      if (eventId) setPendingOpenEventId(eventId);
+      else setPendingOpenTab("credits");
     },
     [groups]
   );
@@ -330,6 +333,8 @@ export default function HoopsMaster() {
           onGroupUpdated={handleGroupUpdated}
           initialOpenEventId={pendingOpenEventId}
           onInitialEventConsumed={() => setPendingOpenEventId(null)}
+          initialTab={pendingOpenTab}
+          onInitialTabConsumed={() => setPendingOpenTab(null)}
           onNotificationNavigate={handleNotificationNavigate}
           onGroupDeleted={() => {
             setSelectedGroup(null);

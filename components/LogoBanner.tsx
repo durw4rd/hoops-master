@@ -14,7 +14,7 @@ interface LogoBannerProps {
   onOpenProfile?: () => void;
   onOpenBlackBook?: () => void;
   onOpenVocab?: () => void;
-  onNotificationNavigate?: (groupId: string, eventId: string) => void;
+  onNotificationNavigate?: (groupId: string, eventId: string | null) => void;
 }
 
 /** Home mural — same chrome as crew banner (sticky profile row + framed hero). */
