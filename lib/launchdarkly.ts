@@ -67,12 +67,18 @@ const warnedFlags = new Set<string>();
  * Evaluate an arbitrary server-side flag with a sensible default.
  * Returns the default on any failure (fail-closed for booleans/strings/json).
  *
- * Uses variationDetail rather than variation so an unevaluated flag is visible.
- * A flag that LaunchDarkly serves but that is missing (or a version behind) in
- * the Edge Config snapshot returns the default through the SUCCESS path — no
- * throw, nothing logged, and no LD evaluation event either (the edge SDK runs
- * with sendEvents: false). That silence once cost an afternoon of debugging a
- * client-shows/API-403 split, so the reason is logged here instead.
+ * Uses variationDetail rather than variation so a flag that never evaluated is
+ * visible. A flag absent from the Edge Config snapshot returns the default
+ * through the SUCCESS path — no throw, nothing logged, and no LD evaluation
+ * event either (the edge SDK runs with sendEvents: false).
+ *
+ * Note the limit: this catches flags that are MISSING or malformed, not ones
+ * that are merely STALE. A snapshot holding an older-but-valid version of a flag
+ * evaluates normally (reason `OFF` / `FALLTHROUGH`) and is indistinguishable
+ * here from LaunchDarkly genuinely serving that value. Detecting version skew
+ * needs the snapshot compared against LD itself — see
+ * scripts/verify-launchdarkly-server.ts, which prints each flag's snapshot
+ * version so it can be checked against the LD dashboard.
  */
 export async function evalServerFlag<T>(
   flagKey: string,

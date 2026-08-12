@@ -46,14 +46,14 @@ describe('toCents / formatCents', () => {
 });
 
 describe('crewBalanceTotalCents', () => {
-  it('is zero for a crew whose books balance', () => {
+  it('is zero when every player happens to be square', () => {
     expect(crewBalanceTotalCents(BALANCES)).toBe(0);
     expect(crewBalanceTotalCents([])).toBe(0);
   });
 
-  it('reports the drift when someone holding credit is missing from the view', () => {
-    // A departed member drops out of player_credit_balances, so the rest no
-    // longer net out — this is the number the Balances card flags to managers.
+  it('is positive when the crew holds unspent credit and negative when spots are unpaid', () => {
+    // Not an error either way: spot charges are one-sided, so the total is the
+    // crew's net position and only reaches zero once payments catch up.
     expect(
       crewBalanceTotalCents([
         { userId: 'cred-a', balanceCents: 3000 },

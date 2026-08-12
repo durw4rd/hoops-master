@@ -57,15 +57,25 @@ Use the **same** LaunchDarkly environment as step 1.
 |----------|------|-----------------|--------|
 | `guest-spots` | Boolean | `guestSpots` | `assign-guest` API |
 | `player-spot-reassignment` | Boolean | `playerSpotReassignment` | `reassign` / `assign-guest` APIs |
+| `email-notifications` | Boolean | — (server only) | outbox dispatch kill-switch (`lib/email/send.ts`) |
 | `group-settlement` | Boolean | — (server only) | all four `settlement` handlers |
 | `group-settlement-ui` | Boolean | `groupSettlementUi` | — (client only) |
+| `spot-confirmation` | String (`disabled`/`single`/`double`) | `spotConfirmation` | — (client only) |
 
 App-admin is **not** flag-driven: it comes from `users.global_role`, managed in the
 Black Book.
 
 Enable **SDKs using Client-side ID** (or “available to client-side SDK”) in LaunchDarkly for **every** flag here — not just the browser ones. The LD→Edge Config integration only syncs client-side-available flags, and the server SDK reads exclusively from that snapshot, so a server-only flag without this setting never reaches the server and silently fails closed.
 
-Turn **`guest-spots`** on in the environment wired to Edge Config. After changing a flag, the integration writes to Edge Config (may take a few seconds).
+Turn the flags you want on in the environment wired to Edge Config. After changing a flag, the integration writes to Edge Config (may take a few seconds).
+
+Toggling a flag **on is not sufficient** — check its **default (fallthrough) rule**
+too. A flag that is `on` but whose default rule serves the disabling variation
+evaluates to that variation for every context no targeting rule matches, which is
+indistinguishable from the flag being off. For a flag meant to be globally
+available (e.g. `group-settlement`, the settlement API gate), set the default rule
+to serve the enabling variation and keep per-person targeting on the paired UI
+flag instead.
 
 ### 5. Redeploy
 
@@ -99,7 +109,7 @@ Expected: `serverClientReady: true`. Then retry guest assign in the app.
 | Client flag on, API 403 guest | `EDGE_CONFIG` missing locally or wrong LD environment vs client-side ID. |
 | `serverClientReady: false` after pull | Wrong/missing connection string; redeploy; check integration status in LD. |
 | Flag changes not reflected server-side | Integration sync delay; toggle flag again; check LD integration logs. |
-| UI shows the feature but the API returns 403 "not enabled" | The Edge Config snapshot is a flag **version** behind what LD streams to the browser (this happened to `group-settlement`: Edge Config held v2 `on:false` while LD served v3). Re-save the flag in LD to force a sync, confirm the Edge Config item changed, and look for `[launchdarkly] flag <key> not evaluated` in the server logs. Gating UI and API on *separate* keys avoids the split. |
+| UI shows the feature but the API returns 403 "not enabled" | Two possible causes, and they look identical at runtime. (a) The flag's **default/fallthrough rule serves `false`**, so `on: true` still evaluates false for anyone no rule matches — check the evaluation output of `verify-launchdarkly-server.ts`. (b) The Edge Config snapshot is a flag **version** behind what LD streams to the browser (this happened to `group-settlement`: the snapshot held v2 `on:false` while LD served v3). Run the verify script and compare each printed `version` against the LD dashboard; re-save the flag in LD to force a sync. Note the runtime `[launchdarkly]` warning does **not** fire for a stale-but-valid flag — a stale version evaluates normally. Gating UI and API on *separate* keys keeps the split from stranding users in a live UI. |
 | A brand-new flag always fails closed server-side | The key isn't in the Edge Config item yet — new flags land on their next change, and only if they're client-side available. `errorKind=FLAG_NOT_FOUND` in the server log confirms it. |
 | Local dev keeps serving a stale flag value | `@vercel/edge-config` uses a stale-while-revalidate cache whenever `NODE_ENV=development`, so the first request after a change still returns the old value. Set `EDGE_CONFIG_DISABLE_DEVELOPMENT_SWR=1` in `.env.local` and restart `pnpm dev`. |
 

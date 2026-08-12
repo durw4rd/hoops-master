@@ -467,11 +467,16 @@ Balances card as the "Your beef" strip with a Mark Paid shortcut, so a player
 deep-linked here by a settlement notification sees it without opening anything.
 
 The Balances table carries a **Crew total** row (`crewBalanceTotalCents`, summed in
-integer cents). It should read €0.00; when it doesn't, managers get a terse
-"Books are off by €X" chip. The view only counts *active* members, so a player who
-left while holding credit is the usual cause.
+integer cents). This is the crew's **net position, not an error signal** — spot
+charges are recorded one-sided (`from_user_id IS NULL`), so an unpaid spot pushes
+the total negative until a payment lands, and a season buy-in pushes it positive
+until the games are played. Zero means everyone is square at that moment. When it
+isn't zero, managers get an informational line saying what the crew is owed or is
+holding. Note the total is also incomplete by design: the view only counts
+*active* members, so credit held by someone who left the crew is absent entirely.
 
-Balances sum to zero across a crew, so squaring up is a matching problem. A
+Positive and negative balances net out across a crew, so squaring up is a
+matching problem. A
 Capo/King builds the pairings **by hand** in `SettlementBuilder.tsx`: two columns
 (owed money / owes money) with **multi-select on both sides**. One-on-one gives an
 editable amount pre-filled with whatever squares one of them off; picking several

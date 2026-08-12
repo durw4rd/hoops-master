@@ -46,12 +46,15 @@ export function toSettlementBalances(
 }
 
 /**
- * Sum of every listed player's balance. Zero for a healthy crew — the credit
- * ledger is zero-sum by construction. A non-zero total means the balance view is
- * missing someone: it only counts active members, so a player who left the crew
- * while holding credit drops out and the books stop netting out.
+ * Sum of every listed player's balance — the crew's net position, not an error
+ * signal. Spot charges are recorded one-sided (`from_user_id IS NULL`, see
+ * `recordTransaction` callers), so an unpaid spot pushes this negative until a
+ * payment lands, and a season buy-in pushes it positive until the games get
+ * played. Zero means everyone happens to be square right now. It is also
+ * incomplete by design: the balance view only counts *active* members, so credit
+ * held by someone who left the crew is simply absent.
  *
- * Sums per-player integer cents rather than the euro floats, so a healthy crew
+ * Sums per-player integer cents rather than the euro floats, so a squared-up crew
  * reads exactly 0 instead of 1e-14.
  */
 export function crewBalanceTotalCents(balances: SettlementBalance[]): number {

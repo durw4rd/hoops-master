@@ -17,7 +17,6 @@ import {
   ChevronDown,
   ChevronRight,
   Handshake,
-  AlertTriangle,
 } from "lucide-react";
 import {
   Select,
@@ -253,6 +252,21 @@ export default function CreditDashboard({
     if (settlementEnabled && !settlementLoaded) fetchSettlement();
   }, [settlementEnabled, settlementLoaded, fetchSettlement]);
 
+  // The UI flag streams live, so it can switch off under a loaded dashboard.
+  // Drop the loaded state and close anything open, both so nothing stays
+  // actionable and so re-enabling fetches fresh data instead of reusing this.
+  useEffect(() => {
+    if (settlementEnabled) return;
+    setSettlement(null);
+    setSettlementLoaded(false);
+    setSettlementGateError(null);
+    setSettlementModalOpen(false);
+    setPendingDrafts(null);
+    setConfirmCancelOpen(false);
+    setPayingPairing(null);
+    setBuilderDrafts([]);
+  }, [settlementEnabled]);
+
   const togglePayments = () => {
     const next = !showPayments;
     setShowPayments(next);
@@ -396,13 +410,15 @@ export default function CreditDashboard({
   const balanceColor = (balance: number) =>
     balance > 0 ? "text-success" : balance < 0 ? "text-terracotta" : "text-asphalt";
 
-  // The crew's books should net to zero. They don't when someone holding credit
-  // has left — the balance view only counts active members.
+  // The crew's net position, NOT an error signal. Spot charges are one-sided
+  // (`from_user_id IS NULL`), so every unpaid spot pushes this negative until a
+  // payment lands, and a season buy-in pushes it positive until the games are
+  // played. Zero just means everyone is square right now.
   const crewTotalCents = useMemo(
     () => crewBalanceTotalCents(toSettlementBalances(balances)),
     [balances]
   );
-  const booksAreOff = balancesLoaded && balances.length > 0 && crewTotalCents !== 0;
+  const showCrewPosition = balancesLoaded && balances.length > 0 && crewTotalCents !== 0;
 
   const openPairingCount =
     settlement?.pairings.filter((p) => p.status === "open").length ?? 0;
@@ -795,7 +811,7 @@ export default function CreditDashboard({
           <p className="text-xs font-body text-terracotta mb-3">{settlementGateError}</p>
         )}
 
-        {myOpenPairings.length > 0 && (
+        {settlementEnabled && myOpenPairings.length > 0 && (
           <div className="border-2 border-dashed border-asphalt/30 p-3 mb-3 space-y-1">
             <p className="text-xs font-graffiti text-asphalt/70">Your beef</p>
             <ul className="divide-y divide-asphalt/10">
@@ -827,11 +843,12 @@ export default function CreditDashboard({
           </div>
         )}
 
-        {isGroupAdmin && booksAreOff && (
-          <div className="bg-dull-gold/20 border-2 border-asphalt p-2 mb-3 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-asphalt shrink-0" />
+        {isGroupAdmin && showCrewPosition && (
+          <div className="bg-dull-gold/20 border-2 border-asphalt p-2 mb-3">
             <p className="font-graffiti text-xs text-asphalt">
-              Books are off by €{formatCents(Math.abs(crewTotalCents))}
+              {crewTotalCents < 0
+                ? `The crew still owes €${formatCents(-crewTotalCents)} for spots nobody has paid in for yet`
+                : `The crew is holding €${formatCents(crewTotalCents)} of credit players haven't used yet`}
             </p>
           </div>
         )}
