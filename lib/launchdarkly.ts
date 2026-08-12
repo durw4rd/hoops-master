@@ -1,22 +1,17 @@
 /**
  * Server-side LaunchDarkly client (Vercel SDK + Edge Config).
  *
- * The database is the source of truth for authorization. LaunchDarkly is used
- * ONLY as an additive, on-the-fly override layer for app-level admin (who can
- * create crews/groups). It never replaces the DB role columns.
+ * The database is the source of truth for authorization — app-admin comes solely
+ * from `users.global_role`, managed in the Black Book (see `isAppAdminRole` in
+ * lib/roles.ts). Flags here gate *features*, never permissions.
  *
- * Resolution for "can create groups":
- *   user.global_role === 'admin' (DB)  OR  email present in the `app-admins` flag
- *
- * Fail-closed: if LD/Edge Config is unreachable or unconfigured, the flag is
- * treated as empty and only the DB `global_role` grants access. Authorization
- * never fails open.
+ * Fail-closed: if LD/Edge Config is unreachable or unconfigured, every flag
+ * returns the default the caller passed. Authorization never fails open.
  */
 
 import { init, type LDClient } from '@launchdarkly/vercel-server-sdk';
 import { createClient, type EdgeConfigClient } from '@vercel/edge-config';
 import { APP_VERSION } from '@/lib/appVersion';
-const APP_ADMINS_FLAG = 'app-admins';
 
 let ldClient: LDClient | null = null;
 let edgeConfigClient: EdgeConfigClient | null = null;
@@ -44,45 +39,6 @@ function getClient(): LDClient | null {
   }
 }
 
-/**
- * Returns the list of admin emails configured in the `app-admins` LD flag.
- * Returns [] on any failure (fail-closed).
- */
-export async function getAppAdminEmails(email: string): Promise<string[]> {
-  const client = getClient();
-  if (!client) return [];
-
-  try {
-    await client.waitForInitialization();
-    // The edge SDK doesn't support application metadata, so the running app
-    // version travels as a context attribute instead.
-    const context = { kind: 'user', key: email, email, appVersion: APP_VERSION } as const;
-    const admins = (await client.variation(APP_ADMINS_FLAG, context, [])) as unknown;
-    if (Array.isArray(admins)) {
-      return admins.map((a) => String(a).toLowerCase());
-    }
-    return [];
-  } catch (err) {
-    console.warn('[launchdarkly] app-admins variation failed:', err);
-    return [];
-  }
-}
-
-/**
- * Whether the user can act as an app admin (create crews/groups).
- *
- * @param email          the user's email
- * @param dbGlobalRole   the user's global_role from the DB ('admin' | 'user')
- */
-export async function isAppAdmin(email: string, dbGlobalRole: string): Promise<boolean> {
-  // DB is authoritative / fallback. Owner and admin both have app-admin rights.
-  if (dbGlobalRole === 'admin' || dbGlobalRole === 'owner') return true;
-
-  const normalized = email.toLowerCase();
-  const admins = await getAppAdminEmails(normalized);
-  return admins.includes(normalized);
-}
-
 export function isServerLdConfigured(): boolean {
   return getClient() !== null;
 }
@@ -104,9 +60,25 @@ export function getLaunchDarklyServerConfigStatus(): {
   };
 }
 
+/** One warning per flag key per instance — enough to diagnose, not a log flood. */
+const warnedFlags = new Set<string>();
+
 /**
  * Evaluate an arbitrary server-side flag with a sensible default.
  * Returns the default on any failure (fail-closed for booleans/strings/json).
+ *
+ * Uses variationDetail rather than variation so a flag that never evaluated is
+ * visible. A flag absent from the Edge Config snapshot returns the default
+ * through the SUCCESS path — no throw, nothing logged, and no LD evaluation
+ * event either (the edge SDK runs with sendEvents: false).
+ *
+ * Note the limit: this catches flags that are MISSING or malformed, not ones
+ * that are merely STALE. A snapshot holding an older-but-valid version of a flag
+ * evaluates normally (reason `OFF` / `FALLTHROUGH`) and is indistinguishable
+ * here from LaunchDarkly genuinely serving that value. Detecting version skew
+ * needs the snapshot compared against LD itself — see
+ * scripts/verify-launchdarkly-server.ts, which prints each flag's snapshot
+ * version so it can be checked against the LD dashboard.
  */
 export async function evalServerFlag<T>(
   flagKey: string,
@@ -122,7 +94,22 @@ export async function evalServerFlag<T>(
     // Optional role attributes (crewRole/appRole) let flags target by role.
     // They inform targeting only — authorization stays DB-authoritative in code.
     const context = { kind: 'user', key: email, email, appVersion: APP_VERSION, ...attrs } as const;
-    return (await client.variation(flagKey, context, defaultValue as never)) as T;
+    const detail = await client.variationDetail(flagKey, context, defaultValue as never);
+
+    // 'ERROR' covers FLAG_NOT_FOUND (the stale/missing-snapshot case) plus
+    // CLIENT_NOT_READY, MALFORMED_FLAG, WRONG_TYPE and EXCEPTION — the kinds
+    // where the value below is our default rather than what LD is serving.
+    // FLAG_NOT_FOUND is a reason.errorKind, not a reason.kind.
+    if (detail.reason?.kind === 'ERROR' && !warnedFlags.has(flagKey)) {
+      warnedFlags.add(flagKey);
+      console.warn(
+        `[launchdarkly] flag ${flagKey} not evaluated (errorKind=${
+          detail.reason.errorKind ?? 'unknown'
+        }, variationIndex=${detail.variationIndex ?? 'null'}) — serving the fail-closed default. ` +
+          'Check that the flag is in the Edge Config snapshot and available to client-side SDKs.'
+      );
+    }
+    return detail.value as T;
   } catch (err) {
     console.warn(`[launchdarkly] flag ${flagKey} eval failed:`, err);
     return defaultValue;

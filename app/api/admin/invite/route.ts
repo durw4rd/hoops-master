@@ -15,7 +15,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiGuards';
-import { isAppAdmin } from '@/lib/launchdarkly';
+import { isAppAdminRole } from '@/lib/roles';
 import { inviteUser, listUsers, updateUserEmail, removeUserFromApp } from '@/lib/queries/users';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -24,7 +24,7 @@ export async function GET() {
   const ctx = await requireAuth();
   if (ctx instanceof NextResponse) return ctx;
 
-  if (!(await isAppAdmin(ctx.user.email, ctx.user.globalRole))) {
+  if (!(isAppAdminRole(ctx.user.globalRole))) {
     return NextResponse.json({ error: 'App admin access required' }, { status: 403 });
   }
 
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
   const ctx = await requireAuth();
   if (ctx instanceof NextResponse) return ctx;
 
-  if (!(await isAppAdmin(ctx.user.email, ctx.user.globalRole))) {
+  if (!(isAppAdminRole(ctx.user.globalRole))) {
     return NextResponse.json({ error: 'App admin access required' }, { status: 403 });
   }
 
@@ -88,7 +88,7 @@ export async function PATCH(request: NextRequest) {
   const ctx = await requireAuth();
   if (ctx instanceof NextResponse) return ctx;
 
-  if (!(await isAppAdmin(ctx.user.email, ctx.user.globalRole))) {
+  if (!(isAppAdminRole(ctx.user.globalRole))) {
     return NextResponse.json({ error: 'App admin access required' }, { status: 403 });
   }
 
@@ -122,7 +122,7 @@ export async function DELETE(request: NextRequest) {
   const ctx = await requireAuth();
   if (ctx instanceof NextResponse) return ctx;
 
-  if (!(await isAppAdmin(ctx.user.email, ctx.user.globalRole))) {
+  if (!(isAppAdminRole(ctx.user.globalRole))) {
     return NextResponse.json({ error: 'App admin access required' }, { status: 403 });
   }
 

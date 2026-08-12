@@ -69,7 +69,7 @@ lib/
   apiGuards.ts             # requireAuth / requireMember / requireGroupAdmin / requireCrewManager
   auth.ts                  # NextAuth config (invite-only signIn callback)
   session.ts               # getSessionUser() — id/email/globalRole from JWT
-  launchdarkly.ts          # isAppAdmin() + server flag eval (fail-closed)
+  launchdarkly.ts          # server flag eval (fail-closed, logs unevaluated flags)
   roles.ts                 # Role labels + capability helpers (client + server)
   appVersion.ts            # APP_VERSION (package.json semver) + APP_BUILD_ID (deploy SHA)
   sameDayClash.ts          # per-player same-day multi-game tier (game-list chip)
@@ -400,12 +400,12 @@ missing/unreachable LD → the default column below.
 
 | Flag key | Type | Side | Default (fail) | Targetable per user | Purpose |
 |---|---|---|---|---|---|
-| `app-admins` | string[] | server | `[]` | n/a (email list) | Email allowlist that grants app-admin (create crews, Black Book) on top of DB `global_role`. `isAppAdmin()`. |
 | `guest-spots` | bool | server + client | `false` (off) | yes | Enables assigning a spot to an outside-crew guest (credit-neutral). Server gate in `assign-guest`; client shows the "Guest (outside crew)" option. |
 | `player-spot-reassignment` | bool | server + client | `false` (off) | yes | Enables **player** self-service handover: the "Hand over spot/2nd spot" UI + the non-admin paths of `reassign` and `assign-guest`. Admin SWAP/ASSIGN is never gated by this. |
 | `email-notifications` | bool | server | `false` (off) | **no** (kill-switch) | Master on/off for ALL outgoing email; checked at dispatch time (`isEmailNotificationsEnabled()`). Outbox keeps enqueueing while off. |
 | `spot-confirmation` | string (`disabled`/`single`/`double`) | client | `disabled` | yes | Mis-click guard for **player** roster actions (claim/release/offer/retract/+1/hand-over/accept-decline). `single` = one confirm modal, `double` = a second "really, really sure?". Pure UX (`lib/spotConfirm.ts` + `useConfirmGate`); no server enforcement — the API still authorizes/validates every action. Bench join/leave + admin Manage-Squad actions are not gated. |
-| `group-settlement` | bool | server + client | `false` (off) | yes | Enables **Squash the Beef** (crew credit settlement) — the manager's pairing builder, the pairing list, mark-paid, and tear-up. Gated on all four handlers (`settlement` GET/POST/DELETE + `pairings/[id]/paid`) and on the Balances-tab section. |
+| `group-settlement` | bool | server | `false` (off) | yes | **API gate** on all four settlement handlers (`settlement` GET/POST/DELETE + `pairings/[id]/paid`). Operationally a near-permanent global on; per-player entitlement lives on the UI flag below. |
+| `group-settlement-ui` | bool | client | `false` (hidden) | yes | **UI gate** for **Squash the Beef**: the Balances-card entry button, the viewer's "Your beef" strip, and the settlement modal. Split from the server gate deliberately — the browser SDK streams live from LD while the server reads a Vercel Edge Config snapshot that can lag a flag version, so one shared key produced a live UI posting into `403`s. Toggling this is instant. |
 
 The upgrade banner is **not** flag-controlled — it compares build ids against
 `/api/version` (see below).
@@ -425,7 +425,7 @@ The **Players tab** in `GroupDashboard.tsx` exposes all member admin actions:
 
 ## Black Book (app-admin player management)
 
-`InvitePlayerModal.tsx` — **The Black Book** on the home screen (app-admin / LD `app-admins` only):
+`InvitePlayerModal.tsx` — **The Black Book** on the home screen (app-admin only — DB `users.global_role`):
 
 | Action | Who | Notes |
 |---|---|---|
@@ -447,17 +447,45 @@ Capo/King sections (Square Up, Payments, Spot Ledger) remain collapsible and laz
 | Payments | Capo/King | `GET .../payments` |
 | Spot Ledger | Capo/King | `GET .../transactions` (credit-moving rows only — excludes offer/retract audit entries). Client-side filters: by game and by player, with row count + clear |
 | Balances | All members | `GET .../credits` (loaded on tab mount) |
-| Squash the Beef | All members (LD `group-settlement`) | `GET .../settlement` (loaded on tab mount — players must see their pairings without hunting) |
+| Squash the Beef (modal) | Capo/King always; players once they have pairings (LD `group-settlement-ui`) | `GET .../settlement` on tab mount — the entry button, the "Your beef" strip, and the Crew total row live in the Balances card |
 
 CSV export buttons (Balances / Transactions / Payments) remain in the admin card header. Recording a payment refreshes balances and the payments list when those sections have already been loaded.
 
 ### Squash the Beef (crew credit settlement)
 
-Balances sum to zero across a crew, so squaring up is a matching problem. A
+**Entry point:** one button in the Balances card — "Squash the Beef" for a manager
+with nothing in play, otherwise "See the Beef (N open)" — opening
+`SettlementModal.tsx` in one of two modes: `build` (hosts the builder) or `view`
+(the pairing list, mark-paid, and Tear It Up). The modal is purely presentational;
+`CreditDashboard` keeps all fetching and mutation, and owns the single mark-paid
+dialog so the modal and the inline strip can't drift apart. The modal, the two
+ConfirmDialogs, and the mark-paid dialog are **siblings, not nested** — they share
+`z-50`, so DOM order decides what paints on top (mark-paid is rendered last).
+
+Whatever the viewer personally owes or is owed also renders **inline** in the
+Balances card as the "Your beef" strip with a Mark Paid shortcut, so a player
+deep-linked here by a settlement notification sees it without opening anything.
+
+The Balances table carries a **Crew total** row (`crewBalanceTotalCents`, summed in
+integer cents). This is the crew's **net position, not an error signal** — spot
+charges are recorded one-sided (`from_user_id IS NULL`), so an unpaid spot pushes
+the total negative until a payment lands, and a season buy-in pushes it positive
+until the games are played. Zero means everyone is square at that moment. When it
+isn't zero, managers get an informational line saying what the crew is owed or is
+holding. Note the total is also incomplete by design: the view only counts
+*active* members, so credit held by someone who left the crew is absent entirely.
+
+Positive and negative balances net out across a crew, so squaring up is a
+matching problem. A
 Capo/King builds the pairings **by hand** in `SettlementBuilder.tsx`: two columns
-(owed money / owes money), pick one from each side, and the amount pre-fills with
-whatever fully squares one of them (editable). Every **remaining** figure updates
-as drafts are added or removed, and a player matched for their whole balance is
+(owed money / owes money) with **multi-select on both sides**. One-on-one gives an
+editable amount pre-filled with whatever squares one of them off; picking several
+on either side computes the amounts via `allocateGreedy` (largest-first greedy,
+integer cents, re-sorted each round, tie-break amount desc then id asc, capped by
+remaining-after-drafts) and shows a preview of the pairings it will create before
+you commit. Results fold in through `mergeProposals`, which tops up an existing
+pair rather than emitting the duplicate the API would reject. Every **remaining**
+figure updates as drafts are added or removed, and a player matched for their whole balance is
 dimmed and marked "squared" — so it stays obvious who still needs a match.
 Nothing is persisted until **Lock It In**.
 

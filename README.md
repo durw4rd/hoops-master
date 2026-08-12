@@ -94,13 +94,16 @@ EMAIL_FROM="Hoops Master <notifications@yourdomain.com>"   # verified sender
 CRON_SECRET=...                       # Bearer secret for /api/cron/event-reminders
 ```
 
-Server APIs (`guest-spots`, `app-admins` on routes) need **`EDGE_CONFIG`**. Install the
+Server-evaluated flags (`guest-spots`, `player-spot-reassignment`, `group-settlement`,
+and the `email-notifications` dispatch kill-switch) need **`EDGE_CONFIG`** — all of
+them fail closed without it. Install the
 [Vercel LaunchDarkly integration](docs/launchdarkly-vercel-setup.md), then
 `npx vercel env pull .env.local` and `pnpm tsx scripts/verify-launchdarkly-server.ts`.
 
-The app uses four LaunchDarkly flags (`app-admins`, `guest-spots`,
-`player-spot-reassignment`, `email-notifications`) — all additive and
-fail-closed. See the flag inventory table in
+The app uses six LaunchDarkly flags (`guest-spots`, `player-spot-reassignment`,
+`email-notifications`, `spot-confirmation`, `group-settlement`,
+`group-settlement-ui`) — all additive and fail-closed. App-admin is not
+flag-driven; it comes from `users.global_role`. See the flag inventory table in
 [`APP_ARCHITECTURE.md`](./APP_ARCHITECTURE.md#feature-flags) for types, defaults,
 and which are per-user targetable.
 

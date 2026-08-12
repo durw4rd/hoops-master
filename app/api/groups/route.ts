@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiGuards';
 import { createGroup, getUserGroupRecords } from '@/lib/queries/groups';
-import { isAppAdmin } from '@/lib/launchdarkly';
+import { isAppAdminRole } from '@/lib/roles';
 
 export async function GET() {
   const ctx = await requireAuth();
@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
   if (ctx instanceof NextResponse) return ctx;
 
   try {
-    // App-admin gate: DB global_role === 'admin' OR present in LD `app-admins` flag.
-    const allowed = await isAppAdmin(ctx.user.email, ctx.user.globalRole);
+    // App-admin gate: DB global_role, managed in the Black Book.
+    const allowed = isAppAdminRole(ctx.user.globalRole);
     if (!allowed) {
       return NextResponse.json(
         { error: 'You do not have permission to create crews' },

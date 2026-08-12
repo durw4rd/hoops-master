@@ -49,9 +49,52 @@ async function main() {
   }
 
   const testEmail = process.env.VERIFY_LD_EMAIL ?? 'verify@example.com';
-  const guestSpots = await evalServerFlag('guest-spots', testEmail, false);
-  console.log(`\nguest-spots variation (context ${testEmail}):`, guestSpots);
+  const SERVER_FLAGS = [
+    'guest-spots',
+    'player-spot-reassignment',
+    'group-settlement',
+    'email-notifications',
+  ] as const;
+
+  console.log(`\nServer flag evaluations (context ${testEmail}):`);
+  for (const key of SERVER_FLAGS) {
+    console.log(`  ${key}: ${await evalServerFlag(key, testEmail, false)}`);
+  }
+
+  await printSnapshot();
   console.log('\nOK — server client initialized.');
+}
+
+/**
+ * Dump what the Edge Config snapshot actually holds per flag. The server reads
+ * ONLY this snapshot, so a flag whose `version` here is behind the version shown
+ * in the LaunchDarkly dashboard is being evaluated against stale data — the one
+ * failure mode that looks identical to a normal evaluation at runtime.
+ */
+async function printSnapshot() {
+  const clientSideId =
+    process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_SIDE_ID || process.env.LD_CLIENT_SIDE_ID;
+  const connection = process.env.EDGE_CONFIG;
+  if (!clientSideId || !connection) return;
+
+  const { createClient } = await import('@vercel/edge-config');
+  const payload = (await createClient(connection).get(`LD-Env-${clientSideId}`)) as
+    | { flags?: Record<string, { version?: number; on?: boolean }> }
+    | undefined;
+
+  if (!payload?.flags) {
+    console.log(`\nEdge Config item LD-Env-${clientSideId} is missing or has no flags.`);
+    return;
+  }
+
+  console.log('\nEdge Config snapshot (compare `version` against the LD dashboard):');
+  for (const [key, flag] of Object.entries(payload.flags).sort()) {
+    console.log(`  ${key}: version=${flag.version ?? '?'} on=${flag.on ?? '?'}`);
+  }
+  console.log(
+    '\nFlags used in code but absent above never reach the server — they need\n' +
+      '"SDKs using Client-side ID" enabled in LaunchDarkly to be synced here.'
+  );
 }
 
 main().catch((err) => {

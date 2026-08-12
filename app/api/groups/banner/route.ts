@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
 import { requireAuth, requireCrewManager } from '@/lib/apiGuards';
-import { isAppAdmin } from '@/lib/launchdarkly';
+import { isAppAdminRole } from '@/lib/roles';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       const managerCtx = await requireCrewManager(groupId);
       if (managerCtx instanceof NextResponse) return managerCtx;
     } else {
-      const allowed = await isAppAdmin(ctx.user.email, ctx.user.globalRole);
+      const allowed = isAppAdminRole(ctx.user.globalRole);
       if (!allowed) {
         return NextResponse.json(
           { error: 'You do not have permission to upload a crew banner' },

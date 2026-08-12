@@ -12,7 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/apiGuards';
-import { isAppAdmin } from '@/lib/launchdarkly';
+import { isAppAdminRole } from '@/lib/roles';
 import { getUserRowByEmail, setUserRole } from '@/lib/queries/users';
 import type { GlobalRole } from '@/lib/types';
 
@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest) {
   const ctx = await requireAuth();
   if (ctx instanceof NextResponse) return ctx;
 
-  if (!(await isAppAdmin(ctx.user.email, ctx.user.globalRole))) {
+  if (!(isAppAdminRole(ctx.user.globalRole))) {
     return NextResponse.json({ error: 'App admin access required' }, { status: 403 });
   }
 

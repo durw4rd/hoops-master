@@ -38,6 +38,29 @@ export function formatCents(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+/** Balance-view rows → the shape the settlement helpers work in, keyed by email. */
+export function toSettlementBalances(
+  rows: { userEmail: string; balance: number }[]
+): SettlementBalance[] {
+  return rows.map((r) => ({ userId: r.userEmail, balanceCents: toCents(r.balance) }));
+}
+
+/**
+ * Sum of every listed player's balance — the crew's net position, not an error
+ * signal. Spot charges are recorded one-sided (`from_user_id IS NULL`, see
+ * `recordTransaction` callers), so an unpaid spot pushes this negative until a
+ * payment lands, and a season buy-in pushes it positive until the games get
+ * played. Zero means everyone happens to be square right now. It is also
+ * incomplete by design: the balance view only counts *active* members, so credit
+ * held by someone who left the crew is simply absent.
+ *
+ * Sums per-player integer cents rather than the euro floats, so a squared-up crew
+ * reads exactly 0 instead of 1e-14.
+ */
+export function crewBalanceTotalCents(balances: SettlementBalance[]): number {
+  return balances.reduce((sum, b) => sum + b.balanceCents, 0);
+}
+
 /**
  * How many cents each player still has unmatched once these pairings are taken
  * into account — the figure the builder shows next to every name, and the basis
@@ -61,6 +84,86 @@ export function remainingCentsByPlayer(
     }
   }
   return remaining;
+}
+
+export interface AllocationSide {
+  userId: string;
+  /** Capacity left AFTER any existing drafts — i.e. from remainingCentsByPlayer. */
+  remainingCents: number;
+}
+
+const byRemainingDescThenId = (a: AllocationSide, b: AllocationSide) =>
+  b.remainingCents - a.remainingCents || (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0);
+
+/**
+ * Match a set of selected creditors against a set of selected debtors, biggest
+ * against biggest, so picking one creditor and several debtors yields one pairing
+ * per debtor in a single move.
+ *
+ * Integer cents throughout; never emits a zero pairing; stops as soon as either
+ * side is used up (leftovers stay unmatched, which partial settlements allow).
+ * Because each round consumes at least one side completely, the same
+ * (debtor, creditor) pair can never appear twice.
+ */
+export function allocateGreedy(
+  creditors: AllocationSide[],
+  debtors: AllocationSide[]
+): PairingProposal[] {
+  // Defensive: a fractional amount would be rejected by the API, and a squared
+  // player carries no capacity to hand out.
+  const usable = (sides: AllocationSide[]) =>
+    sides
+      .filter((s) => Number.isFinite(s.remainingCents) && s.remainingCents > 0)
+      .map((s) => ({ userId: s.userId, remainingCents: Math.floor(s.remainingCents) }));
+
+  const creditorPool = usable(creditors);
+  const debtorPool = usable(debtors);
+  const proposals: PairingProposal[] = [];
+
+  while (creditorPool.length > 0 && debtorPool.length > 0) {
+    // Re-sorted every round on purpose: a partially consumed head can fall
+    // below a later entry, and sorting once would break the tie-break order.
+    creditorPool.sort(byRemainingDescThenId);
+    debtorPool.sort(byRemainingDescThenId);
+    const creditor = creditorPool[0];
+    const debtor = debtorPool[0];
+
+    const amountCents = Math.min(creditor.remainingCents, debtor.remainingCents);
+    if (amountCents <= 0) break;
+
+    proposals.push({
+      debtorUserId: debtor.userId,
+      creditorUserId: creditor.userId,
+      amountCents,
+    });
+    creditor.remainingCents -= amountCents;
+    debtor.remainingCents -= amountCents;
+    if (creditor.remainingCents === 0) creditorPool.shift();
+    if (debtor.remainingCents === 0) debtorPool.shift();
+  }
+
+  return proposals;
+}
+
+/**
+ * Fold new proposals into existing ones, topping up a pair that is already
+ * matched instead of adding a duplicate — the server allows only one pairing per
+ * (debtor, creditor). Existing order is preserved.
+ */
+export function mergeProposals(
+  existing: PairingProposal[],
+  additions: PairingProposal[]
+): PairingProposal[] {
+  const merged = existing.map((p) => ({ ...p }));
+  for (const addition of additions) {
+    const match = merged.find(
+      (p) =>
+        p.debtorUserId === addition.debtorUserId && p.creditorUserId === addition.creditorUserId
+    );
+    if (match) match.amountCents += addition.amountCents;
+    else merged.push({ ...addition });
+  }
+  return merged;
 }
 
 /**
