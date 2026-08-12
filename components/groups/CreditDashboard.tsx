@@ -36,6 +36,11 @@ interface CreditDashboardProps {
   userEmail: string;
   isGroupAdmin: boolean;
   members: { userEmail: string; displayName?: string }[];
+  /**
+   * Hands the tab's refresh action back to the parent so its Refresh button can
+   * await this screen's own reload. Must be a stable callback.
+   */
+  registerRefresh?: (refresh: () => Promise<void>) => void;
 }
 
 function transactionTypeLabel(type: TransactionType): string {
@@ -95,6 +100,7 @@ export default function CreditDashboard({
   userEmail,
   isGroupAdmin,
   members,
+  registerRefresh,
 }: CreditDashboardProps) {
   const [balances, setBalances] = useState<CreditBalance[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
@@ -241,6 +247,28 @@ export default function CreditDashboard({
     }
     return null;
   }, [groupId]);
+
+  /** Reload everything this tab is currently showing — collapsed sections stay unloaded. */
+  const refreshAll = useCallback(async () => {
+    await Promise.all([
+      fetchBalances(),
+      settlementEnabled ? fetchSettlement() : Promise.resolve(null),
+      paymentsLoaded ? fetchPayments() : Promise.resolve(),
+      transactionsLoaded ? fetchTransactions() : Promise.resolve(),
+    ]);
+  }, [
+    fetchBalances,
+    fetchSettlement,
+    fetchPayments,
+    fetchTransactions,
+    settlementEnabled,
+    paymentsLoaded,
+    transactionsLoaded,
+  ]);
+
+  useEffect(() => {
+    registerRefresh?.(refreshAll);
+  }, [registerRefresh, refreshAll]);
 
   useEffect(() => {
     if (!balancesLoaded) fetchBalances();
@@ -821,12 +849,15 @@ export default function CreditDashboard({
                     {p.debtorEmail === userEmail ? (
                       <>
                         You owe <span className="font-marker">{p.creditorName}</span>{" "}
-                        <span className="font-graffiti">€{p.amount.toFixed(2)}</span>
+                        {/* Same red/green reading as the balance column: paying out is red. */}
+                        <span className="font-graffiti text-terracotta">
+                          €{p.amount.toFixed(2)}
+                        </span>
                       </>
                     ) : (
                       <>
                         <span className="font-marker">{p.debtorName}</span> owes you{" "}
-                        <span className="font-graffiti">€{p.amount.toFixed(2)}</span>
+                        <span className="font-graffiti text-success">€{p.amount.toFixed(2)}</span>
                       </>
                     )}
                   </span>
