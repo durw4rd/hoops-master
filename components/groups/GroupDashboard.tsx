@@ -1,7 +1,7 @@
 "use client";
 
 import type { Session } from "next-auth";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Group, Event, UserProfile } from "@/lib/types";
 import { 
   Calendar, 
@@ -19,6 +19,7 @@ import {
   Star,
   UserPlus,
   History,
+  RefreshCw,
 } from "lucide-react";
 import { sameDayTierByEvent } from "@/lib/sameDayClash";
 import CreateEventModal from "./CreateEventModal";
@@ -58,6 +59,11 @@ interface GroupDashboardProps {
   onInitialTabConsumed?: () => void;
   onNotificationNavigate?: (groupId: string, eventId: string | null) => void;
 }
+
+type CrewTab = 'events' | 'members' | 'credits' | 'settings';
+const CREW_TABS: CrewTab[] = ['events', 'members', 'credits', 'settings'];
+/** Survives a reload so refreshing doesn't dump you back on Events. */
+const LAST_TAB_KEY = 'hoops:lastTab';
 
 interface EventWithCounts extends Event {
   attendeeCount: number;
@@ -113,6 +119,38 @@ export default function GroupDashboard({
   const [membersLoading, setMembersLoading] = useState(true);
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  // Declared up here because the effects below list it as a dependency, and
+  // dependency arrays are evaluated during render.
+  const [activeTab, setActiveTab] = useState<CrewTab>('events');
+
+  // Read in an effect rather than a lazy initializer: this component is
+  // pre-rendered on the server, where localStorage doesn't exist. Declared
+  // before the deep-link effects below so an incoming link still wins.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(LAST_TAB_KEY);
+      if (stored && CREW_TABS.includes(stored as CrewTab)) setActiveTab(stored as CrewTab);
+    } catch {
+      // localStorage unavailable
+    }
+  }, []);
+
+  // Skip the first run: on mount this still sees the 'events' default (the
+  // restore above has queued its state update but not re-rendered yet), so
+  // writing here would clobber the value we just read.
+  const tabRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!tabRestoredRef.current) {
+      tabRestoredRef.current = true;
+      return;
+    }
+    try {
+      localStorage.setItem(LAST_TAB_KEY, activeTab);
+    } catch {
+      // localStorage unavailable
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (initialOpenEventId) {
@@ -131,7 +169,6 @@ export default function GroupDashboard({
   const [inviteCopied, setInviteCopied] = useState(false);
   const [visibility, setVisibility] = useState(group.visibility);
   const [savingVisibility, setSavingVisibility] = useState(false);
-  const [activeTab, setActiveTab] = useState<'events' | 'members' | 'credits' | 'settings'>('events');
   const [addMemberOpen, setAddMemberOpen] = useState(false);
   const [roleUpdating, setRoleUpdating] = useState<string | null>(null);
   const [removeMemberEmail, setRemoveMemberEmail] = useState<string | null>(null);
@@ -169,6 +206,14 @@ export default function GroupDashboard({
   const canManage = isCrewManager(membership?.groupRole ?? '');
   const isOwner = userProfile?.globalRole === 'owner';
   const canDeleteCrew = isCapo || isOwner;
+
+  // A restored (or demoted) Settings tab renders nothing for a non-manager, so
+  // send them back to Events. Waits for the profile — while it's still loading
+  // every role reads as false and a manager would get bounced.
+  useEffect(() => {
+    if (!userProfile) return;
+    if (activeTab === 'settings' && !(canManage || isOwner)) setActiveTab('events');
+  }, [userProfile, activeTab, canManage, isOwner]);
 
   const myInCount = events.filter((e) => e.isAttending).length;
   const myBenchCount = events.filter((e) => e.onWaitlist).length;
@@ -217,6 +262,24 @@ export default function GroupDashboard({
     fetchEvents();
     fetchMembers();
   }, [fetchEvents, fetchMembers]);
+
+  // The Balances tab owns its own fetches, so it hands its refresh up here.
+  const creditsRefreshRef = useRef<(() => Promise<void>) | null>(null);
+  const registerCreditsRefresh = useCallback((refresh: () => Promise<void>) => {
+    creditsRefreshRef.current = refresh;
+  }, []);
+
+  /** Reload just the visible tab, instead of making the user reload the app. */
+  const refreshActiveTab = async () => {
+    setRefreshing(true);
+    try {
+      if (activeTab === 'events') await fetchEvents();
+      else if (activeTab === 'members') await fetchMembers();
+      else if (activeTab === 'credits') await creditsRefreshRef.current?.();
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     setEditDescription(group.description ?? "");
@@ -454,15 +517,28 @@ export default function GroupDashboard({
             )}
           </div>
 
-          {canManage && activeTab === 'events' && (
-            <button
-              onClick={() => setCreateEventOpen(true)}
-              className="sticker-btn flex items-center justify-center gap-2 w-full sm:w-auto"
-            >
-              <Plus className="w-4 h-4" />
-              Drop a Game
-            </button>
-          )}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {canManage && activeTab === 'events' && (
+              <button
+                onClick={() => setCreateEventOpen(true)}
+                className="sticker-btn flex items-center justify-center gap-2 flex-1 sm:flex-none"
+              >
+                <Plus className="w-4 h-4" />
+                Drop a Game
+              </button>
+            )}
+            {activeTab !== 'settings' && (
+              <button
+                onClick={refreshActiveTab}
+                disabled={refreshing}
+                aria-label="Refresh this tab"
+                title="Refresh this tab"
+                className="flex items-center justify-center p-2 bg-sticker-white text-asphalt border-2 border-asphalt shadow-sticker-sm hover:bg-dull-gold transition-colors shrink-0 disabled:opacity-50 ml-auto sm:ml-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} aria-hidden />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Events Tab */}
@@ -697,6 +773,7 @@ export default function GroupDashboard({
             userEmail={userEmail}
             isGroupAdmin={canManage}
             members={members}
+            registerRefresh={registerCreditsRefresh}
           />
         )}
 
