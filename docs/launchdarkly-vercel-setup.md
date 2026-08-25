@@ -113,6 +113,24 @@ Expected: `serverClientReady: true`. Then retry guest assign in the app.
 | A brand-new flag always fails closed server-side | The key isn't in the Edge Config item yet — new flags land on their next change, and only if they're client-side available. `errorKind=FLAG_NOT_FOUND` in the server log confirms it. |
 | Local dev keeps serving a stale flag value | `@vercel/edge-config` uses a stale-while-revalidate cache whenever `NODE_ENV=development`, so the first request after a change still returns the old value. Set `EDGE_CONFIG_DISABLE_DEVELOPMENT_SWR=1` in `.env.local` and restart `pnpm dev`. |
 
+## Code references (GitHub Actions)
+
+[`.github/workflows/launchdarkly-code-references.yml`](../.github/workflows/launchdarkly-code-references.yml)
+runs [`launchdarkly/find-code-references`](https://github.com/launchdarkly/find-code-references)
+on every push, so each flag's LD dashboard page shows where it's referenced in
+this repo (branch, file, line). Project key is `hoops-master`.
+
+**One-time setup:** in LaunchDarkly, create an API access token with **write**
+access to the `code-reference-repository` resource, then add it as a GitHub
+Actions secret named `LD_ACCESS_TOKEN` on this repo (Settings → Secrets and
+variables → Actions). Without that secret the workflow runs but fails at the
+`find-code-references` step.
+
+Use `.ldignore` (same syntax as `.gitignore`) to exclude paths from the scan,
+or `.launchdarkly/coderefs.yaml` for custom flag-key delimiters/aliases —
+neither exists in this repo yet, so the action scans everything with default
+delimiters.
+
 ## Security note
 
 Server flags gate **authorization-style** behavior (`assign-guest`, the settlement API). Client flags only control UI visibility. Always keep the server check (`evalServerFlag`).
